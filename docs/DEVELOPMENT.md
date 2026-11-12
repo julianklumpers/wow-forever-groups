@@ -230,7 +230,7 @@ join and Whisper leader for a group. Request to join whispers the leader the `ap
 (`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised. Opened from the Quests tab the window
 shows group quests instead (`QueueWindow.subject()`): the questing queue, and the Group Finder's "Quests & Zones"
 listings (`LfgList.zoneListings`) in the zones of the wanted quests (the questing entry's, else the ticked ones), with a
-Quests/Zone column; it searches those zones on input. Switching the main window's tab closes it. The Quests tab shows
+Quests/Zone column; it searches those zones on input. An open window switches along with the main window's tab (`QueueWindow.follow`). The Quests tab shows
 the same counts per quest (`lookingCounts(wanted, "quests")`, `groupsNeedingMe(wanted, "quests")`). The main window
 counts, per dungeon and in "Looking now", the listed groups that need one of the player's ticked roles
 (`QueueWindow.groupsNeedingMe`, from the listings' `remaining`); the dungeon's tooltip names their leaders.

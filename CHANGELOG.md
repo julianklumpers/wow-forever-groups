@@ -13,7 +13,7 @@
 - Group quests get the same overview as dungeons: on the Quests tab, "Looking now", per quest
   who is looking in its zone and the groups there that need you, and "Who is looking »" lists
   the questing queue plus the players and groups listed in those zones in WoW's Group Finder
-  (Quests & Zones). Switching tabs closes "Who is looking".
+  (Quests & Zones). An open "Who is looking" switches along when you switch tabs.
 - Next to each dungeon's counts: how many groups in WoW's Group Finder need one of your roles
   ("5 groups", hover for the leaders), and the total in "Looking now" ("14 groups need you").
   Hidden while "I'd like to lead" is on, since you then build your own group.

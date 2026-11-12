@@ -1176,6 +1176,22 @@ function QueueWindow.hide()
     end
 end
 
+-- The main window switched tabs: an open window switches with it
+-- ("dungeons" or "quests"); from a click, so it may search.
+function QueueWindow.follow(tab)
+    if not frame or not frame:IsShown() then
+        return
+    end
+    mode = tab == "quests" and "quests" or "dungeons"
+    for _, section in pairs(sections) do
+        if type(section) == "table" and section.offset then
+            section.offset = 0
+        end
+    end
+    QueueWindow.searchIfStale(10)
+    QueueWindow.refresh()
+end
+
 function QueueWindow.subject()
     return mode
 end

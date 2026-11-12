@@ -579,7 +579,11 @@ describe("Who is looking for group quests", function()
         assert.is_not_nil(client:findText("^Elwynn Forest$"))
 
         client:click("Button", "Dungeons")
-        assert.is_false(client.ns.QueueWindow.isShown())
+        world:advance(1)
+        assert.is_true(client.ns.QueueWindow.isShown())
+        assert.are.equal("dungeons", client.ns.QueueWindow.subject())
+        assert.is_nil(client:findText("^Zone Dps$"))
+        assert.is_not_nil(client:findText("^Dungeon Dps$"))
     end)
 
     it("counts per quest who is looking in its zone and the groups there that need you", function()
