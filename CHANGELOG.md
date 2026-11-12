@@ -4,8 +4,9 @@
 
 - Fake players for testing (`/fg fake`) get made-up names instead of "Fake 1", "Fake 2"…
 - Fake players only queue for the dungeons of your level.
-- "Who is looking" keeps every player on one line: a long dungeon list is shortened
-  ("RFC, HoT, RoL, WC, +31") and tags like [fake] come first.
+- "Who is looking" shows players in fixed columns (name, level, dungeons, time), for
+  Forever Groups players and the Group Finder list alike; a long dungeon list is shortened
+  ("RFC, HoT, RoL, +32").
 
 ## 0.23.1 (2026-11-12)
 

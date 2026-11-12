@@ -27,7 +27,7 @@ end
 
 -- "RoL, WC, DM", or the first few and "+N" for a long list, so a row stays
 -- one line.
-local MAX_NAMES = 4
+local MAX_NAMES = 3
 
 local function shortNames(ids)
     local names = {}
@@ -178,21 +178,32 @@ local function buildSection(title)
             row.icons[j] = Widgets.roleIcon(row, role, 14)
             row.icons[j]:SetPoint("LEFT", (j - 1) * 15, 0)
         end
+        -- Fixed columns: roles, name, level, dungeons, time.
         row.name = Widgets.text(row, "GameFontHighlightSmall")
         row.name:SetPoint("LEFT", 50, 0)
-        row.name:SetWidth(170)
-        row.info = Widgets.text(row, "GameFontHighlightSmall")
-        row.info:SetPoint("LEFT", 226, 0)
-        row.info:SetWidth(WIDTH - 46 - 226)
-        row.info:SetWordWrap(false)
-        row.info:SetTextColor(0.75, 0.75, 0.75)
+        row.name:SetWidth(150)
+        row.name:SetWordWrap(false)
+        row.level = Widgets.text(row, "GameFontHighlightSmall")
+        row.level:SetPoint("LEFT", 204, 0)
+        row.level:SetWidth(54)
+        row.dungeons = Widgets.text(row, "GameFontHighlightSmall")
+        row.dungeons:SetPoint("LEFT", 260, 0)
+        row.dungeons:SetWidth(WIDTH - 46 - 260 - 96)
+        row.dungeons:SetWordWrap(false)
+        row.time = Widgets.text(row, "GameFontHighlightSmall", "RIGHT")
+        row.time:SetPoint("RIGHT", -4, 0)
+        row.time:SetWidth(92)
+        for _, column in ipairs({ row.level, row.dungeons, row.time }) do
+            column:SetTextColor(0.75, 0.75, 0.75)
+        end
         section.rows[i] = row
     end
     section.more = Widgets.text(frame, "GameFontDisableSmall")
     return section
 end
 
-local function paintRow(row, roles, name, info, color)
+local function paintRow(row, item)
+    local roles, name, color = item.roles, item.name, item.color
     local shown = 0
     for _, role in ipairs(Widgets.ROLES) do
         if string.find(roles, role, 1, true) then
@@ -206,7 +217,9 @@ local function paintRow(row, roles, name, info, color)
     end
     row.name:SetText(name)
     row.name:SetTextColor(color[1], color[2], color[3])
-    row.info:SetText(info)
+    row.level:SetText(item.level and ("level " .. item.level) or "")
+    row.dungeons:SetText(item.dungeonText)
+    row.time:SetText(item.time)
     row:Show()
 end
 
@@ -225,7 +238,7 @@ local function fillSection(section, y, items, empty)
     for i, row in ipairs(section.rows) do
         local item = items[section.offset + i]
         if item and i <= visible then
-            paintRow(row, item.roles, item.name, item.info, item.color)
+            paintRow(row, item)
         else
             row:Hide()
         end
@@ -365,9 +378,10 @@ local function queueItems()
             tags[#tags + 1] = "in a proposal"
         end
         local name = entry.id .. (#entry.members > 1 and string.format(" +%d", #entry.members - 1) or "")
-        local info = string.format("waiting %s   %s%s", Widgets.formatTime(now - entry.joinedAt),
-            #tags > 0 and ("[" .. table.concat(tags, ", ") .. "]   ") or "", shortNames(entry.dungeons))
-        items[#items + 1] = { roles = roles, name = name, info = info, waited = now - entry.joinedAt,
+        local dungeonText = (#tags > 0 and ("[" .. table.concat(tags, ", ") .. "]  ") or "")
+            .. shortNames(entry.dungeons)
+        items[#items + 1] = { roles = roles, name = name, dungeonText = dungeonText,
+            time = "waiting " .. Widgets.formatTime(now - entry.joinedAt), waited = now - entry.joinedAt,
             level = entry.members[1].level,
             color = entry.id == ns.selfName and { 1, 0.82, 0 } or { 1, 1, 1 } }
     end
@@ -377,9 +391,8 @@ end
 local function groupFinderItems()
     local items = {}
     for _, listing in ipairs(QueueWindow.groupFinderPlayers()) do
-        local info = string.format("level %s   %s   listed %s", tostring(listing.level or "?"),
-            shortNames(listing.dungeons), Widgets.formatTime(listing.age or 0))
-        items[#items + 1] = { roles = listing.roles, name = listing.name, info = info, waited = listing.age or 0,
+        items[#items + 1] = { roles = listing.roles, name = listing.name, dungeonText = shortNames(listing.dungeons),
+            time = "listed " .. Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
             level = listing.level,
             color = { Widgets.classColor(listing.classToken) } }
     end
