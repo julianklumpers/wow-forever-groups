@@ -8,6 +8,7 @@
   "Find players" ("Find questing players" on the Quests tab).
 - Next to each dungeon's counts: how many groups in WoW's Group Finder need one of your roles
   ("5 groups", hover for the leaders), and the total in "Looking now" ("14 groups need you").
+  Hidden while "I'd like to lead" is on, since you then build your own group.
 - Filling from WoW's Group Finder no longer holds a role for a Forever Groups player who is
   building a group of their own, or when your own group isn't in the queue (e.g. "Fill from
   Group Finder" for your party); the fill window keeps saying which role it leaves to them.

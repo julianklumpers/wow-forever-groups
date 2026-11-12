@@ -81,11 +81,12 @@ function QueueWindow.groupFinderGroups()
 end
 
 -- Listed groups for the given dungeons ({ [id] = true }) that still need one
--- of the player's roles; empty without roles or with the Group Finder off.
+-- of the player's roles; empty without roles, with the Group Finder off, or
+-- when the player would like to lead (then they build their own group).
 function QueueWindow.groupsNeedingMe(wanted)
     local roles = ns.charDb and ns.charDb.lastRoles
     local result = {}
-    if not roles or not ns.Features.groupFinder() then
+    if not roles or not ns.Features.groupFinder() or ns.charDb.wantsLead then
         return result
     end
     local style = ns.Playstyle.mine()
