@@ -66,14 +66,15 @@ end
 function Group.formed(view)
     local quest = view.queue == "quests"
     local dungeon = ns.Quests.nameOf(view.dungeon)
-    if not quest then
+    local fakes, leaderIsFake = fakeCount(view)
+    -- A test group with fakes never becomes a real party: nothing to follow.
+    if not quest and fakes == 0 then
         ns.GroupView.track(view.dungeon, view.playstyles)
     end
     for _, member in ipairs(view.members) do
         ns.RoleSync.expect(member.name, member.role)
     end
     ns.RoleSync.apply()
-    local fakes, leaderIsFake = fakeCount(view)
     if leaderIsFake then
         Log.info("Test group for %s complete. Its leader is a fake player, so nobody is invited.", dungeon)
         return

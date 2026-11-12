@@ -4,6 +4,8 @@
 
 - Fake players for testing (`/fg fake`) get made-up names instead of "Fake 1", "Fake 2"…
 - Fake players only queue for the dungeons of your level.
+- After a test group with fake players the window no longer shows an empty group card under
+  "Not in the queue".
 - Fake players are always grouped with you: with many fakes, or fakes added before you joined,
   they used to form groups among themselves and no proposal came.
 - Right-click a player in "Who is looking" to whisper or invite them.
