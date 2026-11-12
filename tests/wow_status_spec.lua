@@ -387,6 +387,38 @@ describe("Queue window", function()
         assert.are.same({ [799] = true }, client.searchFilter)
     end)
 
+    it("whispers or invites a player from the right-click menu", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 20 })
+        world:list("Listed Tank", "TD", 799, 21, 300)
+        world:advance(CONNECT)
+        client:slash("/dq join dps dm")
+        client:slash("/dq fake 1 dps")
+        world:advance(3)
+        client:slash("/dq queue")
+        local function rightClick(name)
+            local row = client:findText("^" .. name .. "$").parent
+            row.scripts.OnMouseUp(row, "RightButton")
+        end
+        rightClick("Solo Player")
+        assert.is_nil(client:find("Button", "Whisper"))
+        rightClick(client.ns.Slash.fakeName(1))
+        assert.is_nil(client:find("Button", "Whisper"))
+
+        rightClick("Listed Tank")
+        assert.is_true(client:frame("ForeverGroupsPlayerMenu").shown)
+        client:click("Button", "Whisper")
+        assert.are.equal("Listed Tank", client.tellTarget)
+        assert.is_false(client:frame("ForeverGroupsPlayerMenu").shown)
+        rightClick("Listed Tank")
+        client:click("Button", "Invite to group")
+        local invited = false
+        for _, name in ipairs(client.invites) do
+            invited = invited or name == "Listed Tank"
+        end
+        assert.is_true(invited)
+    end)
+
     it("adds the Group Finder numbers to the counts in the main window", function()
         local world = World.new()
         local client = world:addClient("Solo Player", { level = 20 })

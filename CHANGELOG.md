@@ -4,6 +4,7 @@
 
 - Fake players for testing (`/fg fake`) get made-up names instead of "Fake 1", "Fake 2"…
 - Fake players only queue for the dungeons of your level.
+- Right-click a player in "Who is looking" to whisper or invite them.
 - "Who is looking" is a table: columns Role, Name, Level, Dungeons and Time, for Forever
   Groups players and the Group Finder list alike. Click a column header to sort, again to
   reverse (replaces the sort buttons). A long dungeon list is shortened ("RFC, HoT, RoL, +32").

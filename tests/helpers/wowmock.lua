@@ -797,6 +797,9 @@ local function buildEnv(world, client)
     env.Minimap.GetEffectiveScale = function()
         return 1
     end
+    env.ChatFrame_SendTell = function(name)
+        client.tellTarget = name
+    end
     env.GetCursorPosition = function()
         return client.cursorX or 500, client.cursorY or 500
     end

@@ -178,6 +178,23 @@ local function buildSection(title)
             row.icons[j] = Widgets.roleIcon(row, role, 14)
             row.icons[j]:SetPoint("LEFT", (j - 1) * 15, 0)
         end
+        -- Right-click: whisper or invite the player.
+        row:EnableMouse(true)
+        row.hover = row:CreateTexture(nil, "BACKGROUND")
+        row.hover:SetAllPoints()
+        row.hover:SetColorTexture(1, 1, 1, 0.06)
+        row.hover:Hide()
+        row:SetScript("OnEnter", function(self)
+            self.hover:SetShown(self.item ~= nil and self.item.player ~= nil)
+        end)
+        row:SetScript("OnLeave", function(self)
+            self.hover:Hide()
+        end)
+        row:SetScript("OnMouseUp", function(self, button)
+            if button == "RightButton" and self.item and self.item.player then
+                ns.PlayerMenu.open(self, self.item.player)
+            end
+        end)
         -- Fixed columns: roles, name, level, dungeons, time.
         row.name = Widgets.text(row, "GameFontHighlightSmall")
         row.name:SetPoint("LEFT", 50, 0)
@@ -203,6 +220,7 @@ local function buildSection(title)
 end
 
 local function paintRow(row, item)
+    row.item = item
     local roles, name, color = item.roles, item.name, item.color
     local shown = 0
     for _, role in ipairs(Widgets.ROLES) do
@@ -388,7 +406,9 @@ local function queueItems()
         local name = entry.id .. (#entry.members > 1 and string.format(" +%d", #entry.members - 1) or "")
         local dungeonText = (#tags > 0 and ("[" .. table.concat(tags, ", ") .. "]  ") or "")
             .. shortNames(entry.dungeons)
+        local menu = entry.id ~= ns.selfName and not snap.fakes[entry.id]
         items[#items + 1] = { roles = roles, name = name, dungeonText = dungeonText,
+            player = menu and entry.id or nil,
             time = Widgets.formatTime(now - entry.joinedAt), waited = now - entry.joinedAt,
             level = entry.members[1].level,
             color = entry.id == ns.selfName and { 1, 0.82, 0 } or { 1, 1, 1 } }
@@ -400,6 +420,7 @@ local function groupFinderItems()
     local items = {}
     for _, listing in ipairs(QueueWindow.groupFinderPlayers()) do
         items[#items + 1] = { roles = listing.roles, name = listing.name, dungeonText = shortNames(listing.dungeons),
+            player = listing.name,
             time = Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
             level = listing.level,
             color = { Widgets.classColor(listing.classToken) } }
