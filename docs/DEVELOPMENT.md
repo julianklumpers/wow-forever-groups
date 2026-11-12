@@ -170,7 +170,9 @@ When queued players cannot make a full group, the matchmaker proposes a partial 
 players); the roles left open are filled from WoW's own Group Finder: the leader's Accept click also runs a Group
 Finder search (searching is protected and needs a click), then the best listed solo players (right role, level and
 dungeon; single-role players first, longest listed first) get a whisper and an invite. Anyone who declines or does not
-join within 30 s is replaced (a player who joins later is kept while a spot is open). "Fill from Group Finder" in the window (or `/fg fill`) does the same for your own party;
+join within 30 s is replaced (a player who joins later is kept while a spot is open). A role that a solo Forever Groups player
+waiting in the queue for the dungeon can play is left to the matchmaker first (`addonRoles` in `wow/filler.lua`);
+only the other roles go to the Group Finder, and that role too if the matchmaker has not grouped them within 20 s. "Fill from Group Finder" in the window (or `/fg fill`) does the same for your own party;
 `/fg dryrun` only prints the picks.
 
 ### Both directions

@@ -14,6 +14,10 @@ local Log = ns.Log
 local Filler = {}
 
 local INVITE_TIMEOUT = 30
+-- How long a role is left to a waiting Forever Groups player before the
+-- Group Finder fills it after all (the matchmaker may not group them, e.g.
+-- when their level does not fit the dungeon).
+local ADDON_GRACE = 20
 local STALE_RESULTS = 120
 local DECLINE_MESSAGES = { "ERR_DECLINE_GROUP_S", "ERR_ALREADY_IN_GROUP_S", "ERR_BAD_PLAYER_NAME_S" }
 
@@ -150,6 +154,44 @@ local function queueProposalOpen()
     return proposalOpen(ns.engine) or proposalOpen(ns.questEngine) or (ns.engine ~= nil and ns.engine.held == true)
 end
 
+local function wantsDungeon(entry, dungeons)
+    for _, id in ipairs(entry.dungeons or {}) do
+        for _, wanted in ipairs(dungeons) do
+            if id == wanted then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- The roles of `needed` that solo Forever Groups players waiting in the
+-- queue for this dungeon can play: those go to them, through the matchmaker.
+local function addonRoles(needed)
+    local engine = ns.engine
+    if not engine or needed == "" then
+        return ""
+    end
+    local dungeons = state.dungeon and { state.dungeon } or state.dungeons or {}
+    local style = ns.Playstyle.forGroup()
+    local now, left, covered = engine:now(), needed, ""
+    for _, other in ipairs(engine.queue:list()) do
+        local recent = now - (other.lastSeen or now) <= engine.config.HEARTBEAT_INTERVAL + 15
+        if other.id ~= engine.name and recent and not engine.fakes[other.id] and not engine:isReserved(other.id)
+            and #other.members == 1 and not state.exclude[other.id] and wantsDungeon(other, dungeons)
+            and ns.Playstyles.compatible(style, other.playstyle) then
+            for _, role in ipairs({ "T", "H", "D" }) do
+                if string.find(other.members[1].roles, role, 1, true) and string.find(left, role, 1, true) then
+                    left = removeLetter(left, role)
+                    covered = covered .. role
+                    break
+                end
+            end
+        end
+    end
+    return covered
+end
+
 function Filler.step()
     if not state then
         return
@@ -167,6 +209,23 @@ function Filler.step()
     if needed == "" then
         render()
         return
+    end
+    -- Forever Groups players first: their roles wait for the matchmaker.
+    local forAddon = addonRoles(needed)
+    if forAddon == "" then
+        state.addonSince = nil
+    else
+        state.addonSince = state.addonSince or GetTime()
+        if GetTime() - state.addonSince < ADDON_GRACE then
+            for letter in string.gmatch(forAddon, ".") do
+                needed = removeLetter(needed, letter)
+            end
+            state.message = "Leaving " .. describeLetters(forAddon) .. " to Forever Groups players in the queue."
+            if needed == "" then
+                render()
+                return
+            end
+        end
     end
     if queueProposalOpen() then
         state.message = "Waiting for the queue's group proposal before inviting more."

@@ -34,6 +34,9 @@
   tab name the right column; the fallback right-click menu closes when you click elsewhere.
 - Setting a role waits for the server: a player who just joined no longer looks like they
   switched roles, which made the addon invite a second healer from the Group Finder.
+- Forever Groups players come first: a role that someone with the addon waiting in the queue can
+  play is not filled from WoW's Group Finder (also when a Group Finder player declines); the
+  Group Finder only fills the other roles, or that role after all if no group forms within 20 s.
 - A Group Finder player who doesn't answer the invite is replaced after 30 seconds instead of
   60 (70 for questing groups).
 - The leader sends all invites at once instead of half a second apart, so the group is together

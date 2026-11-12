@@ -62,6 +62,57 @@ describe("Filling from WoW's Group Finder", function()
         end
     end)
 
+    it("gives a freed role to a Forever Groups player in the queue before the Group Finder", function()
+        local world = World.new()
+        local tank = world:addClient("Tanky Mctank", { level = 20 })
+        local addon = world:addClient("Addon Dps", { level = 20 })
+        world:list("Listed Heal", "H", 799, 20, 300)
+        for _, name in ipairs({ "Dps A", "Dps B", "Dps C", "Dps D" }) do
+            world:list(name, "D", 799, 20, 200)
+        end
+        world:advance(CONNECT)
+        tank:slash("/dq join tank dm")
+        tank:slash("/dq fill")
+        world:advance(2)
+        assert.are.equal(4, #tank.invites)
+        tank:joins("Listed Heal")
+        addon:slash("/dq join dps dm")
+        world:advance(2)
+        local declined = tank.invites[#tank.invites]
+        tank:system(declined .. " declines your group invitation.")
+        world:advance(1)
+        assert.are.equal(4, #tank.invites)
+        assert.is_not_nil(tank:findText("Leaving DPS to Forever Groups players in the queue"))
+        world:advance(10)
+        assert.is_true(addon:proposalShown())
+        assert.is_true(tank:proposalShown())
+    end)
+
+    it("fills a role from the Group Finder after all when the Forever Groups player is not grouped", function()
+        local world = World.new()
+        local tank = world:addClient("Tanky Mctank", { level = 20 })
+        local addon = world:addClient("Addon Dps", { level = 20 })
+        world:list("Listed Heal", "H", 799, 20, 300)
+        for _, name in ipairs({ "Dps A", "Dps B", "Dps C", "Dps D" }) do
+            world:list(name, "D", 799, 20, 200)
+        end
+        world:advance(CONNECT)
+        tank:slash("/dq join tank dm")
+        tank:slash("/dq fill")
+        world:advance(2)
+        tank:joins("Listed Heal")
+        addon:slash("/dq join dps dm")
+        world:advance(2)
+        for _, client in ipairs({ tank, addon }) do
+            client.ns.engine.matcher = { findGroups = function() return {} end, findPartialGroup = function() end }
+        end
+        local declined = tank.invites[#tank.invites]
+        tank:system(declined .. " declines your group invitation.")
+        world:advance(25)
+        assert.are.equal(5, #tank.invites)
+        assert.are.equal("Dps D", tank.invites[5])
+    end)
+
     it("replaces a listed player who ignores the invite", function()
         local world = World.new()
         local client = world:addClient("Tanky Mctank", { level = 20 })
