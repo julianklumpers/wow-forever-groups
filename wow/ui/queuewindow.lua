@@ -1215,22 +1215,37 @@ local function build()
     sections.groups = buildSection("Groups", 8, "finderGroups", "groups")
 end
 
-local docked = false
+-- Who is looking is a drawer of the main window: a tab on the main window's
+-- edge opens and closes it; it is open unless the player closed it
+-- (db.whoClosed), and opens with the main window.
+local HANDLE_WIDTH, HANDLE_HEIGHT, HANDLE_TOP = 24, 92, 60
+local handle
+local onLeft = false
+
+local function paintHandle()
+    if not handle then
+        return
+    end
+    local open = frame ~= nil and frame:IsShown()
+    -- The arrow points the way the drawer moves: away from the main window
+    -- to open, back to it to close.
+    local outward = not onLeft
+    if open then
+        outward = not outward
+    end
+    if outward then
+        handle.arrow:SetTexCoord(0, 1, 0, 1)
+    else
+        handle.arrow:SetTexCoord(1, 0, 0, 1)
+    end
+end
 
 -- Sticks to the main window's right edge (its left edge when the screen has
--- no room on the right), so the two move as one; it closes with it.
+-- no room on the right), with the tab between them, so they move as one.
 local function dock()
     local main = ns.WindowParts.frame
     if not main then
         return
-    end
-    if not docked then
-        docked = true
-        main:HookScript("OnHide", function()
-            if frame then
-                frame:Hide()
-            end
-        end)
     end
     local right, screen = main:GetRight(), UIParent:GetRight()
     -- The main window may be scaled down (small screens); compare in
@@ -1241,29 +1256,102 @@ local function dock()
             right = right * scale / uiScale
         end
     end
-    frame:ClearAllPoints()
-    if type(right) == "number" and type(screen) == "number" and right + WIDTH + 2 > screen then
-        frame:SetPoint("TOPRIGHT", main, "TOPLEFT", -2, 0)
-    else
-        frame:SetPoint("TOPLEFT", main, "TOPRIGHT", 2, 0)
+    onLeft = type(right) == "number" and type(screen) == "number" and right + HANDLE_WIDTH + WIDTH > screen
+    if handle then
+        handle:ClearAllPoints()
+        if onLeft then
+            handle:SetPoint("TOPRIGHT", main, "TOPLEFT", 3, -HANDLE_TOP)
+        else
+            handle:SetPoint("TOPLEFT", main, "TOPRIGHT", -3, -HANDLE_TOP)
+        end
+    end
+    if frame then
+        frame:ClearAllPoints()
+        if onLeft then
+            frame:SetPoint("TOPRIGHT", main, "TOPLEFT", -(HANDLE_WIDTH - 4), 0)
+        else
+            frame:SetPoint("TOPLEFT", main, "TOPRIGHT", HANDLE_WIDTH - 4, 0)
+        end
+    end
+    paintHandle()
+end
+
+-- fromInput: a click or typed command, which may search WoW's Group Finder
+-- (opening along with the main window may not: that can come from code).
+local function open(fromInput)
+    if not frame then
+        build()
+        -- Closed by the player (its close button or Escape) while the main
+        -- window stays: it stays closed next time too.
+        frame:HookScript("OnHide", function()
+            local main = ns.WindowParts.frame
+            if main and main:IsShown() then
+                ns.db.whoClosed = true
+            end
+            paintHandle()
+        end)
+    end
+    ns.db.whoClosed = nil
+    setMode(ns.WindowParts.currentTab())
+    dock()
+    frame:Show()
+    paintHandle()
+    if fromInput then
+        QueueWindow.searchIfStale(10)
     end
 end
 
 -- Called from clicks and typed commands, so opening refreshes the Group
 -- Finder. Opens the main window too, with this one docked to it.
 function QueueWindow.toggle()
-    if not frame then
-        build()
-    end
-    if frame:IsShown() then
+    if frame and frame:IsShown() then
         frame:Hide()
         return
     end
     ns.Window.show()
-    setMode(ns.WindowParts.currentTab())
+    open(true)
+end
+
+-- Opens it (and the main window), e.g. from a typed command.
+function QueueWindow.show()
+    ns.Window.show()
+    open(true)
+end
+
+-- The tab on the main window's edge, made with the main window.
+function QueueWindow.attach(main)
+    handle = Widgets.backdropFrame("Button", main)
+    handle:SetSize(HANDLE_WIDTH, HANDLE_HEIGHT)
+    handle:SetFrameLevel((main:GetFrameLevel() or 0) + 5)
+    Widgets.addOutline(handle)
+    Widgets.paintOutline(handle, { 0.06, 0.06, 0.07, 0.95 }, { 1, 0.82, 0, 0.6 })
+    handle.eye = handle:CreateTexture(nil, "ARTWORK")
+    handle.eye:SetSize(20, 20)
+    handle.eye:SetPoint("TOP", 0, -12)
+    handle.eye:SetTexture("Interface\\LFGFrame\\LFG-Eye")
+    handle.eye:SetTexCoord(0, 0.125, 0, 0.25)
+    handle.arrow = handle:CreateTexture(nil, "ARTWORK")
+    handle.arrow:SetSize(14, 14)
+    handle.arrow:SetPoint("BOTTOM", 0, 14)
+    handle.arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
+    handle:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    handle:SetScript("OnClick", QueueWindow.toggle)
+    Widgets.tooltip(handle, "Who is looking", "Everyone looking for your dungeons or group quests right now: "
+        .. "players and groups from Forever Groups and WoW's Group Finder. Right-click a player to whisper or "
+        .. "invite, a group to ask to join. Click to show or hide.")
+    main:HookScript("OnShow", function()
+        if ns.db.whoClosed then
+            dock()
+        else
+            open()
+        end
+    end)
+    main:HookScript("OnHide", function()
+        if frame then
+            frame:Hide()
+        end
+    end)
     dock()
-    frame:Show()
-    QueueWindow.searchIfStale(10)
 end
 
 -- The main window switched tabs ("dungeons" or "quests"): an open window
@@ -1274,6 +1362,10 @@ function QueueWindow.follow(tab)
     end
     setMode(tab)
     QueueWindow.refresh()
+end
+
+function QueueWindow.tab()
+    return handle
 end
 
 function QueueWindow.subject()

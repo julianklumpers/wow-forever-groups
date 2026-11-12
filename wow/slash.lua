@@ -400,7 +400,7 @@ local COMMANDS = {
     { "debug", "toggle logging of sent and received messages", cmdDebug },
     { "slots", "<t> <h> <d> | reset  test with a smaller group", cmdSlots },
     { "log", "[n] show the last n log lines", cmdLog },
-    { "queue", "show who is looking (queue and Group Finder)", function() ns.QueueWindow.toggle() end },
+    { "queue", "show who is looking (queue and Group Finder)", function() ns.QueueWindow.show() end },
     { "queuelist", "list the queue in chat", cmdQueue },
     { "fill", "[stop]  fill your group's open roles from WoW's Group Finder", cmdFill },
     { "dryrun", "toggle: show Group Finder picks without inviting", cmdDryRun },

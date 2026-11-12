@@ -2,6 +2,10 @@
 
 ## 0.25.1 (2026-11-12)
 
+- "Who is looking" is now a drawer on the side of the main window instead of a separate window
+  behind a small link: it's open by default and follows what you pick in the main window. A tab
+  with the Group Finder eye on the window's edge opens and closes it, and it stays the way you
+  left it. The "Who is looking »" link is gone; `/fg queue` still opens it.
 - Asking groups in WoW's Group Finder to invite you now asks one leader at a time, and the
   next only after 20 seconds without an invite (it used to whisper three leaders within a few
   seconds). Two invites can no longer arrive at once, leaving one leader waiting for nothing.

@@ -51,7 +51,7 @@ function W.fitHeight(y)
     end
 end
 
-function Window.refresh()
+local function refreshMain()
     if not W.frame or not W.frame:IsShown() then
         return
     end
@@ -125,6 +125,13 @@ function Window.refresh()
         y = cardBottom - 2
     end
     W.fitHeight(y)
+end
+
+-- The Who is looking drawer shows what the main window chooses (tab,
+-- roles, dungeons), so it follows every change.
+function Window.refresh()
+    refreshMain()
+    ns.QueueWindow.refresh()
 end
 
 function Window.onJoinClicked()
@@ -217,6 +224,7 @@ function W.build()
     W.frame = Widgets.window("ForeverGroupsFrame", "Forever Groups", WIDTH, 400, nil, false,
         Widgets.ICON)
     W.frame:SetScript("OnShow", Window.refresh)
+    ns.QueueWindow.attach(W.frame)
     W.buildTabs()
     W.buildCard()
     W.buildRoles()

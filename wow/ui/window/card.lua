@@ -288,7 +288,7 @@ function W.refreshCard(state, full, tab)
             slot:Hide()
         end
     end
-    for _, widget in ipairs({ card.lookingLabel, card.looking, card.lookingGroups, card.whoLink }) do
+    for _, widget in ipairs({ card.lookingLabel, card.looking, card.lookingGroups }) do
         widget:SetShown(not full)
     end
     -- The group's actions, as one row of buttons.
@@ -331,8 +331,6 @@ function W.refreshCard(state, full, tab)
         local plural = needing ~= 1
         card.lookingGroups:SetText(needing > 0
             and string.format("·  %d group%s need%s you", needing, plural and "s" or "", plural and "" or "s") or "")
-        card.whoLink:ClearAllPoints()
-        card.whoLink:SetPoint("TOPRIGHT", card, "TOPRIGHT", -12, y)
         y = y - 20
     end
     local height = -(y - 6)
@@ -417,9 +415,6 @@ function W.buildCard()
     Widgets.tooltip(card.looking, "Looking now", "Tanks, healers and DPS looking for your dungeons: other "
         .. "Forever Groups players and solo players in WoW's Group Finder. Someone who can play more roles counts "
         .. "for each.")
-    card.whoLink = Widgets.link(card, "Who is looking »", function()
-        ns.QueueWindow.toggle()
-    end)
     local function action(key, label, onClick, tip)
         local button = Widgets.button(card, label, 160)
         button:SetHeight(22)

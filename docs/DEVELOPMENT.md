@@ -228,9 +228,13 @@ group: inviting …".
 
 ### Who is looking
 
-`wow/ui/queuewindow.lua` (the "Who is looking" link on the card, or `/fg queue`) is a separate window docked to the
-right of the main window (left when there is no room on the screen); it moves with the main window and hides with
-it. No tabs: two framed blocks, one per source, each with a header band (icon and name; the Group Finder's also says
+`wow/ui/queuewindow.lua` is a drawer of the main window: a separate window docked to the right of the main window
+(left when there is no room on the screen), with a tab between them (`QueueWindow.attach`, made with the main window:
+the Group Finder eye and an arrow that points the way the drawer moves) that opens and closes it. It opens with the
+main window unless the player closed it (the tab, its close button or Escape while the main window stays:
+`db.whoClosed`); `/fg queue` opens it. Opening with the main window doesn't search (that can come from code; a
+search must follow a click), the tab and `/fg queue` do. `Window.refresh` also refreshes it, so it follows the main
+window's tab, roles and dungeons. It moves with the main window and hides with it. No tabs: two framed blocks, one per source, each with a header band (icon and name; the Group Finder's also says
 when it last searched): **Forever Groups** with Parties and then Players (queued solo players), and **WoW Group
 Finder** with Groups and then Players (solo players listed for your dungeons). Every table has the same columns: Roles (what the
 players can play; a party or group: the roles already in it), Needs (the places a party or group still has open,

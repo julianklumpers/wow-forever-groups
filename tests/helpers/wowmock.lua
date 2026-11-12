@@ -753,6 +753,11 @@ local function buildEnv(world, client)
         if not wasShown and widget.scripts.OnShow then
             widget.scripts.OnShow(widget)
         end
+        if not wasShown then
+            for _, fn in ipairs(widget.hooks and widget.hooks.OnShow or {}) do
+                fn(widget)
+            end
+        end
     end
     function methods.Hide(widget)
         local wasShown = widget.shown
