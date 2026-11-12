@@ -10,7 +10,7 @@ themselves and roles are set for you.
 
 <p align="center">
   <img src="media/screenshots/main-window.png" width="420" alt="The Forever Groups window: roles, playstyle and dungeons, with the Find group button">
-  <img src="media/screenshots/who-is-looking.png" width="420" alt="Who is looking: players in the Forever Groups queue and solo players in WoW's Group Finder">
+  <img src="media/screenshots/who-is-looking.png" width="420" alt="Who is looking: a table of players in the Forever Groups queue and solo players in WoW's Group Finder, with Players and Groups tabs">
 </p>
 
 ## What it does
