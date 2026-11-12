@@ -6,7 +6,7 @@ How the addon works inside, for anyone reading or changing the code. The player-
 ## Layout
 
 - `core/` – pure Lua 5.1, no WoW API: protocol, queue, matchmaking, election, proposals, engine
-- `wow/` – thin WoW layer: hidden channel, send queue, invites, `/fg` commands (`/fg` still works); `wow/ui/` window and proposal popup;
+- `wow/` – thin WoW layer: hidden channel, send queue, invites, `/fg` commands (`/dq` still works); `wow/ui/` window and proposal popup;
   the main window is `wow/ui/window.lua` plus its parts in `wow/ui/window/` (shared, card, setup, quests, tabs)
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
 - `probe/ForeverGroupsProbe/` – API probe addon for in-game checks (`/fgp help`)
@@ -117,9 +117,8 @@ dungeons. `core/questmatch.lua` anchors a group on the longest waiting player an
 who share more of its quests first, then healers, then by waiting time, and keeps the playstyle camps apart; the
 group is complete at the quest's size.
 
-Once a group forms, a small Quest progress window (`wow/ui/progresswindow.lua`) shows how far everyone is (its
-`-` button folds it to its title bar; the card's "Quest progress »" link and `/fg progress` show or hide it; its
-place and folding are saved): for a questing group its quest(s), for a dungeon group the player's quests for that dungeon. Members
+Once a group forms, the status bar's quest icon folds out a progress panel right under the bar
+(`wow/ui/progresswindow.lua`; `/fg progress` does the same) that shows how far everyone is: for a questing group its quest(s), for a dungeon group the player's quests for that dungeon. Members
 with Forever Groups send their progress in hidden PARTY addon messages (`v1|QP|questID:done/total:complete,...`, or
 `questID:t` once turned in; `wow/questgroup.lua`); members without it show "?". When the player has turned in a
 questing group's quests, a popup asks whether to leave the group.
@@ -140,7 +139,8 @@ the other queue is left.
 
 ### Status
 
-A small bar (under the minimap by default; drag to move, click to open the window) shows what is going on whenever
+A small bar (`wow/status.lua`: addon icon, dungeon or quest name, a progress line for bosses or players found, and
+icons to share quests and fold out the quest progress) sits under the minimap by default (drag to move, click to open the window) and shows what is going on whenever
 something is: queue time and roles, a proposal and its countdown, waiting for the leader's invite, inviting your
 group, Group Finder invites, or "Group complete!". The window shows the same status. Party members who have the
 addon see what their leader's queue does ("Your party is queued by X", proposals, the formed group) through
@@ -153,8 +153,8 @@ sources fill the group, whichever is first. Queued Forever Groups players who co
 partial group); a player with no partner in sight fills from the Group Finder right away while staying in the queue.
 An incomplete group stays in the queue (same place) so later Forever Groups players can still join it. Group Finder
 searches need player input: the Find group click, Accept, and, while roles are still open, the player's own key
-presses (a keyboard frame that passes every key through refreshes the search at most every 10 s, never in combat;
-`/fg autosearch` turns it off). A click on the status bar or minimap button also searches.
+presses and clicks in the game world (a keyboard frame that passes every key through, and a hook on the world
+frame's mouse-down; `wow/keysearch.lua`), at most every 10 s and never in combat (`/fg autosearch` turns it off). A click on the status bar or minimap button also searches.
 
 ### WoW's Group Finder
 
@@ -189,6 +189,18 @@ which role they play when they only ask to join ("inv pls"), and says which role
 The status shows the phase: "Asking groups to invite you (2 asked) · own group in 0:18", then "Building your own
 group: inviting …".
 
+### Who is looking
+
+`wow/ui/queuewindow.lua` (the "Who is looking" link on the card, or `/fg queue`) is a separate window docked to the
+right of the main window (left when there is no room on the screen); it moves with the main window and hides with
+it. Two tabs: **Players** (queued Forever Groups players, then solo players listed in the Group Finder for your
+dungeons) and **Groups** (Group Finder groups for your dungeons, with the roles they still need, their size and how
+long they are listed). Each list has its own column headers (Role, Name, Level, Dungeons, Time); a click sorts, a
+second click reverses (`db.queueSort`, `db.queueSortReverse`). Right-clicking a row opens `wow/ui/playermenu.lua`
+(WoW's `MenuUtil` context menu, else a small menu of our own): Whisper and Invite to group for a player; Request to
+join and Whisper leader for a group. Request to join whispers the leader the `applyAsk` message
+(`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised.
+
 ### During and after forming
 
 - **Taskbar flash:** proposals and invites flash the WoW icon in the taskbar and play a sound (`wow/notify.lua`).
@@ -209,13 +221,33 @@ group: inviting …".
   Adventure Guide when it lists the dungeon, else from finished runs (the most ever killed in one run). When someone leaves the full group before every known boss is down, the leader gets a popup to
   queue the group for a replacement (Forever Groups and the Group Finder, the leaver excluded).
 
+### Messages and settings
+
+Every whisper and party message the addon sends is a template in `wow/messages.lua` (`Messages.LIST`), editable and
+switchable in the settings' Messages tab (`wow/ui/messageswindow.lua`), with placeholders `{dungeon} {quest} {zone}
+{size} {role} {roles} {spec} {level}`. A sentence whose placeholder is empty is dropped, `|` escapes are stripped and
+the text is cut at 255 bytes. Sent messages start with `[Forever Groups]` (the ask to a leader ends with
+"(Forever Groups)"), so incoming whispers with that mark are ignored. The settings window (`wow/ui/settings.lua`) has
+the tabs Groups, Messages and Display.
+
+### In the group
+
+- **Specs without the addon:** `wow/inspectspec.lua` inspects one party member at a time out of combat
+  (`NotifyInspect`, `INSPECT_READY`, the talent config `-1`) and reads their tree like `wow/spec.lua`; again after
+  10 minutes.
+- **Where everyone is:** members send `v1|GP|<dungeon>|<in|far|yards>` on PARTY (`wow/groupplaces.lua`), so the card
+  shows "inside" or the distance to the entrance even when the player is already inside.
+- **Secret values:** during boss fights Midnight makes chat event arguments secret (strings that error on any string
+  operation). `wow/events.lua` replaces them with nil before any handler sees them (`ns.isSecret`).
+
 ### Test tools
 
 - `/fg fake <n> [roles]` adds local fake players (default: a mix of roles, also combinations). They are never sent
   to the channel, never become matchmaker, never expire, and are only grouped with you; they accept 1-3 s after a
   proposal. `/fg fake decline` / `/fg fake afk` makes the first fake in the next proposal decline / stay silent;
   `/fg fake clear` removes them.
-- `/fg queue` lists the queue with tags (you, fake, in a proposal).
+- `/fg queuelist` lists the queue in chat with tags (you, fake, in a proposal).
+- Fake players get made-up names (`Slash.fakeName`) and queue for the dungeons of your level.
 - `/fg debug` logs every sent/received message and, when it changes, why the matchmaker did or did not form a group.
 
 ## Releasing
