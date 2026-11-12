@@ -496,6 +496,47 @@ describe("WoW UI", function()
         assert.are.equal("Tanky Mctank", clients[3].acceptedFrom)
     end)
 
+    it("marks WoW's invite popup accepted before hiding it, so hiding does not decline", function()
+        local world, clients = fullWorld()
+        for _, client in ipairs(clients) do
+            client:acceptPopup()
+        end
+        world:advance(1)
+        assert.are.equal(1, clients[2].env.StaticPopup1.inviteAccepted)
+    end)
+
+    it("accepts the leader's invite that arrives before the last answer", function()
+        local world, clients = fullWorld()
+        for i = 2, 5 do
+            clients[i]:acceptPopup()
+        end
+        clients[2]:invitedBy("Tanky Mctank")
+        assert.are.equal("Tanky Mctank", clients[2].acceptedFrom)
+        world:advance(1)
+        assert.is_false(clients[2]:said("You are still in a group"))
+    end)
+
+    it("does not accept the leader's invite before the player accepted", function()
+        local _, clients = fullWorld()
+        clients[2]:invitedBy("Tanky Mctank")
+        assert.is_nil(clients[2].acceptedFrom)
+    end)
+
+    it("stops expecting a leader whose invite never came", function()
+        local world, clients = fullWorld()
+        local inviteUnit = clients[1].env.C_PartyInfo.InviteUnit
+        clients[1].env.C_PartyInfo.InviteUnit = function() end
+        for _, client in ipairs(clients) do
+            client:acceptPopup()
+        end
+        world:advance(1)
+        assert.is_nil(clients[2].acceptedFrom)
+        world:advance(180)
+        clients[1].env.C_PartyInfo.InviteUnit = inviteUnit
+        clients[2]:invitedBy("Tanky Mctank")
+        assert.is_nil(clients[2].acceptedFrom)
+    end)
+
     it("never accepts an invite from someone else", function()
         local world, clients = fullWorld()
         for _, client in ipairs(clients) do
@@ -550,6 +591,16 @@ describe("WoW test tools", function()
         client:slash("/dq")
         assert.is_not_nil(client:findText("^Not in the queue$"))
         assert.is_nil(client:findText("^open$"))
+    end)
+
+    it("adds fake players for a dungeon you chose outside your level", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 13 })
+        world:advance(CONNECT)
+        client:slash("/dq join dps dm")
+        client:slash("/dq fake 4")
+        world:advance(MATCH)
+        assert.is_true(client:proposalShown())
     end)
 
     it("lists the proposal as tank, healer, then DPS", function()

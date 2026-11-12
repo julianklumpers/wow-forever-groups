@@ -24,6 +24,14 @@
 - Once everyone accepted the proposal you join the group by yourself: the invite from the
   group's leader is accepted for you (no second click). Invites from anyone else never are.
   Settings → Groups → "Join the group by itself once everyone accepted" turns it off.
+- Joining by itself also works when the leader's invite arrives before the last Accept reaches
+  you, never accepts an invite from a leader whose group is more than 2 minutes old, and marks
+  WoW's invite popup accepted so closing it cannot decline.
+- A "Request to join" from Who is looking is kept when you press Stop or `/fg leave`, so the
+  leader's invite is still recognised, and it no longer delays building your own group.
+- `/fg fake` also queues the fakes for dungeons you picked outside your level.
+- Who is looking docks on the right side on small screens too; the sort tooltips on the Groups
+  tab name the right column; the fallback right-click menu closes when you click elsewhere.
 - The leader sends all invites at once instead of half a second apart, so the group is together
   right after the last Accept.
 - The "Group found!" popup lists tank, healer, then DPS, with names in class colours, a crown

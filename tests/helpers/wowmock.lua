@@ -594,6 +594,13 @@ local function buildEnv(world, client)
     env.StaticPopup_Show = function(which)
         client.popups[#client.popups + 1] = which
     end
+    env.StaticPopup1 = {}
+    env.StaticPopup_Visible = function(which)
+        if which == "PARTY_INVITE" and client.lastInviter and not (client.hiddenPopups or {}).PARTY_INVITE then
+            return "StaticPopup1"
+        end
+        return nil
+    end
     env.StaticPopup_Hide = function(which)
         client.hiddenPopups = client.hiddenPopups or {}
         client.hiddenPopups[which] = true

@@ -73,6 +73,13 @@ local function buildFallback()
     fallback.title:SetWordWrap(false)
     fallback.items = {}
     table.insert(UISpecialFrames, "ForeverGroupsPlayerMenu")
+    -- A click anywhere else closes it, like WoW's own menus.
+    pcall(fallback.RegisterEvent, fallback, "GLOBAL_MOUSE_DOWN")
+    fallback:SetScript("OnEvent", function(self)
+        if self:IsShown() and not self:IsMouseOver() then
+            self:Hide()
+        end
+    end)
     fallback:Hide()
 end
 

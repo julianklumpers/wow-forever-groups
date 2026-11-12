@@ -8,7 +8,8 @@ local SESSION_TIMEOUT = 120
 
 local pending = {}
 local blocked = false
-local expectedLeader
+-- { name, at }: the leader of the group just formed, whose invite we expect.
+local expected
 local session
 
 local function whisper(name, text)
@@ -59,6 +60,15 @@ local function fakeCount(view)
     return count, leaderIsFake
 end
 
+local function inPartyWith(name)
+    for _, member in ipairs(ns.Party.members() or {}) do
+        if member.name == name then
+            return true
+        end
+    end
+    return false
+end
+
 -- view.queue is "quests" for a questing group: no dungeon to follow and no
 -- Group Finder places to fill.
 function Group.formed(view)
@@ -79,14 +89,20 @@ function Group.formed(view)
     end
     if not view.isLeader then
         ns.Filler.stop()
-        expectedLeader = view.leader
         session = { role = "member", leader = view.leader, dungeon = view.dungeon, startedAt = GetServerTime() }
+        if inPartyWith(view.leader) then
+            -- The leader's invite came (and was accepted) before this news.
+            expected = nil
+            return
+        end
+        expected = { name = view.leader, at = GetServerTime() }
         Log.info("Group formed for %s. Accept the invite from %s.", dungeon, view.leader)
         if IsInGroup() then
             Log.warn("You are still in a group; leave it to accept the invite.")
         end
         return
     end
+    expected = nil
 
     pending = {}
     local others = {}
@@ -186,14 +202,41 @@ local function acceptInvite()
     end
     local ok = pcall(AcceptGroup)
     if ok and type(StaticPopup_Hide) == "function" then
+        -- WoW's invite popup declines the invite when it is hidden unless
+        -- it was marked accepted.
+        local shown = type(StaticPopup_Visible) == "function" and StaticPopup_Visible("PARTY_INVITE")
+        local popup = shown and _G[shown]
+        if type(popup) == "table" then
+            popup.inviteAccepted = 1
+        end
         pcall(StaticPopup_Hide, "PARTY_INVITE")
     end
     return ok
 end
 
+-- The leader of a proposal the player accepted that is still open: its
+-- invite can arrive before the last answer reaches this client.
+local function acceptedProposalLeader(inviter)
+    for _, engine in ipairs({ ns.engine, ns.questEngine }) do
+        local proposal = engine and engine.myProposalKey and engine.proposals[engine.myProposalKey]
+        if proposal and not proposal.outcome and proposal.leader == inviter
+            and proposal.answers[engine.name] == "Y" then
+            return true
+        end
+    end
+    return false
+end
+
+local function expects(inviter)
+    if expected and GetServerTime() - expected.at > SESSION_TIMEOUT then
+        expected = nil
+    end
+    return (expected ~= nil and inviter == expected.name) or acceptedProposalLeader(inviter)
+end
+
 local function onInviteRequest(inviter)
-    if expectedLeader and inviter == expectedLeader then
-        expectedLeader = nil
+    if expects(inviter) then
+        expected = nil
         if acceptInvite() then
             Log.info("Joined %s's group.", inviter)
             return

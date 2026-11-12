@@ -205,7 +205,19 @@ local function buildHeaders(section)
                 onInput(10)
                 QueueWindow.refresh()
             end)
-            Widgets.tooltip(header, "Sort by " .. string.lower(column.label), "Click again to reverse the order.")
+            header:SetScript("OnEnter", function(self)
+                if GameTooltip then
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText("Sort by " .. string.lower(self.label:GetText() or ""), 1, 0.82, 0)
+                    GameTooltip:AddLine("Click again to reverse the order.", 1, 1, 1, true)
+                    GameTooltip:Show()
+                end
+            end)
+            header:SetScript("OnLeave", function()
+                if GameTooltip then
+                    GameTooltip:Hide()
+                end
+            end)
         end
         section.columns[#section.columns + 1] = header
     end
@@ -653,6 +665,9 @@ end
 local function build()
     frame = Widgets.window("ForeverGroupsQueueFrame", "Who is looking", WIDTH, 300)
     frame:SetScript("OnShow", QueueWindow.refresh)
+    frame:HookScript("OnHide", function()
+        ns.PlayerMenu.hide()
+    end)
     -- Players | Groups, with a base line under all but the chosen tab.
     sections.tabs = {}
     for i, tab in ipairs(TABS) do
@@ -726,6 +741,14 @@ local function dock()
         end)
     end
     local right, screen = main:GetRight(), UIParent:GetRight()
+    -- The main window may be scaled down (small screens); compare in
+    -- UIParent's units.
+    if type(right) == "number" and main.GetEffectiveScale and UIParent.GetEffectiveScale then
+        local scale, uiScale = main:GetEffectiveScale(), UIParent:GetEffectiveScale()
+        if type(scale) == "number" and type(uiScale) == "number" and uiScale > 0 then
+            right = right * scale / uiScale
+        end
+    end
     frame:ClearAllPoints()
     if type(right) == "number" and type(screen) == "number" and right + WIDTH + 2 > screen then
         frame:SetPoint("TOPRIGHT", main, "TOPLEFT", -2, 0)

@@ -139,7 +139,7 @@ function Window.onJoinClicked()
             engine:leave()
         end
         ns.Filler.stop()
-        ns.Apply.reset()
+        ns.Apply.stopSeeking()
         ns.Listing.tick()
         ns.Input.run()
         W.setHint("")

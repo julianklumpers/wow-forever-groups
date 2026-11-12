@@ -104,7 +104,7 @@ end
 local function cmdLeave()
     local filling = ns.Filler.isActive()
     ns.Filler.stop(true)
-    ns.Apply.reset()
+    ns.Apply.stopSeeking()
     ns.Listing.tick()
     ns.Input.run()
     if (not ns.engine or not ns.engine:leave()) and not filling then
@@ -277,10 +277,23 @@ local function cmdFake(rest)
             return
         end
     end
-    -- The dungeons a real player of the same level would pick.
-    local dungeons = {}
+    -- The dungeons a real player of the same level would pick, and any the
+    -- player chose or queued for themselves (also from "Other dungeons").
+    local dungeons, listed = {}, {}
+    local function add(id)
+        if id and not listed[id] then
+            listed[id] = true
+            dungeons[#dungeons + 1] = id
+        end
+    end
     for _, dungeon in ipairs(Dungeons.forLevel(UnitLevel("player") or 1)) do
-        dungeons[#dungeons + 1] = dungeon.id
+        add(dungeon.id)
+    end
+    for _, id in ipairs(engine.myEntry and engine.myEntry.dungeons or {}) do
+        add(id)
+    end
+    for _, id in ipairs(ns.Window.selectedDungeonIds()) do
+        add(id)
     end
     if #dungeons == 0 then
         for i, dungeon in ipairs(Dungeons.list) do

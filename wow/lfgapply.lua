@@ -44,10 +44,14 @@ local function proposalOpen()
     return proposal ~= nil and not proposal.outcome
 end
 
+-- The automatic asks; the player's own requests (Who is looking) do not
+-- count against them.
 local function askCount()
     local count = 0
-    for _ in pairs(asks) do
-        count = count + 1
+    for _, a in pairs(asks) do
+        if not a.request then
+            count = count + 1
+        end
     end
     return count
 end
@@ -90,14 +94,18 @@ function Apply.reset()
     seekingSince, seekingStartedAt = nil, nil
 end
 
--- Out of the queue: the automatic asks end, the player's own requests stay
--- for a while.
-local function keepRequests()
+local function dropAutomaticAsks()
     for leader, a in pairs(asks) do
         if not a.request or GetServerTime() - a.at > REQUEST_KEPT then
             asks[leader] = nil
         end
     end
+end
+
+-- Out of the queue: the automatic asks end, the player's own requests stay
+-- for a while.
+function Apply.stopSeeking()
+    dropAutomaticAsks()
     seekingSince, seekingStartedAt = nil, nil
 end
 
@@ -180,7 +188,7 @@ function Apply.tick()
         return
     end
     if not Apply.isSeeker() then
-        keepRequests()
+        Apply.stopSeeking()
         return
     end
     seekingSince = seekingSince or GetServerTime()
@@ -188,8 +196,8 @@ function Apply.tick()
     if GetServerTime() - seekingSince >= WAIT_FOR_INVITE then
         if askCount() > 0 then
             Log.info("No invite from the groups you asked; building your own group now.")
-            asks = {}
         end
+        dropAutomaticAsks()
         return
     end
     if askCount() >= MAX_ASKS or GetTime() - lastAskAt < ASK_SPACING or proposalOpen() or not freshResults() then
