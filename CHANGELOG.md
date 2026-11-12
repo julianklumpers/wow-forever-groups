@@ -38,7 +38,9 @@
   60 (70 for questing groups).
 - The leader sends all invites at once instead of half a second apart, so the group is together
   right after the last Accept.
-- The "Group found!" popup shows the dungeon's loading screen as a banner: the classic ones and
+- The "Group found!" popup shows the dungeon's loading screen as a banner in the style of
+  ForeverDungeonJournal's cards (name on a soft dark top, playstyle, level range and your role
+  in the corners, a bronze edge): the classic ones and
   Forever's own (Hall of Thanes, Ruins of Lordaeron, Excavation Site, City of Dalaran, Krol'dok
   Stronghold, Blackmaw Hold, Shaper's Terrace), all from the game itself. The Drowned City and
   Alcaz Prison keep the plain look for now.

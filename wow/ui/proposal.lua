@@ -91,50 +91,64 @@ local function paintRow(row, member, leader)
     row.status:SetTexture(STATUS_TEXTURES[statusOf(member.answer)])
 end
 
--- With a picture the name sits on the banner's lower part; without one the
--- popup looks as before. Returns where the member rows start.
-local function layoutTop(art, crop)
-    ui.banner:SetShown(art ~= nil)
-    ui.bannerFade:SetShown(art ~= nil)
-    ui.line:SetShown(art == nil)
+-- With a picture the popup takes ForeverDungeonJournal's card look: the
+-- picture at full strength, the name in a dark band on top, small notes in
+-- its lower corners and a bronze edge. Without one it looks as before.
+-- info: { styles, role, levels }. Returns where the member rows start.
+local function layoutTop(art, crop, info)
+    local pictured = art ~= nil
+    for _, part in ipairs({ ui.banner, ui.bannerTop, ui.bannerBottom, ui.bannerEdge, ui.bannerStyle,
+        ui.bannerLevels, ui.bannerRole }) do
+        part:SetShown(pictured)
+    end
+    ui.line:SetShown(not pictured)
+    ui.subtitle:SetShown(not pictured)
     ui.dungeon:ClearAllPoints()
-    ui.subtitle:ClearAllPoints()
-    if not art then
+    if not pictured then
+        ui.dungeon:SetJustifyH("CENTER")
+        ui.dungeon:SetWidth(WIDTH - 20)
         ui.dungeon:SetPoint("TOP", 0, -32)
+        ui.subtitle:ClearAllPoints()
         ui.subtitle:SetPoint("TOP", 0, -54)
         return ROWS_TOP
     end
     ui.banner:SetTexture(art)
     ui.banner:SetTexCoord(unpack(crop))
-    local bottom = BANNER_TOP + BANNER_HEIGHT
-    ui.dungeon:SetPoint("TOP", 0, -(bottom - 50))
-    ui.subtitle:SetPoint("TOP", 0, -(bottom - 28))
-    return bottom + 8
+    ui.dungeon:SetJustifyH("LEFT")
+    ui.dungeon:SetWidth(WIDTH - 2 * BANNER_INSET - 90)
+    ui.dungeon:SetPoint("TOPLEFT", ui.banner, "TOPLEFT", 10, -8)
+    ui.bannerStyle:SetText(info.styles or "")
+    ui.bannerLevels:SetText(info.levels and ("LV " .. info.levels) or "")
+    ui.bannerRole:SetText(info.role or "")
+    return BANNER_TOP + BANNER_HEIGHT + 8
 end
 
 local function render(view)
     ui.dungeon:SetText(ns.Quests.nameOf(view.dungeon))
-    local art, crop
-    if view.queue ~= "quests" then
-        art, crop = ns.Dungeons.art(view.dungeon)
-    end
-    local rowsTop = layoutTop(art, crop)
     local members = ordered(view.members)
-    local parts = {}
     local styles = ns.Playstyle.describe(view.playstyles)
-    if styles then
-        parts[#parts + 1] = styles
-    end
+    local role
     local accepted = 0
     for _, member in ipairs(members) do
         if member.name == ns.selfName then
-            parts[#parts + 1] = "you play " .. Widgets.ROLE_NAMES[member.role]
+            role = "you play " .. Widgets.ROLE_NAMES[member.role]
         end
         if member.answer == "Y" then
             accepted = accepted + 1
         end
     end
+    local parts = {}
+    parts[#parts + 1] = styles
+    parts[#parts + 1] = role
     ui.subtitle:SetText(table.concat(parts, "  ·  "))
+    local art, crop
+    if view.queue ~= "quests" then
+        art, crop = ns.Dungeons.art(view.dungeon)
+    end
+    local dungeon = ns.Dungeons.get(view.dungeon)
+    local rowsTop = layoutTop(art, crop, {
+        styles = styles, role = role, levels = dungeon and dungeon.min and ns.Dungeons.rangeText(dungeon),
+    })
     for i, row in ipairs(rows) do
         local member = members[i]
         if member then
@@ -183,17 +197,39 @@ local function buildBanner()
     ui.banner:SetPoint("TOPLEFT", BANNER_INSET, -BANNER_TOP)
     ui.banner:SetPoint("TOPRIGHT", -BANNER_INSET, -BANNER_TOP)
     ui.banner:SetHeight(BANNER_HEIGHT)
-    -- The banner's lower part fades into the dark panel, under the name.
-    ui.bannerFade = frame:CreateTexture(nil, "BORDER", nil, 2)
-    ui.bannerFade:SetPoint("BOTTOMLEFT", ui.banner, "BOTTOMLEFT")
-    ui.bannerFade:SetPoint("BOTTOMRIGHT", ui.banner, "BOTTOMRIGHT")
-    ui.bannerFade:SetHeight(BANNER_HEIGHT * 0.5)
-    ui.bannerFade:SetColorTexture(1, 1, 1, 1)
-    local faded = type(CreateColor) == "function" and pcall(ui.bannerFade.SetGradient, ui.bannerFade,
-        "VERTICAL", CreateColor(0, 0, 0, 0.65), CreateColor(0, 0, 0, 0))
+    ui.bannerTop = frame:CreateTexture(nil, "BORDER", nil, 1)
+    ui.bannerTop:SetPoint("TOPLEFT", ui.banner, "TOPLEFT")
+    ui.bannerTop:SetPoint("TOPRIGHT", ui.banner, "TOPRIGHT")
+    ui.bannerTop:SetHeight(44)
+    -- Dark behind the name, fading out downwards: no hard edge on the picture.
+    ui.bannerTop:SetColorTexture(1, 1, 1, 1)
+    local faded = type(CreateColor) == "function" and pcall(ui.bannerTop.SetGradient, ui.bannerTop,
+        "VERTICAL", CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0.7))
     if not faded then
-        ui.bannerFade:SetColorTexture(0, 0, 0, 0.3)
+        ui.bannerTop:SetColorTexture(0, 0, 0, 0.4)
     end
+    -- A light shade along the bottom, for the small notes there.
+    ui.bannerBottom = frame:CreateTexture(nil, "BORDER", nil, 1)
+    ui.bannerBottom:SetPoint("BOTTOMLEFT", ui.banner, "BOTTOMLEFT")
+    ui.bannerBottom:SetPoint("BOTTOMRIGHT", ui.banner, "BOTTOMRIGHT")
+    ui.bannerBottom:SetHeight(26)
+    ui.bannerBottom:SetColorTexture(1, 1, 1, 1)
+    local shaded = type(CreateColor) == "function" and pcall(ui.bannerBottom.SetGradient, ui.bannerBottom,
+        "VERTICAL", CreateColor(0, 0, 0, 0.55), CreateColor(0, 0, 0, 0))
+    if not shaded then
+        ui.bannerBottom:SetColorTexture(0, 0, 0, 0.3)
+    end
+    ui.bannerEdge = frame:CreateTexture(nil, "BORDER", nil, 2)
+    ui.bannerEdge:SetPoint("TOPLEFT", ui.banner, "BOTTOMLEFT")
+    ui.bannerEdge:SetPoint("TOPRIGHT", ui.banner, "BOTTOMRIGHT")
+    ui.bannerEdge:SetHeight(2)
+    ui.bannerEdge:SetColorTexture(0.72, 0.46, 0.2, 1)
+    ui.bannerStyle = Widgets.text(frame, "GameFontHighlightSmall", "RIGHT")
+    ui.bannerStyle:SetPoint("TOPRIGHT", ui.banner, "TOPRIGHT", -10, -11)
+    ui.bannerLevels = Widgets.text(frame, "GameFontHighlightSmall")
+    ui.bannerLevels:SetPoint("BOTTOMLEFT", ui.banner, "BOTTOMLEFT", 10, 6)
+    ui.bannerRole = Widgets.text(frame, "GameFontHighlightSmall", "RIGHT")
+    ui.bannerRole:SetPoint("BOTTOMRIGHT", ui.banner, "BOTTOMRIGHT", -10, 6)
 end
 
 local function buildRow()
