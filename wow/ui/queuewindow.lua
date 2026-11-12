@@ -164,8 +164,10 @@ end
 
 local function buildSection(title)
     local section = { rows = {}, offset = 0, items = {} }
-    section.header = Widgets.header(frame, title)
-    section.header:SetWidth(WIDTH - 36)
+    -- A small caption inside the table, under the one row of column headers.
+    section.header = Widgets.text(frame, "GameFontNormalSmall")
+    section.header:SetText(title)
+    section.header:SetWidth(WIDTH - 44)
     section.header:SetWordWrap(false)
     section.area = CreateFrame("Frame", nil, frame)
     section.area:SetSize(WIDTH - 36, ROWS * ROW_HEIGHT)
@@ -215,14 +217,14 @@ local function buildSection(title)
         -- Fixed columns: roles, name, level, dungeons, time.
         row.name = Widgets.text(row, "GameFontHighlightSmall")
         row.name:SetPoint("LEFT", 50, 0)
-        row.name:SetWidth(150)
+        row.name:SetWidth(170)
         row.name:SetWordWrap(false)
         row.level = Widgets.text(row, "GameFontHighlightSmall")
-        row.level:SetPoint("LEFT", 204, 0)
-        row.level:SetWidth(54)
+        row.level:SetPoint("LEFT", 226, 0)
+        row.level:SetWidth(42)
         row.dungeons = Widgets.text(row, "GameFontHighlightSmall")
-        row.dungeons:SetPoint("LEFT", 260, 0)
-        row.dungeons:SetWidth(WIDTH - 46 - 260 - 96)
+        row.dungeons:SetPoint("LEFT", 272, 0)
+        row.dungeons:SetWidth(WIDTH - 46 - 272 - 96)
         row.dungeons:SetWordWrap(false)
         row.time = Widgets.text(row, "GameFontHighlightSmall", "RIGHT")
         row.time:SetPoint("RIGHT", -4, 0)
@@ -264,8 +266,8 @@ local function fillSection(section, y, items, empty)
     section.items = items
     section.offset = math.min(section.offset, math.max(0, #items - ROWS))
     section.header:ClearAllPoints()
-    section.header:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, y)
-    y = y - 24
+    section.header:SetPoint("TOPLEFT", frame, "TOPLEFT", 22, y - 2)
+    y = y - 20
     local visible = math.min(#items, ROWS)
     section.area:ClearAllPoints()
     section.area:SetPoint("TOPLEFT", frame, "TOPLEFT", 22, y)
@@ -317,9 +319,9 @@ local ROW_LEFT = 22
 -- group's needed roles, leader, size, dungeons and time listed.
 local COLUMNS = {
     { label = "Role", groupLabel = "Needs", x = 0, width = 46, sort = "role" },
-    { label = "Name", groupLabel = "Leader", x = 50, width = 150, sort = "name" },
-    { label = "Level", groupLabel = "Size", x = 204, width = 54, sort = "level" },
-    { label = "Dungeons", groupLabel = "Dungeons", x = 260, width = 150 },
+    { label = "Name", groupLabel = "Leader", x = 50, width = 170, sort = "name" },
+    { label = "Level", groupLabel = "Size", x = 226, width = 42, sort = "level" },
+    { label = "Dungeons", groupLabel = "Dungeons", x = 272, width = 150 },
     { label = "Time", groupLabel = "Time", right = true, width = 92, sort = "waiting" },
 }
 local TABS = { { key = "players", label = "Players" }, { key = "groups", label = "Groups" } }
@@ -517,7 +519,7 @@ local function refreshSortBar()
         elseif header.sort then
             header.label:SetTextColor(0.85, 0.85, 0.85)
         else
-            header.label:SetTextColor(0.6, 0.6, 0.6)
+            header.label:SetTextColor(0.85, 0.85, 0.85)
         end
     end
     sections.sortNote:SetText(ns.db.queueSortReverse and "reversed order" or "")
@@ -528,7 +530,7 @@ local function refreshSortBar()
 end
 
 local function showSection(section, shown)
-    for _, widget in ipairs({ section.header, section.header.line, section.area, section.more }) do
+    for _, widget in ipairs({ section.header, section.area, section.more }) do
         if widget then
             widget:SetShown(shown)
         end
@@ -579,7 +581,7 @@ function QueueWindow.refresh()
     -- With WoW's Group Finder turned off only Forever Groups players are shown.
     local useFinder = ns.Features.groupFinder()
     sections.refresh:SetShown(useFinder)
-    for _, widget in ipairs({ sections.finder.header, sections.finder.header.line, sections.finder.area,
+    for _, widget in ipairs({ sections.finder.header, sections.finder.area,
         sections.finder.more }) do
         if widget then
             widget:SetShown(useFinder)
