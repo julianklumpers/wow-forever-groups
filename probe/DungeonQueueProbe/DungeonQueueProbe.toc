@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: DungeonQueue Probe
+## Notes: Phase 0 API probe for DungeonQueue. Type /dqp help
+## Author: DungeonQueue
+## Version: 0.1.0
+## SavedVariables: DungeonQueueProbeDB
+
+Probe.lua

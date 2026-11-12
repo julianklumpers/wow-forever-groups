@@ -1,0 +1,6 @@
+.lua51/
+.DS_Store
+luacov.stats.out
+luacov.report.out
+dist/
+/*.zip

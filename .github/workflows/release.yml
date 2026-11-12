@@ -1,0 +1,47 @@
+name: Test, package and release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.1.5"
+      - uses: leafo/gh-actions-luarocks@v4
+      - name: Install busted and luacheck
+        run: luarocks install busted && luarocks install luacheck
+      - name: Lint
+        run: luacheck .
+      - name: Tests
+        run: busted
+
+  # A pushed tag (v1.2.3, annotated) builds the zip and uploads it to
+  # CurseForge, Wago and WoWInterface, using the project ids in the .toc.
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+      WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: The tag matches the version in the .toc
+        run: test "v$(sed -n 's/^## Version: *//p' ForeverGroups.toc)" = "$GITHUB_REF_NAME"
+      - uses: BigWigsMods/packager@v2

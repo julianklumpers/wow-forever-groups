@@ -1,0 +1,79 @@
+## Interface: 16001
+## Title: Forever Groups
+## Notes: Automatic groups for dungeons and group quests: pick a role, get a group. Type /fg
+## Author: julianklumpers
+## X-License: MIT
+## X-Website: https://github.com/julianklumpers/wow-forever-groups
+## Version: 0.22.0
+## IconTexture: Interface\AddOns\ForeverGroups\media\icon
+## AddonCompartmentFunc: ForeverGroups_OnAddonCompartmentClick
+## SavedVariables: ForeverGroupsDB
+## SavedVariablesPerCharacter: ForeverGroupsCharDB
+
+core\config.lua
+core\roles.lua
+core\playstyles.lua
+core\specs.lua
+core\protocol.lua
+core\matchmaker.lua
+core\questmatch.lua
+core\queue.lua
+core\election.lua
+core\proposal.lua
+core\engine.lua
+core\outbox.lua
+core\ratelimit.lua
+core\dungeons.lua
+core\classes.lua
+core\fill.lua
+core\lfgpick.lua
+wow\events.lua
+wow\log.lua
+wow\features.lua
+wow\notify.lua
+wow\input.lua
+wow\comm.lua
+wow\version.lua
+wow\presence.lua
+wow\diagnostics.lua
+wow\party.lua
+wow\playstyle.lua
+wow\spec.lua
+wow\messages.lua
+wow\inspectspec.lua
+wow\lfglist.lua
+wow\quests.lua
+wow\questshare.lua
+wow\entrances.lua
+wow\groupplaces.lua
+wow\rolesync.lua
+wow\partyroles.lua
+wow\ui\widgets.lua
+wow\filler.lua
+wow\keysearch.lua
+wow\ui\proposal.lua
+wow\group.lua
+wow\groupview.lua
+wow\autofill.lua
+wow\lfgapply.lua
+wow\lfglisting.lua
+wow\whisperinvite.lua
+wow\run.lua
+wow\questqueue.lua
+wow\questgroup.lua
+wow\questfinder.lua
+wow\partystatus.lua
+wow\status.lua
+wow\ui\window\shared.lua
+wow\ui\window\card.lua
+wow\ui\window\setup.lua
+wow\ui\window\quests.lua
+wow\ui\window\tabs.lua
+wow\ui\window.lua
+wow\ui\progresswindow.lua
+wow\ui\queuewindow.lua
+wow\ui\minimap.lua
+wow\ui\settings.lua
+wow\ui\messageswindow.lua
+wow\slash.lua
+wow\main.lua
