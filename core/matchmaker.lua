@@ -285,7 +285,9 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames)
     return best
 end
 
--- entries: { id, members = { { name, role } } } with one assigned role each.
+-- entries: { id, members = { { name, role } }, source } with one assigned
+-- role each. A party leads (it never breaks up), then a player who would like
+-- to lead, then the tank, then the earliest entry.
 function Matchmaker.chooseLeaderEntry(entries)
     local best
     for _, entry in ipairs(entries) do
@@ -293,10 +295,17 @@ function Matchmaker.chooseLeaderEntry(entries)
         for _, member in ipairs(entry.members) do
             hasTank = hasTank or member.role == "T"
         end
-        if not best
-            or size > best.size
-            or (size == best.size and hasTank and not best.hasTank) then
-            best = { entry = entry, size = size, hasTank = hasTank }
+        local wants = size == 1 and entry.source ~= nil and entry.source.lead == true
+        local better = not best or size > best.size
+        if not better and size == best.size then
+            if wants ~= best.wants then
+                better = wants
+            else
+                better = hasTank and not best.hasTank
+            end
+        end
+        if better then
+            best = { entry = entry, size = size, hasTank = hasTank, wants = wants }
         end
     end
     return best.entry

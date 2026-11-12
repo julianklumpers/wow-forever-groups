@@ -139,6 +139,21 @@ describe("Matchmaker", function()
         end)
     end)
 
+    it("makes a solo player who would like to lead the leader, before the tank but after a party", function()
+        local solo = {
+            entry("Heal", 1, "H"), entry("Dps1", 2, "D"), entry("Dps2", 3, "D"),
+            entry("Dps3", 4, "D"), entry("Tank", 5, "T"),
+        }
+        solo[3].lead = true
+        assert.are.equal("Dps2", Matchmaker.findGroups(solo)[1].leader)
+        local withParty = {
+            entry("Tank", 1, "T"), entry("Heal", 2, "H"),
+            entry("Duo", 3, "D", nil, { { "DuoFriend", "D" } }), entry("Dps1", 4, "D"),
+        }
+        withParty[4].lead = true
+        assert.are.equal("Duo", Matchmaker.findGroups(withParty)[1].leader)
+    end)
+
     it("prefers the tank as leader when everyone is solo", function()
         local entries = {
             entry("Heal", 1, "H"), entry("Dps1", 2, "D"), entry("Dps2", 3, "D"),

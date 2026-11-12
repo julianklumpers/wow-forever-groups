@@ -193,7 +193,11 @@ groups are listed and people whisper or invite each other. So a solo player firs
 their roles to invite them, by whisper to the leader (at most 3, nearest to full first, 2 s apart, never the same
 leader twice), and waits 60 s. An invite from an asked leader holds off building; joining that group leaves the
 Forever Groups queue. With no fitting group, or no invite in time, the player builds a group instead (inviting a player
-makes you a party leader, after which another group's invite cannot be accepted, hence this order). While a group is
+makes you a party leader, after which another group's invite cannot be accepted, hence this order). A solo player who
+ticked "I'd like to lead" (under the roles, `charDb.wantsLead`) asks no groups (`Apply.isSeeker`, and the questing
+side in `wow/questfinder.lua`) and builds the group right away. The wish travels as the last field of the queue
+entry (`v2|Q|…|<lead>`, "1"; older clients ignore it), and `Matchmaker.chooseLeaderEntry` picks the leader in this
+order: a party (it never breaks up), a solo player who would like to lead, the tank, the earliest entry. While a group is
 being filled it is also listed in the Group Finder (`wow/lfglisting.lua`; listing is protected, so it waits in
 `wow/input.lua` for the next key press or click). Searches include every language unless "Find players of every
 language" is off; without a language filter the server only returns the player's own language.

@@ -476,6 +476,50 @@ describe("WoW UI", function()
         assert.is_nil(member:find("CheckButton", "Tank"))
     end)
 
+    it("lets a player who would like to lead lead the group and send the invites", function()
+        local world = World.new()
+        local clients = {}
+        for i, p in ipairs(PLAYERS) do
+            clients[i] = world:addClient(p[1])
+        end
+        world:advance(CONNECT)
+        local dps = clients[3]
+        dps:slash("/dq")
+        local lead = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:14:14|t I'd like to lead"
+        dps:click("CheckButton", lead)
+        dps:click("CheckButton", "DPS")
+        assert.is_not_nil(dps:findText("lead  ·"))
+        for i, p in ipairs(PLAYERS) do
+            clients[i]:slash("/dq join " .. p[2] .. " auto")
+        end
+        world:advance(MATCH)
+        for _, client in ipairs(clients) do
+            assert.is_true(client:proposalShown(), client.name)
+            local popup = client.env.ForeverGroupsProposalFrame
+            local row = client:find("FontString", client == dps and "Dps One (you)" or "Dps One", popup).parent
+            assert.is_not_nil(client:find("Texture", "Leader", row), client.name)
+        end
+        for _, client in ipairs(clients) do
+            client:acceptPopup()
+        end
+        world:advance(1)
+        assert.are.equal(4, #dps.invites)
+        assert.are.same({}, clients[1].invites)
+    end)
+
+    it("shows the wish to lead only to a player who is not in a party", function()
+        local world = World.new()
+        local leader = world:addClient("Party Lead")
+        world:advance(CONNECT)
+        leader:slash("/dq")
+        local lead = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:14:14|t I'd like to lead"
+        assert.is_not_nil(leader:find("CheckButton", lead))
+        leader:joins("Friend One")
+        leader:slash("/dq")
+        leader:slash("/dq")
+        assert.is_nil(leader:find("CheckButton", lead))
+    end)
+
     it("leaves the invite to the player when joining by itself is off", function()
         local world = World.new()
         local clients = {}

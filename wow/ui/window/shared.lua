@@ -75,6 +75,23 @@ function W.setHint(text)
     end
 end
 
+-- The wish to lead goes into both queues' entries at once.
+function W.setWantsLead(wants)
+    ns.charDb.wantsLead = wants and true or nil
+    for _, engine in ipairs({ ns.engine, ns.questEngine }) do
+        if engine then
+            engine:setLead(ns.charDb.wantsLead)
+        end
+    end
+    W.setHint("")
+    ns.Window.refresh()
+end
+
+-- "lead" for the Find group summary when a solo player wants to lead.
+function W.leadWord()
+    return ns.charDb.wantsLead and ns.Party.state() == "solo" and "lead" or nil
+end
+
 function W.place(widget, x, y)
     widget:ClearAllPoints()
     widget:SetPoint("TOPLEFT", W.frame, "TOPLEFT", x, y)

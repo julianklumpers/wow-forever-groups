@@ -64,9 +64,10 @@ local function invitedBy()
     end
 end
 
--- A solo player in the queue who is not building a group yet.
+-- A solo player in the queue who is not building a group yet. A player who
+-- would like to lead never asks other groups.
 function Apply.isSeeker()
-    if not ns.Features.apply() then
+    if not ns.Features.apply() or ns.charDb.wantsLead then
         return false
     end
     local entry = ns.engine and ns.engine.myEntry

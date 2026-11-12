@@ -205,7 +205,8 @@ function QuestFinder.onResults()
                 updateEntry(key)
                 return
             end
-            if ns.Features.apply() and #current.members == 1 and next(invited) == nil and askCount() < MAX_ASKS then
+            if ns.Features.apply() and not ns.charDb.wantsLead and #current.members == 1 and next(invited) == nil
+                and askCount() < MAX_ASKS then
                 for _, listing in ipairs(listings) do
                     if not listing.solo and hasZone(listing, quest.zone) and not asked[listing.leader]
                         and (listing.members or 1) < size then

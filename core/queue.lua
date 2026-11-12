@@ -22,6 +22,7 @@ function Queue:upsert(entry, now)
         since = entry.since or entry.joinedAt,
         playstyle = entry.playstyle or 0,
         spec = entry.spec,
+        lead = entry.lead,
         lastSeen = now,
     }
     self.entries[entry.id] = copy

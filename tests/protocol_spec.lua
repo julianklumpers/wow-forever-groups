@@ -43,6 +43,18 @@ describe("Protocol", function()
             assert.is_nil(Protocol.decode("v2|Q|1|5|Tank-R:T:20|HDDD"))
         end)
 
+        it("carries the wish to lead as the last field, left out when not set", function()
+            local msg, text = roundtrip({
+                kind = "queue", joinedAt = 1, dungeons = { "5" }, members = { member("Dps-R", "D", 20) }, lead = true,
+            })
+            assert.are.equal("v2|Q|1|5|Dps-R:D:20|||||1", text)
+            assert.is_true(msg.lead)
+            local plain = roundtrip({
+                kind = "queue", joinedAt = 1, dungeons = { "5" }, members = { member("Dps-R", "D", 20) },
+            })
+            assert.is_nil(plain.lead)
+        end)
+
         it("encodes and decodes leave and sync", function()
             assert.are.same({ kind = "leave" }, (roundtrip({ kind = "leave" })))
             assert.are.same({ kind = "sync" }, (roundtrip({ kind = "sync" })))

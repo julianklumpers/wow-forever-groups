@@ -111,6 +111,7 @@ function Window.refresh()
         local dungeonCount = #W.selectedVisibleIds()
         local parts = { Widgets.describeRoles(W.selectedRoles()) }
         parts[#parts + 1] = ns.Playstyle.word(ns.Playstyle.mine())
+        parts[#parts + 1] = W.leadWord()
         parts[#parts + 1] = string.format("%d dungeon%s", dungeonCount, dungeonCount == 1 and "" or "s")
         ui.joinSummary:SetText(table.concat(parts, "  ·  "))
     end

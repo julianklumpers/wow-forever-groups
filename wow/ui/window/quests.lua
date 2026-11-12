@@ -125,7 +125,7 @@ function W.refreshQuestsTab(y, state)
     ui.join:SetShown(queued or setup)
     ui.joinSummary:SetShown(setup and ready)
     if setup and ready then
-        local parts = { Widgets.describeRoles(W.selectedRoles()) }
+        local parts = { Widgets.describeRoles(W.selectedRoles()), W.leadWord() }
         local count = #W.tickedQuestKeys()
         parts[#parts + 1] = string.format("%d quest%s", count, count == 1 and "" or "s")
         ui.joinSummary:SetText(table.concat(parts, "  ·  "))

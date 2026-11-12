@@ -105,6 +105,7 @@ function QuestQueue.start(selfName)
         emit = onEvent,
         random = math.random,
         spec = ns.Spec.code(),
+        lead = ns.charDb.wantsLead,
         lastSent = ns.Comm.lastSent,
         space = ns.Protocol.QUESTS,
         matchmaker = ns.QuestMatch,

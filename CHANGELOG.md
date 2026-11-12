@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.25.0 (2026-11-12)
+
+- "I'd like to lead" under the roles: when a group forms with you, you become its leader (a
+  party that queues together keeps its own leader). Forever Groups then doesn't ask listed
+  groups to invite you; it builds the group for you, with you as leader.
+
 ## 0.24.0 (2026-11-12)
 
 - Fake players for testing (`/fg fake`) get made-up names instead of "Fake 1", "Fake 2"…

@@ -29,6 +29,7 @@ local CHOICE_WIDTH = W.CHOICE_WIDTH
 local QUEUE_ROWS = W.QUEUE_ROWS
 local QUEUE_ROW_HEIGHT = W.QUEUE_ROW_HEIGHT
 local ERRORS = W.ERRORS
+local LEAD_WIDTH = 150
 local ui = W.ui
 local roleToggles = W.roleToggles
 local partyRows = W.partyRows
@@ -242,6 +243,7 @@ function W.setSetupShown(shown)
     ui.dungeonLinks:SetShown(shown)
     if not shown then
         ui.roleHint:Hide()
+        ui.leadCheck:Hide()
         ui.playstyleHint:Hide()
     end
     if not shown then
@@ -281,11 +283,20 @@ function W.layoutChoices(y, withPlaystyle)
         ui.roleHint:SetText(W.roleHint())
     else
         ui.roleHint:SetText(W.selectedRoles()
-            and "A questing group has at most one tank and one healer; the rest play DPS."
+            and "Questing groups: at most one tank and one healer."
             or "Tick every role you can play.")
     end
     ui.roleHint:Show()
     W.place(ui.roleHint, PAD, y)
+    -- Alone, the wish to lead sits on the same line, on the right; a party
+    -- already has its leader.
+    local solo = Party.state() == "solo"
+    ui.roleHint:SetWidth(WIDTH - 2 * PAD - (solo and LEAD_WIDTH or 0))
+    ui.leadCheck:SetShown(solo)
+    if solo then
+        ui.leadCheck:SetChecked(ns.charDb.wantsLead == true)
+        W.place(ui.leadCheck, WIDTH - PAD - LEAD_WIDTH + 8, y + 5)
+    end
     y = y - 26
     if not withPlaystyle then
         return y
@@ -425,6 +436,15 @@ function W.buildRoles()
     ui.roleHint = Widgets.text(W.frame, "GameFontHighlightSmall")
     ui.roleHint:SetWidth(WIDTH - 2 * PAD)
     ui.roleHint:SetTextColor(0.85, 0.85, 0.85)
+    ui.roleHint:SetWordWrap(false)
+    ui.leadCheck = Widgets.check(W.frame, "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:14:14|t I'd like to lead",
+        function(self)
+        W.setWantsLead(self:GetChecked())
+    end)
+    Widgets.tooltip(ui.leadCheck, "I'd like to lead the group", "You become the group's leader when a group forms "
+        .. "with you, unless a party already has a leader. Forever Groups won't ask listed groups to invite you: it "
+        .. "builds the group for you, with you as its leader.")
+    ui.leadCheck:Hide()
     for _, role in ipairs(Widgets.ROLES) do
         roleToggles[role] = Widgets.roleTile(W.frame, role, TILE_WIDTH, function(self)
             ns.charDb.lastRoles = Widgets.toggleRole(W.selectedRoles(), role, self:GetChecked())

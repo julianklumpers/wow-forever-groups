@@ -1,13 +1,14 @@
 -- Wire format. Every message is broadcast on the shared channel and the sender
 -- is the player the message speaks for.
---   v2|Q|<joinedAt>|<dungeon,...>|<name:roles:level,...>[|<reserved>[|<since>[|<playstyle>[|<spec>]]]]
+--   v2|Q|<joinedAt>|<dungeon,...>|<name:roles:level,...>[|<reserved>[|<since>[|<playstyle>[|<spec>[|<lead>]]]]]
 --       queue entry / heartbeat; the first member is the sender (entry owner);
 --       roles is one or more of T, H, D in that order ("D", "TD", "THD");
 --       reserved ("HD") are roles the party already invited someone for from
 --       WoW's Group Finder, so they count as taken; since is when the
 --       sender's client came online (the longest-online player matches);
 --       playstyle is 1-4 (core/playstyles.lua), empty for no preference;
---       spec is the owner's class and talent tree ("SHAMAN2", core/specs.lua)
+--       spec is the owner's class and talent tree ("SHAMAN2", core/specs.lua);
+--       lead is "1" when the owner would like to lead the group
 --   v2|K                  keep-alive from a likely matchmaker
 --   v2|L                  sender left the queue
 --   v2|S[|<nonce>]        sync request; queued players re-send Q. The nonce
@@ -218,7 +219,7 @@ function encoders.queue(msg, space)
     end
     local optional = { msg.reserved or "", msg.since and tostring(msg.since) or "",
         (msg.playstyle or Playstyles.ANY) ~= Playstyles.ANY and tostring(msg.playstyle) or "",
-        msg.spec and Specs.decode(msg.spec) and msg.spec or "" }
+        msg.spec and Specs.decode(msg.spec) and msg.spec or "", msg.lead and "1" or "" }
     while #optional > 0 and optional[#optional] == "" do
         optional[#optional] = nil
     end
@@ -394,6 +395,7 @@ decoders.Q = function(fields, space)
         reserved = fields[6] or "", since = toInteger(fields[7]),
         playstyle = (fields[8] == nil or fields[8] == "") and Playstyles.ANY or tonumber(fields[8]) or -1,
         spec = Specs.decode(fields[9]) and fields[9] or nil,
+        lead = fields[10] == "1" or nil,
     }
     local ok, err = Protocol.validateEntry(msg, space)
     if not ok then

@@ -321,6 +321,7 @@ local function onReady(selfName)
         config = ns.db.slots and { SLOTS = ns.db.slots } or nil,
         playstyle = ns.Playstyle.mine(),
         spec = ns.Spec.code(),
+        lead = ns.charDb.wantsLead,
         lastSent = Comm.lastSent,
     })
     ns.engine:start(false)

@@ -44,6 +44,7 @@ function Engine.new(opts)
         fakeAnswers = {},
         playstyle = opts.playstyle or Playstyles.ANY,
         spec = opts.spec,
+        lead = opts.lead and true or nil,
         lastSent = opts.lastSent,
         space = opts.space,
         matcher = opts.matchmaker or Matchmaker,
@@ -93,6 +94,7 @@ local function heartbeatMessage(entry)
     return {
         kind = "queue", joinedAt = entry.joinedAt, dungeons = entry.dungeons, members = entry.members,
         reserved = entry.reserved, since = entry.since, playstyle = entry.playstyle, spec = entry.spec,
+        lead = entry.lead,
     }
 end
 
@@ -113,6 +115,7 @@ function Engine:join(members, dungeons, joinedAt)
         members = copyMembers(members),
         playstyle = self.playstyle,
         spec = self.spec,
+        lead = self.lead,
     }
     if not entry.members[1] or entry.members[1].name ~= self.name then
         return false, "first member must be the player"
@@ -145,7 +148,7 @@ function Engine:updateEntry(members, reserved, dungeons)
     local entry = {
         id = self.name, joinedAt = current.joinedAt, dungeons = dungeons or current.dungeons,
         members = copyMembers(members), reserved = reserved or "", since = current.since,
-        playstyle = self.playstyle, spec = self.spec,
+        playstyle = self.playstyle, spec = self.spec, lead = self.lead,
     }
     if not entry.members[1] or entry.members[1].name ~= self.name then
         return false, "first member must be the player"
@@ -192,6 +195,18 @@ function Engine:setSpec(spec)
             entry.spec = before
             return
         end
+        self:publish()
+    end
+end
+
+-- Whether the player would like to lead (only a solo player's wish counts in
+-- matchmaking); a queued entry changes right away.
+function Engine:setLead(lead)
+    lead = lead and true or nil
+    self.lead = lead
+    local entry = self.myEntry
+    if entry and entry.lead ~= lead then
+        entry.lead = lead
         self:publish()
     end
 end
@@ -549,7 +564,7 @@ function handlers.queue(self, sender, msg)
     end
     self.queue:upsert({
         id = sender, joinedAt = msg.joinedAt, dungeons = msg.dungeons, members = msg.members, reserved = msg.reserved,
-        since = since, playstyle = msg.playstyle, spec = msg.spec,
+        since = since, playstyle = msg.playstyle, spec = msg.spec, lead = msg.lead,
     }, self:now())
 end
 
