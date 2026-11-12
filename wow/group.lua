@@ -19,8 +19,7 @@ local function whisper(name, text)
     if C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
         return
     end
-    local send = C_ChatInfo.SendChatMessage or SendChatMessage
-    local ok, err = pcall(send, text, "WHISPER", nil, name)
+    local ok, err = ns.Whispers.send(name, text)
     if not ok then
         Log.debug("whisper to %s failed: %s", name, tostring(err))
     end

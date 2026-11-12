@@ -439,6 +439,7 @@ ns.on("ADDON_LOADED", function(name)
             ns.questEngine:forget(sender)
         end
     end)
+    ns.Whispers.init()
     Group.init()
     ns.LfgList.init()
     Filler.init()

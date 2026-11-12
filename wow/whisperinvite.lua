@@ -64,8 +64,7 @@ local function reply(name, text)
     if not text or (C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()) then
         return
     end
-    local send = C_ChatInfo.SendChatMessage or SendChatMessage
-    pcall(send, text, "WHISPER", nil, name)
+    ns.Whispers.send(name, text)
 end
 
 local function neededNames(needed)

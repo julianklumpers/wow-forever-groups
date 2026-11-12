@@ -2,6 +2,9 @@
 
 ## 0.25.1 (2026-11-12)
 
+- The whispers Forever Groups sends for you (asking a leader, before an invite, answers to "heal?")
+  no longer show as "To ..." lines in your own chat; the other player still gets them. Answers
+  that come back always show. Settings → Messages: "Hide the whispers Forever Groups sends for me".
 - Ticking a dungeon that wasn't searched yet searches WoW's Group Finder right away, so "Who is
   looking" and the counts show its players and groups at once; unticking one updates the list
   without a new search. New results show the moment they arrive.

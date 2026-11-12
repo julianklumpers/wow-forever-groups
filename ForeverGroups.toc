@@ -36,6 +36,7 @@ wow\features.lua
 wow\notify.lua
 wow\input.lua
 wow\comm.lua
+wow\whispers.lua
 wow\version.lua
 wow\presence.lua
 wow\diagnostics.lua

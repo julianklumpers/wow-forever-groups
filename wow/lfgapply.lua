@@ -204,10 +204,9 @@ function ask(pick)
         return
     end
     local text = askText(pick)
-    local send = C_ChatInfo.SendChatMessage or SendChatMessage
     local ok, err = true, nil
     if text then
-        ok, err = pcall(send, text, "WHISPER", nil, pick.leader)
+        ok, err = ns.Whispers.send(pick.leader, text)
     end
     if not ok then
         Log.debug("asking %s failed: %s", pick.leader, tostring(err))

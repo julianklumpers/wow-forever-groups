@@ -1002,7 +1002,14 @@ local function buildEnv(world, client)
             return client.lockdown == true
         end,
         SendChatMessage = function(text, chatType, _, target)
-            client.whispers[#client.whispers + 1] = { chatType = chatType, target = target, text = text }
+            local hidden = false
+            if chatType == "WHISPER" then
+                for _, filter in ipairs(client.chatFilters.CHAT_MSG_WHISPER_INFORM or {}) do
+                    hidden = hidden or filter(env.ChatFrame1, "CHAT_MSG_WHISPER_INFORM", text, target) == true
+                end
+            end
+            client.whispers[#client.whispers + 1] = { chatType = chatType, target = target, text = text,
+                hidden = hidden }
         end,
     }
     env.C_PartyInfo = {
@@ -1159,7 +1166,10 @@ local function buildEnv(world, client)
     env.NUM_CHAT_WINDOWS = 1
     env.ChatFrame1 = {}
     env.ChatFrame_RemoveChannel = function() end
-    env.ChatFrame_AddMessageEventFilter = function() end
+    env.ChatFrame_AddMessageEventFilter = function(event, filter)
+        client.chatFilters[event] = client.chatFilters[event] or {}
+        table.insert(client.chatFilters[event], filter)
+    end
     env.PlaySound = function() end
     env.FlashClientIcon = function()
         client.flashes = (client.flashes or 0) + 1
@@ -1184,7 +1194,7 @@ function World:addClient(name, opts)
         widgets = {}, party = {}, partyClasses = {}, isLeader = false, class = opts.class,
         searches = 0, blockedSearches = 0, roles = {}, roleSets = {}, notices = {},
         applicants = {}, applicantInvites = {},
-        noEyeTemplate = opts.noEyeTemplate, noDropdownButton = opts.noDropdownButton,
+        noEyeTemplate = opts.noEyeTemplate, noDropdownButton = opts.noDropdownButton, chatFilters = {},
         version = opts.version, talents = opts.talents,
         questLog = opts.questLog or {}, positions = {}, visible = {}, popups = {}, pushed = {},
         inspectTalents = {}, inspects = {}, farAway = {},

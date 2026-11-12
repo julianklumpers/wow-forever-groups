@@ -10,6 +10,9 @@ How the addon works inside, for anyone reading or changing the code. The player-
   the main window is `wow/ui/window.lua` plus its parts in `wow/ui/window/` (shared, card, setup, quests, tabs); the
   card (status, "Looking now", the group) leads the window, except alone and choosing: then the roles come first and
   the card, without a title, follows them (`W.cardBelowRoles`)
+- every whisper the addon sends goes through `wow/whispers.lua` (`Whispers.send`), which hides its "To ..." echo in
+  the player's chat with a `CHAT_MSG_WHISPER_INFORM` filter (exact text and name, for 10 s; off with
+  `db.showSentWhispers`)
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
 - `probe/ForeverGroupsProbe/` – API probe addon for in-game checks (`/fgp help`)
 - `tests/` – busted specs; `tests/helpers/sim.lua` simulates engines on a shared channel,

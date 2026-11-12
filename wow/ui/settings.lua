@@ -83,6 +83,10 @@ local TABS = {
                 options = {
                     { key = "noWhisper", inverted = true, label = "Whisper players before inviting them",
                         tip = "A short whisper with the dungeon and role, sent right before the invite." },
+                    { key = "showSentWhispers", inverted = true,
+                        label = "Hide the whispers Forever Groups sends for me",
+                        tip = "The players still get them; only the copy in your own chat (\"To ...\") is left "
+                            .. "out. Answers that come back always show, and whispers you type yourself too." },
                     { key = "noPartyAnnounce", inverted = true, label = "Post in party chat",
                         tip = "As leader, says in party chat that the group is complete, and when you look for "
                             .. "a replacement." },
