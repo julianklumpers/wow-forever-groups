@@ -377,9 +377,10 @@ describe("Queue window", function()
         assert.is_not_nil(client:findText("^%[fake%]  %a"))
         assert.is_not_nil(client:findText("^0:0%d$"))
         assert.is_not_nil(client:findText("^20$"))
-        for _, header in ipairs({ "Roles", "Needs", "Name", "Lvl", "Dungeons", "Time" }) do
+        for _, header in ipairs({ "Roles", "Name", "Lvl", "Dungeons", "Time" }) do
             assert.is_not_nil(client:find("Button", header), header)
         end
+        assert.is_nil(client:find("Button", "Needs"))
         assert.is_not_nil(client:findText("^Listed Tank$"))
         assert.is_not_nil(client:findText("^21$"))
         assert.is_not_nil(client:findText("^5:0%d$"))
@@ -456,6 +457,13 @@ describe("Queue window", function()
         local groupRow = client:findText("^Needs Dps %+2$").parent
         assert.are_not.equal(soloRow.parent, groupRow.parent)
         assert.is_true(groupRow.needs[1].shown)
+        local needsHeaders = 0
+        for _, widget in ipairs(client.widgets) do
+            if widget.kind == "Button" and widget.label and widget.label.text == "Needs" and widget.shown then
+                needsHeaders = needsHeaders + 1
+            end
+        end
+        assert.are.equal(1, needsHeaders)
         assert.is_false(soloRow.needs[1].shown == true)
 
         groupRow.scripts.OnMouseUp(groupRow, "RightButton")

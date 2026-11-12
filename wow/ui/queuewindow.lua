@@ -367,7 +367,16 @@ local function fillSection(section, y, items, empty)
     section.header:ClearAllPoints()
     section.header:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT, y - 2)
     y = y - 20
+    -- "Needs" only heads a table that holds a party or group; its space
+    -- stays, so the columns of all tables line up.
+    local anyNeeds = false
+    for _, item in ipairs(items) do
+        anyNeeds = anyNeeds or (item.needs or "") ~= ""
+    end
     for _, header in ipairs(section.columns) do
+        if header.column.sort == "needs" then
+            header:SetShown(anyNeeds and section.area:IsShown())
+        end
         header:ClearAllPoints()
         if header.column.right then
             header:SetPoint("TOPRIGHT", frame, "TOPLEFT", WIDTH - 28, y)
