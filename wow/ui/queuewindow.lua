@@ -289,7 +289,12 @@ local function buildSection(title, rows)
             -- How many of that role, on the icon's top right corner, from 2 up.
             for _, icon in ipairs({ row.icons[j], row.needs[j] }) do
                 icon.count = Widgets.text(row, "GameFontHighlightSmall")
-                icon.count:SetPoint("CENTER", icon, "TOPRIGHT", 0, -1)
+                local font = GameFontHighlightSmall and GameFontHighlightSmall.GetFont
+                    and GameFontHighlightSmall:GetFont()
+                if font and icon.count.SetFont then
+                    icon.count:SetFont(font, 8, "OUTLINE")
+                end
+                icon.count:SetPoint("TOPRIGHT", icon, "TOPRIGHT", 3, 2)
             end
         end
         -- Right-click: whisper or invite the player.
