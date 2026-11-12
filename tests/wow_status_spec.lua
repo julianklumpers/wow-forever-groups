@@ -732,16 +732,26 @@ describe("Queue window order", function()
             end
             return names
         end
+        local function arrow(label)
+            local header = client:find("Button", label)
+            return header.arrow.shown and header.arrow.texture:match("Arrow%-(%a+)%-Up") or nil
+        end
         assert.are.same({ "Charlie", "Alpha", "Bravo" }, order())
+        assert.are.equal("Up", arrow("Roles"))
+        assert.is_nil(arrow("Name"))
         client:click("Button", "Name")
         assert.are.same({ "Alpha", "Bravo", "Charlie" }, order())
+        assert.are.equal("Up", arrow("Name"))
+        assert.is_nil(arrow("Roles"))
         client:click("Button", "Name")
         assert.are.same({ "Charlie", "Bravo", "Alpha" }, order())
-        assert.is_not_nil(client:findText("^reversed order$"))
+        assert.are.equal("Down", arrow("Name"))
         client:click("Button", "Lvl")
         assert.are.same({ "Bravo", "Charlie", "Alpha" }, order())
+        assert.are.equal("Down", arrow("Lvl"))
         client:click("Button", "Time")
         assert.are.same({ "Alpha", "Charlie", "Bravo" }, order())
+        assert.are.equal("Down", arrow("Time"))
         assert.are.equal("waiting", client.env.ForeverGroupsDB.queueSorts.finderPlayers.key)
     end)
 

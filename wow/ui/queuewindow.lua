@@ -308,9 +308,9 @@ local COLUMNS = {
     { label = "Roles", x = 0, width = 46, sort = "role" },
     { label = "Needs", x = 50, width = 46, sort = "needs" },
     { label = "Name", x = NAME_X, width = 150, sort = "name" },
-    { label = "Lvl", x = LEVEL_X, width = 38, sort = "level" },
+    { label = "Lvl", x = LEVEL_X, width = 38, sort = "level", descending = true },
     { label = "Dungeons", x = DUNGEONS_X, width = 120 },
-    { label = "Time", right = true, width = TIME_WIDTH, sort = "waiting" },
+    { label = "Time", right = true, width = TIME_WIDTH, sort = "waiting", descending = true },
 }
 local TOP = 0
 local EXPECTED = { T = 1, H = 1, D = 3 }
@@ -332,6 +332,9 @@ local function buildHeaders(section)
         header.label = Widgets.text(header, "GameFontNormalSmall", column.right and "RIGHT" or "LEFT")
         header.label:SetAllPoints()
         header.label:SetText(column.label)
+        header.arrow = header:CreateTexture(nil, "ARTWORK")
+        header.arrow:SetSize(12, 12)
+        header.arrow:Hide()
         header.sort = column.sort
         if column.sort then
             header:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
@@ -410,8 +413,6 @@ local function buildSection(title, rows, key, kind)
     section.summary = Widgets.text(section.caption, "GameFontDisableSmall")
     section.summary:SetPoint("LEFT", section.header, "RIGHT", 6, 0)
     section.summary:SetWordWrap(false)
-    section.sortNote = Widgets.text(section.caption, "GameFontDisableSmall", "RIGHT")
-    section.sortNote:SetPoint("RIGHT", 0, 0)
     buildHeaders(section)
     section.area = CreateFrame("Frame", nil, frame)
     section.area:SetSize(WIDTH - 36, rows * ROW_HEIGHT)
@@ -569,7 +570,6 @@ local function fillSection(section, y, items, empty)
     section.caption.icon:SetTexture(folded and "Interface\\Buttons\\UI-PlusButton-Up"
         or "Interface\\Buttons\\UI-MinusButton-Up")
     section.summary:SetText(folded and summarize(section, items) or "")
-    section.sortNote:SetText("")
     if folded then
         section.line:Hide()
         section.area:Hide()
@@ -589,7 +589,6 @@ local function fillSection(section, y, items, empty)
     -- An empty table is just its caption and a line of text.
     local listed = #items > 0 and section.area:IsShown()
     section.line:SetShown(listed)
-    section.sortNote:SetText(listed and select(2, sortOf(section.key)) and "reversed order" or "")
     for _, header in ipairs(section.columns) do
         header:SetShown(listed and (header.column.sort ~= "needs" or anyNeeds))
         header:ClearAllPoints()
@@ -950,13 +949,26 @@ end
 
 local function refreshSortBar()
     for _, section in ipairs({ sections.queue, sections.parties, sections.finder, sections.groups }) do
-        local key = sortOf(section.key)
+        local key, reverse = sortOf(section.key)
         for _, header in ipairs(section.columns) do
-            if header.sort ~= nil and header.sort == key then
+            local active = header.sort ~= nil and header.sort == key
+            if active then
                 header.label:SetTextColor(1, 0.82, 0)
+                local down = (header.column.descending or false) ~= reverse
+                header.arrow:SetTexture(down and "Interface\\Buttons\\Arrow-Down-Up"
+                    or "Interface\\Buttons\\Arrow-Up-Up")
+                header.arrow.down = down
+                local offset = (header.label:GetStringWidth() or 0) + 1
+                header.arrow:ClearAllPoints()
+                if header.column.right then
+                    header.arrow:SetPoint("RIGHT", header, "RIGHT", -offset, 0)
+                else
+                    header.arrow:SetPoint("LEFT", header, "LEFT", offset, 0)
+                end
             else
                 header.label:SetTextColor(0.85, 0.85, 0.85)
             end
+            header.arrow:SetShown(active)
         end
     end
     local roles = shownRoles() or "THD"
