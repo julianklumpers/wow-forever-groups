@@ -1478,6 +1478,67 @@ local function cmdImages(rest)
         page, pages)
 end
 
+-- Loading screens: the classic ones by name (GetFileIDFromPath tells which
+-- exist) and file ids around Forever's own (7963775 City of Dalaran, 7963777
+-- Excavation Site) to find the other Forever dungeons' screens.
+local LOAD_PREFIX = "Interface\\Glues\\LoadingScreens\\LoadScreen"
+local LOAD_NAMES = {
+    "RagefireChasm", "WailingCaverns", "Deadmines", "ShadowFangKeep", "BlackFathomDeeps", "Stockade",
+    "StormwindStockade", "Gnomeregan", "RazorfenKraul", "ScarletMonastery", "ScarletMonastery2", "Monastery",
+    "RazorfenDowns", "Uldaman", "ZulFarrak", "Maraudon", "SunkenTemple", "BlackrockDepths", "BlackrockSpire",
+    "DireMaul", "Scholomance", "Stratholme",
+}
+local LOAD_FIRST_ID, LOAD_LAST_ID = 7963760, 7963795
+
+local loadScreens
+
+local function loadScreenList()
+    if loadScreens then
+        return loadScreens
+    end
+    loadScreens = {}
+    local has = _G.GetFileIDFromPath
+    for _, name in ipairs(LOAD_NAMES) do
+        local id
+        if type(has) == "function" then
+            local ok, result = pcall(has, LOAD_PREFIX .. name)
+            id = ok and result or nil
+        end
+        store("RECV", "loadscreens: %s -> fileID %s", name, show(id))
+        if id or type(has) ~= "function" then
+            loadScreens[#loadScreens + 1] = { label = name, texture = LOAD_PREFIX .. name }
+        end
+    end
+    for id = LOAD_FIRST_ID, LOAD_LAST_ID do
+        loadScreens[#loadScreens + 1] = { label = tostring(id), texture = id }
+    end
+    log("INFO", "loadscreens: %d classic screens found, %d Forever ids to look at", #loadScreens -
+        (LOAD_LAST_ID - LOAD_FIRST_ID + 1), LOAD_LAST_ID - LOAD_FIRST_ID + 1)
+    return loadScreens
+end
+
+local function cmdLoadScreens(rest)
+    local screens = loadScreenList()
+    imageFrame = imageFrame or buildImageFrame()
+    local pages = math.ceil(#screens / IMAGES_PER_PAGE)
+    local page = math.max(1, math.min(pages, tonumber(rest:match("%d+")) or 1))
+    imageFrame.title:SetText(string.format("Loading screens %d/%d  (/fgp loadscreens %d)", page, pages,
+        page % pages + 1))
+    for i, cell in ipairs(imageFrame.cells) do
+        local item = screens[(page - 1) * IMAGES_PER_PAGE + i]
+        if item then
+            cell.image:SetTexture(nil)
+            pcall(cell.image.SetTexture, cell.image, item.texture)
+            cell.label:SetText(item.label)
+            cell:Show()
+        else
+            cell:Hide()
+        end
+    end
+    imageFrame:Show()
+    log("INFO", "loadscreens: page %d/%d; a green box means nothing at that name or id", page, pages)
+end
+
 local COMMANDS = {
     { "all", "run info, api, join, chan, whisper, big, ping and popup", cmdAll },
     { "info", "build, names, time, lockdown, group state", cmdInfo },
@@ -1500,6 +1561,7 @@ local COMMANDS = {
     { "talents", "dump the talent tree: nodes, points spent, positions", cmdTalents },
     { "inspect", "[unit] read another player's talents (default: target, else party1)", cmdInspect },
     { "clicksearch", "[off] test Group Finder searches from mouse clicks and scrolls in the world", cmdClickSearch },
+    { "loadscreens", "[page] show the loading screens (classic by name, Forever's by file id)", cmdLoadScreens },
     { "images", "[page] show the dungeon background pictures the client has", cmdImages },
     { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },
     { "log", "[n] print the last n stored log lines", cmdLog },
