@@ -189,7 +189,7 @@ end
 -- A column with a sort key sorts the list when its header is clicked.
 -- Role: what the players can play (a party or group: the roles in it);
 -- Needs: the places a party or group still has open, empty for a solo player.
-local ROW_LEFT = 22
+local ROW_LEFT = 25
 local ROW_WIDTH = WIDTH - 46
 local NAME_X, LEVEL_X, DUNGEONS_X, TIME_WIDTH = 100, 254, 296, 70
 local COLUMNS = {
@@ -391,20 +391,20 @@ local function fillSection(section, y, items, empty)
         header:SetShown(listed and (header.column.sort ~= "needs" or anyNeeds))
         header:ClearAllPoints()
         if header.column.right then
-            header:SetPoint("TOPRIGHT", frame, "TOPLEFT", WIDTH - 28, y)
+            header:SetPoint("TOPRIGHT", frame, "TOPLEFT", ROW_LEFT + ROW_WIDTH - 4, y)
         else
             header:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT + header.column.x, y)
         end
     end
     section.line:ClearAllPoints()
     section.line:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT, y - 17)
-    section.line:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -24, y - 17)
+    section.line:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(WIDTH - ROW_LEFT - ROW_WIDTH) + 2, y - 17)
     if listed then
         y = y - 21
     end
     local visible = math.min(#items, ROWS)
     section.area:ClearAllPoints()
-    section.area:SetPoint("TOPLEFT", frame, "TOPLEFT", 22, y)
+    section.area:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT, y)
     section.area:SetHeight(math.max(1, visible) * ROW_HEIGHT)
     for i, row in ipairs(section.rows) do
         local item = items[section.offset + i]
@@ -430,7 +430,7 @@ local function fillSection(section, y, items, empty)
     end
     y = y - visible * ROW_HEIGHT
     section.more:ClearAllPoints()
-    section.more:SetPoint("TOPLEFT", frame, "TOPLEFT", 22, y - 2)
+    section.more:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT, y - 2)
     if #items == 0 then
         section.more:SetText(empty)
     elseif scrolls then
@@ -758,9 +758,10 @@ local function showSection(section, shown)
 end
 
 -- Each source gets a framed block: a header band with its icon and name,
--- then its two tables. Drawn as textures on the window, so the rows sit on
--- top of them.
-local BLOCK_LEFT, BLOCK_BAND = 14, 24
+-- then its two tables. Its fill is drawn on the window, under the rows; its
+-- rounded border (WoW's tooltip edge) is a frame over them. The window's
+-- inner panel sits a little right of centre, hence the uneven sides.
+local BLOCK_LEFT, BLOCK_RIGHT, BLOCK_BAND, BLOCK_GAP, BLOCK_EDGE = 17, 11, 24, 6, 3
 
 local function buildBlock(title, icon, coords)
     local block = {}
@@ -768,11 +769,12 @@ local function buildBlock(title, icon, coords)
     block.bg:SetColorTexture(1, 1, 1, 0.03)
     block.band = frame:CreateTexture(nil, "BORDER", nil, 1)
     block.band:SetColorTexture(1, 0.82, 0, 0.12)
-    block.edges = {}
-    for i = 1, 4 do
-        local edge = frame:CreateTexture(nil, "BORDER", nil, 2)
-        edge:SetColorTexture(1, 0.82, 0, 0.35)
-        block.edges[i] = edge
+    local ok, border = pcall(CreateFrame, "Frame", nil, frame, "BackdropTemplate")
+    block.border = ok and border or CreateFrame("Frame", nil, frame)
+    block.border:SetFrameLevel((frame:GetFrameLevel() or 0) + 6)
+    if block.border.SetBackdrop then
+        block.border:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12 })
+        block.border:SetBackdropBorderColor(1, 0.82, 0, 0.6)
     end
     block.icon = frame:CreateTexture(nil, "ARTWORK")
     block.icon:SetSize(18, 18)
@@ -788,43 +790,24 @@ end
 
 -- top and bottom: y of the block's edges (negative, from the window's top).
 local function placeBlock(block, top, bottom, shown)
-    local parts = { block.bg, block.band, block.icon, block.title, block.note }
-    for _, edge in ipairs(block.edges) do
-        parts[#parts + 1] = edge
-    end
-    for _, part in ipairs(parts) do
+    for _, part in ipairs({ block.bg, block.band, block.icon, block.title, block.note, block.border }) do
         part:SetShown(shown)
     end
     if not shown then
         return
     end
-    local right = -BLOCK_LEFT
+    block.border:ClearAllPoints()
+    block.border:SetPoint("TOPLEFT", frame, "TOPLEFT", BLOCK_LEFT, top)
+    block.border:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -BLOCK_RIGHT, bottom)
     block.bg:ClearAllPoints()
-    block.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", BLOCK_LEFT, top)
-    block.bg:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", right, bottom)
+    block.bg:SetPoint("TOPLEFT", block.border, "TOPLEFT", BLOCK_EDGE, -BLOCK_EDGE)
+    block.bg:SetPoint("BOTTOMRIGHT", block.border, "BOTTOMRIGHT", -BLOCK_EDGE, BLOCK_EDGE)
     block.band:ClearAllPoints()
     block.band:SetPoint("TOPLEFT", block.bg, "TOPLEFT")
     block.band:SetPoint("TOPRIGHT", block.bg, "TOPRIGHT")
-    block.band:SetHeight(BLOCK_BAND)
-    local top1, bottom1, left1, right1 = unpack(block.edges)
-    top1:ClearAllPoints()
-    top1:SetPoint("TOPLEFT", block.bg, "TOPLEFT")
-    top1:SetPoint("TOPRIGHT", block.bg, "TOPRIGHT")
-    top1:SetHeight(1)
-    bottom1:ClearAllPoints()
-    bottom1:SetPoint("BOTTOMLEFT", block.bg, "BOTTOMLEFT")
-    bottom1:SetPoint("BOTTOMRIGHT", block.bg, "BOTTOMRIGHT")
-    bottom1:SetHeight(1)
-    left1:ClearAllPoints()
-    left1:SetPoint("TOPLEFT", block.bg, "TOPLEFT")
-    left1:SetPoint("BOTTOMLEFT", block.bg, "BOTTOMLEFT")
-    left1:SetWidth(1)
-    right1:ClearAllPoints()
-    right1:SetPoint("TOPRIGHT", block.bg, "TOPRIGHT")
-    right1:SetPoint("BOTTOMRIGHT", block.bg, "BOTTOMRIGHT")
-    right1:SetWidth(1)
+    block.band:SetHeight(BLOCK_BAND - BLOCK_EDGE)
     block.icon:ClearAllPoints()
-    block.icon:SetPoint("LEFT", block.band, "LEFT", 6, 0)
+    block.icon:SetPoint("LEFT", block.band, "LEFT", 5, 0)
     block.title:ClearAllPoints()
     block.title:SetPoint("LEFT", block.icon, "RIGHT", 6, 0)
     block.note:ClearAllPoints()
@@ -863,7 +846,7 @@ function QueueWindow.refresh()
         frame:SetHeight(-y + 12)
         return
     end
-    top = y - 8
+    top = y - BLOCK_GAP
     y = top - BLOCK_BAND - 6
     local _, updatedAt = ns.LfgList.listings()
     local finder = groupFinderItems()
@@ -882,7 +865,7 @@ function QueueWindow.refresh()
     y = fillSection(sections.groups, y, groups, shownRoles() and "No group needs these roles."
         or "No groups listed for your dungeons.")
     placeBlock(blocks.finder, top, y + 4, true)
-    frame:SetHeight(-y + 12)
+    frame:SetHeight(-y + 10)
 end
 
 local function build()
