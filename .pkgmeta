@@ -9,3 +9,4 @@ ignore:
   - .luacheckrc
   - media/logo-1024.png
   - media/logo-400.png
+  - docs
