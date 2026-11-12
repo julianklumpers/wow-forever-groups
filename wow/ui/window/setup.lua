@@ -619,7 +619,8 @@ function W.buildDungeons()
                 W.selectedDungeons()[self.dungeon.id] = self:GetChecked() and true or nil
             end
             W.setHint("")
-            if not ns.LfgList.searchIfMissing() then
+            -- Unticking only filters what is there; ticking may need a search.
+            if self:GetChecked() and not ns.LfgList.searchIfMissing() then
                 ns.LfgList.searchIfStale(5)
             end
             ns.Window.refresh()

@@ -250,7 +250,8 @@ function LfgList.refresh()
     end
     totalResults = #ids
     updatedAt = GetTime()
-    Log.debug("group finder: %d usable listings of %d results", #result, #ids)
+    Log.debug("group finder: %d usable listings of %d results, %.1f s after the search", #result, #ids,
+        updatedAt - searchedAt)
     for _, listener in ipairs(listeners) do
         listener()
     end
@@ -365,6 +366,7 @@ function LfgList.search()
     local ok, err
     if #activities > 0 then
         ok, err = pcall(fn, CATEGORY_DUNGEONS, 0, 0, languageFilter(), false, nil, activities)
+        Log.debug("group finder: searching %d dungeons", #activities)
         searchedActivities = {}
         for _, activity in ipairs(activities) do
             searchedActivities[activity] = true
