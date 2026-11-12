@@ -3,6 +3,9 @@
 ## 0.23.2 (2026-11-12)
 
 - Fake players for testing (`/fg fake`) get made-up names instead of "Fake 1", "Fake 2"…
+- Fake players only queue for the dungeons of your level.
+- "Who is looking" keeps every player on one line: a long dungeon list is shortened
+  ("RFC, HoT, RoL, WC, +31") and tags like [fake] come first.
 
 ## 0.23.1 (2026-11-12)
 

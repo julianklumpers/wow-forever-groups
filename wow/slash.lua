@@ -248,9 +248,15 @@ local function cmdFake(rest)
             return
         end
     end
+    -- The dungeons a real player of the same level would pick.
     local dungeons = {}
-    for i, dungeon in ipairs(Dungeons.list) do
-        dungeons[i] = dungeon.id
+    for _, dungeon in ipairs(Dungeons.forLevel(UnitLevel("player") or 1)) do
+        dungeons[#dungeons + 1] = dungeon.id
+    end
+    if #dungeons == 0 then
+        for i, dungeon in ipairs(Dungeons.list) do
+            dungeons[i] = dungeon.id
+        end
     end
     local added = {}
     for _ = 1, count do

@@ -25,11 +25,19 @@ local function onInput(age)
     end
 end
 
+-- "RoL, WC, DM", or the first few and "+N" for a long list, so a row stays
+-- one line.
+local MAX_NAMES = 4
+
 local function shortNames(ids)
     local names = {}
     for i, id in ipairs(ids) do
+        if i > MAX_NAMES and #ids > MAX_NAMES + 1 then
+            names[#names + 1] = "+" .. (#ids - MAX_NAMES)
+            break
+        end
         local dungeon = Dungeons.get(id)
-        names[i] = dungeon and dungeon.short or id
+        names[#names + 1] = dungeon and dungeon.short or id
     end
     return table.concat(names, ", ")
 end
@@ -176,6 +184,7 @@ local function buildSection(title)
         row.info = Widgets.text(row, "GameFontHighlightSmall")
         row.info:SetPoint("LEFT", 226, 0)
         row.info:SetWidth(WIDTH - 46 - 226)
+        row.info:SetWordWrap(false)
         row.info:SetTextColor(0.75, 0.75, 0.75)
         section.rows[i] = row
     end
@@ -357,7 +366,7 @@ local function queueItems()
         end
         local name = entry.id .. (#entry.members > 1 and string.format(" +%d", #entry.members - 1) or "")
         local info = string.format("waiting %s   %s%s", Widgets.formatTime(now - entry.joinedAt),
-            shortNames(entry.dungeons), #tags > 0 and ("   [" .. table.concat(tags, ", ") .. "]") or "")
+            #tags > 0 and ("[" .. table.concat(tags, ", ") .. "]   ") or "", shortNames(entry.dungeons))
         items[#items + 1] = { roles = roles, name = name, info = info, waited = now - entry.joinedAt,
             level = entry.members[1].level,
             color = entry.id == ns.selfName and { 1, 0.82, 0 } or { 1, 1, 1 } }
