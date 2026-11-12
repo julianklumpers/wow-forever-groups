@@ -445,6 +445,10 @@ local function backdropFrame(kind, parent)
     return CreateFrame(kind, nil, parent)
 end
 
+Widgets.addOutline = addOutline
+Widgets.paintOutline = paintOutline
+Widgets.backdropFrame = backdropFrame
+
 function Widgets.roleTile(parent, role, width, onClick)
     local tile = backdropFrame("CheckButton", parent)
     tile:SetSize(width, 76)

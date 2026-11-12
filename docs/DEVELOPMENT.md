@@ -87,7 +87,8 @@ to copy.
 
 A dropdown on the roles header (dungeons tab only; `W.buildPlaystyle` in `wow/ui/window/setup.lua`): the choice
 and WoW's own dropdown button (atlas `common-dropdown-a-button`, with its `-hover` and `-pressedhover` states; the
-plain `Arrow-Down-Up` when the atlas is missing), no frame around them, on a `DropdownButton` whose `SetupMenu` builds WoW's own menu with a radio per
+plain `Arrow-Down-Up` when the atlas is missing) in a rounded box like the role tiles, as wide as the longest
+playstyle and centred on the "I'd like to lead" checkbox, on a `DropdownButton` whose `SetupMenu` builds WoW's own menu with a radio per
 playstyle (its tooltip says who you're grouped with). A client without `DropdownButton` gets our own list instead
 (`wow/ui/playstylemenu.lua`). It offers "Any" (the default, `Playstyles.ANY`) and the four playstyles of WoW's Group
 Finder: Relaxed, Learning, Serious or Expert (the words come from `GetGeneralPlaystyleString`). "Any" goes with

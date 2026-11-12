@@ -28,7 +28,7 @@ local QUEUE_ROWS = W.QUEUE_ROWS
 local QUEUE_ROW_HEIGHT = W.QUEUE_ROW_HEIGHT
 local ERRORS = W.ERRORS
 local LEAD_BOX = 20
-local ARROW_BUTTON, ARROW_GAP = 20, 5
+local BOX_HEIGHT, BOX_PAD, ARROW_SIZE = 22, 8, 15
 local ui = W.ui
 local roleToggles = W.roleToggles
 local partyRows = W.partyRows
@@ -302,9 +302,15 @@ function W.layoutChoices(y, withPlaystyle)
         local mine = ns.Playstyle.mine()
         local button = ui.playstyleButton
         button.label:SetText(ns.Playstyle.word(mine))
-        local width = (button.label:GetStringWidth() or 0) + ARROW_GAP + ARROW_BUTTON
+        -- As wide as the longest playstyle, so the box keeps its size.
+        local longest = 0
+        for _, id in ipairs(ns.Playstyle.ORDER) do
+            button.measure:SetText(ns.Playstyle.word(id))
+            longest = math.max(longest, button.measure:GetStringWidth() or 0)
+        end
+        local width = BOX_PAD + longest + 6 + ARROW_SIZE + 3
         button:SetWidth(width)
-        W.place(button, right - width, y + 4)
+        W.place(button, right - width, y + 4 + (BOX_HEIGHT - LEAD_BOX) / 2)
         ui.playstyleLabel:ClearAllPoints()
         ui.playstyleLabel:SetPoint("RIGHT", ui.playstyleButton, "LEFT", -6, 0)
     else
@@ -498,27 +504,33 @@ end
 function W.buildPlaystyle()
     ui.playstyleLabel = Widgets.text(W.frame, "GameFontNormalSmall")
     ui.playstyleLabel:SetText("Playstyle:")
-    local ok, button = pcall(CreateFrame, "DropdownButton", nil, W.frame)
+    local ok, button = pcall(CreateFrame, "DropdownButton", nil, W.frame, "BackdropTemplate")
+    if not ok or not button then
+        ok, button = pcall(CreateFrame, "DropdownButton", nil, W.frame)
+    end
     local native = ok and button and type(button.SetupMenu) == "function"
     if not native then
         if ok and button then
             button:Hide()
         end
-        button = CreateFrame("Button", nil, W.frame)
+        button = Widgets.backdropFrame("Button", W.frame)
         button:SetScript("OnClick", function(self)
             ns.PlaystyleMenu.toggle(self, pickPlaystyle)
         end)
     end
-    button:SetHeight(ARROW_BUTTON)
+    button:SetHeight(BOX_HEIGHT)
+    Widgets.addOutline(button)
     button.label = Widgets.text(button, "GameFontHighlightSmall")
-    button.label:SetPoint("LEFT", 0, 0)
+    button.label:SetPoint("LEFT", BOX_PAD, 0)
+    button.measure = Widgets.text(button, "GameFontHighlightSmall")
+    button.measure:Hide()
     button.arrow = button:CreateTexture(nil, "ARTWORK")
-    button.arrow:SetSize(ARROW_BUTTON, ARROW_BUTTON)
-    button.arrow:SetPoint("LEFT", button.label, "RIGHT", ARROW_GAP, 0)
+    button.arrow:SetSize(ARROW_SIZE, ARROW_SIZE)
+    button.arrow:SetPoint("RIGHT", -3, 0)
     -- WoW's own dropdown button (the gold-edged square with the arrow); the
     -- plain yellow arrow on a client without that atlas.
     local atlas = Widgets.atlasExists("common-dropdown-a-button") and "common-dropdown-a-button"
-    local function paintArrow(state)
+    local function paint(state)
         local name = atlas and (atlas .. state)
         if name and state ~= "" and not Widgets.atlasExists(name) then
             name = atlas
@@ -528,21 +540,20 @@ function W.buildPlaystyle()
         else
             button.arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
         end
+        Widgets.paintOutline(button, { 1, 1, 1, 0.04 }, state == "" and { 1, 1, 1, 0.35 } or { 1, 0.82, 0, 1 })
     end
-    paintArrow("")
-    button:HookScript("OnEnter", function(self)
-        self.label:SetTextColor(1, 0.82, 0)
-        paintArrow("-hover")
+    paint("")
+    button:HookScript("OnEnter", function()
+        paint("-hover")
     end)
-    button:HookScript("OnLeave", function(self)
-        self.label:SetTextColor(1, 1, 1)
-        paintArrow("")
+    button:HookScript("OnLeave", function()
+        paint("")
     end)
     button:HookScript("OnMouseDown", function()
-        paintArrow("-pressedhover")
+        paint("-pressedhover")
     end)
     button:HookScript("OnMouseUp", function(self)
-        paintArrow(self:IsMouseOver() and "-hover" or "")
+        paint(self:IsMouseOver() and "-hover" or "")
     end)
     if native then
         setupMenu(button)
