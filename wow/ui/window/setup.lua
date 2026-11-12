@@ -29,7 +29,7 @@ local CHOICE_WIDTH = W.CHOICE_WIDTH
 local QUEUE_ROWS = W.QUEUE_ROWS
 local QUEUE_ROW_HEIGHT = W.QUEUE_ROW_HEIGHT
 local ERRORS = W.ERRORS
-local LEAD_WIDTH = 150
+local LEAD_BOX = 20
 local ui = W.ui
 local roleToggles = W.roleToggles
 local partyRows = W.partyRows
@@ -274,6 +274,15 @@ function W.layoutChoices(y, withPlaystyle)
         roleToggles[role]:Show()
     end
     W.place(ui.rolesHeader, PAD, y)
+    -- Alone, the wish to lead sits on the right of the header line, like the
+    -- links of the dungeon list; a party already has its leader.
+    local solo = Party.state() == "solo"
+    ui.leadCheck:SetShown(solo)
+    if solo then
+        ui.leadCheck:SetChecked(ns.charDb.wantsLead == true)
+        local labelWidth = ui.leadCheck.label:GetStringWidth() or 0
+        W.place(ui.leadCheck, WIDTH - PAD - labelWidth - LEAD_BOX - 1, y + 4)
+    end
     y = y - 26
     for i, role in ipairs(Widgets.ROLES) do
         W.place(roleToggles[role], PAD + (i - 1) * (TILE_WIDTH + TILE_GAP), y)
@@ -288,15 +297,6 @@ function W.layoutChoices(y, withPlaystyle)
     end
     ui.roleHint:Show()
     W.place(ui.roleHint, PAD, y)
-    -- Alone, the wish to lead sits on the same line, on the right; a party
-    -- already has its leader.
-    local solo = Party.state() == "solo"
-    ui.roleHint:SetWidth(WIDTH - 2 * PAD - (solo and LEAD_WIDTH + 8 or 0))
-    ui.leadCheck:SetShown(solo)
-    if solo then
-        Widgets.paintChoice(ui.leadCheck, ns.charDb.wantsLead == true)
-        W.place(ui.leadCheck, WIDTH - PAD - LEAD_WIDTH, y + 8)
-    end
     y = y - 26
     if not withPlaystyle then
         return y
@@ -436,11 +436,12 @@ function W.buildRoles()
     ui.roleHint = Widgets.text(W.frame, "GameFontHighlightSmall")
     ui.roleHint:SetWidth(WIDTH - 2 * PAD)
     ui.roleHint:SetTextColor(0.85, 0.85, 0.85)
-    ui.roleHint:SetWordWrap(false)
-    ui.leadCheck = Widgets.choice(W.frame, "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:14:14|t Lead the group",
-        LEAD_WIDTH, function()
-            W.setWantsLead(not ns.charDb.wantsLead)
+    ui.leadCheck = Widgets.check(W.frame, "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t I'd like to lead",
+        function(self)
+            W.setWantsLead(self:GetChecked())
         end)
+    ui.leadCheck:SetSize(LEAD_BOX, LEAD_BOX)
+    ui.leadCheck.label:SetFontObject(GameFontNormalSmall)
     Widgets.tooltip(ui.leadCheck, "I'd like to lead the group", "You become the group's leader when a group forms "
         .. "with you, unless a party already has a leader. Forever Groups won't ask listed groups to invite you: it "
         .. "builds the group for you, with you as its leader.")
