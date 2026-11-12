@@ -315,9 +315,12 @@ local COLUMNS = {
 local TOP = 0
 local EXPECTED = { T = 1, H = 1, D = 3 }
 
--- How a table is sorted: each table keeps its own column and order.
+-- How a table is sorted: each table keeps its own column and order, until
+-- the game is closed or reloaded.
+local sorts = {}
+
 local function sortOf(key)
-    local chosen = ns.db.queueSorts and ns.db.queueSorts[key]
+    local chosen = sorts[key]
     return chosen and chosen.key or "role", chosen and chosen.reverse or false
 end
 
@@ -340,8 +343,7 @@ local function buildHeaders(section)
             header:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
             header:SetScript("OnClick", function()
                 local key, reverse = sortOf(section.key)
-                ns.db.queueSorts = ns.db.queueSorts or {}
-                ns.db.queueSorts[section.key] = { key = column.sort, reverse = key == column.sort and not reverse }
+                sorts[section.key] = { key = column.sort, reverse = key == column.sort and not reverse }
                 onInput(10)
                 QueueWindow.refresh()
             end)

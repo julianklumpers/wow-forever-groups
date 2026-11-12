@@ -752,7 +752,7 @@ describe("Queue window order", function()
         client:click("Button", "Time")
         assert.are.same({ "Alpha", "Charlie", "Bravo" }, order())
         assert.are.equal("Down", arrow("Time"))
-        assert.are.equal("waiting", client.env.ForeverGroupsDB.queueSorts.finderPlayers.key)
+        assert.is_nil(client.env.ForeverGroupsDB.queueSorts)
     end)
 
     it("sorts each table on its own", function()

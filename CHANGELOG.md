@@ -3,9 +3,9 @@
 ## 0.25.0 (2026-11-12)
 
 - "Who is looking": sorting a table by a column no longer sorts the other tables too; each
-  table keeps its own order. A small arrow next to the column a table is sorted by shows the
-  direction (up: A to Z, tank first; down: highest level or longest waiting first), instead of
-  the "reversed order" note.
+  table keeps its own order until you close the game or reload, then it's back to the default.
+  A small arrow next to the column a table is sorted by shows the direction (up: A to Z, tank
+  first; down: highest level or longest waiting first), instead of the "reversed order" note.
 - Playstyle is no longer required: "Any" is the new default and groups you with everyone, so
   more players fit together. The playstyle moved from its own section to a dropdown on the
   "Your roles" header, in WoW's own menu style; pick one there (or `/fg style relaxed`, `/fg style any`) to be grouped
