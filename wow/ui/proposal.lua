@@ -35,12 +35,17 @@ local function myAnswer(view)
 end
 
 local WIDTH = 320
-local ROW_WIDTH = 268
-local ROW_HEIGHT = 30
+-- Rows span the banner's width; icons, notes and checks share its 10 px
+-- inner margin, so everything lines up under the picture.
+local ROW_HEIGHT = 32
 local ROWS_TOP = 80
 -- The dungeon's picture as a banner under the title bar (Dungeons.art gives
 -- the texture and its crop).
 local BANNER_TOP, BANNER_HEIGHT, BANNER_INSET = 24, 112, 8
+local ROW_WIDTH = WIDTH - 2 * BANNER_INSET
+local MARGIN = 10
+local CONTENT_LEFT = BANNER_INSET + MARGIN
+local NAME_X = MARGIN + 28
 local ROLE_ORDER = { T = 1, H = 2, D = 3 }
 
 -- Tank, healer, then DPS; within a role the order of the proposal.
@@ -80,9 +85,9 @@ local function paintRow(row, member, leader)
     row.detail:SetText(detail)
     row.name:ClearAllPoints()
     if detail ~= "" then
-        row.name:SetPoint("TOPLEFT", 30, -2)
+        row.name:SetPoint("TOPLEFT", NAME_X, -2)
     else
-        row.name:SetPoint("LEFT", 30, 0)
+        row.name:SetPoint("LEFT", NAME_X, 0)
     end
     row.crown:ClearAllPoints()
     row.crown:SetPoint("LEFT", row.name, "LEFT", (row.name:GetStringWidth() or 0) + 4, 1)
@@ -154,13 +159,13 @@ local function render(view)
         if member then
             paintRow(row, member, view.leader)
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", (WIDTH - ROW_WIDTH) / 2, -rowsTop - (i - 1) * ROW_HEIGHT)
+            row:SetPoint("TOPLEFT", BANNER_INSET, -rowsTop - (i - 1) * ROW_HEIGHT)
             row:Show()
         else
             row:Hide()
         end
     end
-    local y = rowsTop + #members * ROW_HEIGHT + 6
+    local y = rowsTop + #members * ROW_HEIGHT + 4
     if view.missing and view.missing ~= "" then
         local names = {}
         for letter in string.gmatch(view.missing, ".") do
@@ -180,7 +185,7 @@ local function render(view)
     ui.accept:SetShown(not answered)
     ui.decline:SetShown(not answered)
     ui.waiting:SetShown(answered)
-    frame:SetHeight(y + 82)
+    frame:SetHeight(y + 70)
 end
 
 local function onUpdate()
@@ -235,21 +240,24 @@ end
 local function buildRow()
     local row = CreateFrame("Frame", nil, frame)
     row:SetSize(ROW_WIDTH, ROW_HEIGHT - 2)
-    row.highlight = row:CreateTexture(nil, "BACKGROUND")
+    row.panel = row:CreateTexture(nil, "BACKGROUND")
+    row.panel:SetAllPoints()
+    row.panel:SetColorTexture(0, 0, 0, 0.35)
+    row.highlight = row:CreateTexture(nil, "BACKGROUND", nil, 1)
     row.highlight:SetAllPoints()
-    row.highlight:SetColorTexture(1, 0.82, 0, 0.12)
+    row.highlight:SetColorTexture(1, 0.82, 0, 0.14)
     row.icon = Widgets.roleIcon(row, "D", 20)
-    row.icon:SetPoint("LEFT", 4, 0)
+    row.icon:SetPoint("LEFT", MARGIN, 0)
     row.name = Widgets.text(row, "GameFontHighlight")
     row.detail = Widgets.text(row, "GameFontDisableSmall")
-    row.detail:SetPoint("BOTTOMLEFT", 30, 2)
+    row.detail:SetPoint("BOTTOMLEFT", NAME_X, 3)
     row.crown = row:CreateTexture(nil, "ARTWORK")
     row.crown:SetSize(14, 14)
     row.crown:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
     row.crown.iconLabel = "Leader"
     row.status = row:CreateTexture(nil, "ARTWORK")
     row.status:SetSize(18, 18)
-    row.status:SetPoint("RIGHT", -4, 0)
+    row.status:SetPoint("RIGHT", -MARGIN, 0)
     return row
 end
 
@@ -274,9 +282,9 @@ local function build()
     end
     ui.missing = Widgets.text(frame, "GameFontNormalSmall", "CENTER")
     ui.count = Widgets.text(frame, "GameFontHighlightSmall")
-    ui.count:SetPoint("BOTTOMLEFT", (WIDTH - ROW_WIDTH) / 2, 48)
-    local barLeft = (WIDTH - ROW_WIDTH) / 2 + 96
-    local barWidth = ROW_WIDTH - 96
+    ui.count:SetPoint("BOTTOMLEFT", CONTENT_LEFT, 48)
+    local barLeft = CONTENT_LEFT + 92
+    local barWidth = WIDTH - CONTENT_LEFT - barLeft
     ui.barBorder = frame:CreateTexture(nil, "BORDER")
     ui.barBorder:SetSize(barWidth + 2, 14)
     ui.barBorder:SetPoint("BOTTOMLEFT", barLeft - 1, 45)
@@ -295,7 +303,7 @@ local function build()
     ui.waiting:SetPoint("BOTTOM", 0, 18)
     ui.waiting:SetText("Accepted. Waiting for the others...")
     ui.accept = Widgets.button(frame, ACCEPT or "Accept", 120)
-    ui.accept:SetPoint("BOTTOMLEFT", 30, 14)
+    ui.accept:SetPoint("BOTTOMLEFT", CONTENT_LEFT, 14)
     ui.accept:SetScript("OnClick", function()
         if currentEngine then
             currentEngine:respond(true)
@@ -305,7 +313,7 @@ local function build()
         end
     end)
     ui.decline = Widgets.button(frame, DECLINE or "Decline", 120)
-    ui.decline:SetPoint("BOTTOMRIGHT", -30, 14)
+    ui.decline:SetPoint("BOTTOMRIGHT", -CONTENT_LEFT, 14)
     ui.decline:SetScript("OnClick", function()
         if currentEngine then
             currentEngine:respond(false)
