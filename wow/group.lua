@@ -4,8 +4,6 @@ local Log = ns.Log
 
 local Group = {}
 
-local INVITE_SPACING = 0.5
-
 local SESSION_TIMEOUT = 120
 
 local pending = {}
@@ -114,11 +112,10 @@ function Group.formed(view)
     if fakes > 0 then
         Log.info("%d fake players are not invited.", fakes)
     end
-    for i, name in ipairs(others) do
-        C_Timer.After(INVITE_SPACING * i, function()
-            whisper(name, ns.Messages.text("groupInvite", { dungeon = dungeon, spec = ns.Spec.myLabel() }))
-            invite(name)
-        end)
+    local text = ns.Messages.text("groupInvite", { dungeon = dungeon, spec = ns.Spec.myLabel() })
+    for _, name in ipairs(others) do
+        whisper(name, text)
+        invite(name)
     end
 end
 

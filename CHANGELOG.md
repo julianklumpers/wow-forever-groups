@@ -24,6 +24,8 @@
 - Once everyone accepted the proposal you join the group by yourself: the invite from the
   group's leader is accepted for you (no second click). Invites from anyone else never are.
   Settings → Groups → "Join the group by itself once everyone accepted" turns it off.
+- The leader sends all invites at once instead of half a second apart, so the group is together
+  right after the last Accept.
 - The "Group found!" popup lists tank, healer, then DPS, with names in class colours, a crown
   on the leader, your own row lit up, spec (or "fake") under each name and "3/5 accepted" next
   to the timer. After you accept, the buttons make way for "Waiting for the others".

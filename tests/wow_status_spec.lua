@@ -53,6 +53,7 @@ describe("Status bar", function()
         local clients = {}
         for i, p in ipairs(PLAYERS) do
             clients[i] = world:addClient(p[1], { level = 20 })
+            clients[i].ns.db.noAutoAccept = true
         end
         world:advance(CONNECT)
         for i, p in ipairs(PLAYERS) do

@@ -52,7 +52,7 @@ describe("WoW layer", function()
         for _, client in ipairs(clients) do
             client:acceptPopup()
         end
-        world:advance(5)
+        world:advance(1)
 
         local tank = clients[1]
         table.sort(tank.invites)
@@ -71,6 +71,7 @@ describe("WoW layer", function()
             assert.is_true(clients[i]:said("Joined Tanky Mctank's group"), clients[i].name)
             assert.is_false(clients[i].ns.engine:snapshot().queued)
         end
+        world:advance(4)
         assert.are.equal("HEALER", clients[2].roles["Heally Mcheal"])
         assert.are.equal("DAMAGER", clients[3].roles["Dps One"])
     end)
