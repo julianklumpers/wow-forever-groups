@@ -1539,6 +1539,171 @@ local function cmdLoadScreens(rest)
     log("INFO", "loadscreens: page %d/%d; a green box means nothing at that name or id", page, pages)
 end
 
+-- How many members a chat channel has: every count API the client might
+-- have is tried, by display index and by channel number, and the roster
+-- events are logged for a while. A named channel the player is not in is
+-- joined for the check and left again.
+local CHANNEL_COUNT_APIS = {
+    "GetChannelList", "GetNumDisplayChannels", "GetChannelDisplayInfo", "SetSelectedDisplayChannel",
+    "GetSelectedDisplayChannel", "GetNumChannelMembers", "C_ChatInfo.GetNumChannelMembers",
+    "GetChannelRosterInfo", "C_ChatInfo.GetChannelRosterInfo", "C_ChatInfo.GetChannelInfoFromIdentifier",
+    "ListChannelByName",
+}
+local CHANNEL_WATCH_SECONDS = 20
+local ROUTINE_NOTICES = { YOU_JOINED = true, YOU_LEFT = true, YOU_CHANGED = true }
+local channelWatchUntil = 0
+local channelCounts = {}
+
+local function watchingChannels()
+    return GetTime() <= channelWatchUntil
+end
+
+local function callLogged(label, path, ...)
+    local fn = resolve(path)
+    if type(fn) ~= "function" then
+        return false
+    end
+    local argText = select("#", ...) > 0 and showAll(...) or ""
+    local function unpackResult(ok, ...)
+        if not ok then
+            log("WARN", "%s: %s(%s) raised %s", label, path, argText, show((...)))
+            return false
+        end
+        store("RECV", "%s: %s(%s) -> %s", label, path, argText, showAll(...))
+        return true, ...
+    end
+    return unpackResult(pcall(fn, ...))
+end
+
+local function noteCount(name, count, source)
+    if type(name) ~= "string" or isSecret(name) or type(count) ~= "number" or count <= 0 then
+        return
+    end
+    local known = channelCounts[name]
+    if not known or known.count ~= count then
+        channelCounts[name] = { count = count, source = source }
+        log("PASS", "channels: '%s' has %d members (%s)", name, count, source)
+    end
+end
+
+local function displayChannels()
+    local ok, n = callLogged("channels", "GetNumDisplayChannels")
+    local channels = {}
+    for i = 1, (ok and tonumber(n)) or 0 do
+        local found, name, header, _, number, count = callLogged("channels", "GetChannelDisplayInfo", i)
+        if found and not header then
+            channels[#channels + 1] = { index = i, name = name, number = number }
+            noteCount(name, count, "GetChannelDisplayInfo")
+        end
+    end
+    return channels
+end
+
+local function readCounts(channel)
+    local found, _, _, _, _, count = callLogged("channels", "GetChannelDisplayInfo", channel.index)
+    if found then
+        noteCount(channel.name, count, "GetChannelDisplayInfo after selecting")
+    end
+    for _, path in ipairs({ "GetNumChannelMembers", "C_ChatInfo.GetNumChannelMembers" }) do
+        for _, key in ipairs({ channel.index, channel.number }) do
+            if key ~= nil then
+                local ok, members = callLogged("channels", path, key)
+                if ok then
+                    noteCount(channel.name, members, path .. "(" .. tostring(key) .. ")")
+                end
+            end
+        end
+    end
+end
+
+local function surveyChannels()
+    local ids = { callLogged("channels", "GetChannelList") }
+    if ids[1] then
+        local parts = {}
+        for i = 2, #ids do
+            parts[#parts + 1] = show(ids[i])
+        end
+        log("INFO", "channels: joined %s", table.concat(parts, " "))
+    end
+    local channels = displayChannels()
+    if #channels == 0 then
+        log("WARN", "channels: GetNumDisplayChannels/GetChannelDisplayInfo listed no channels")
+    end
+    for step, channel in ipairs(channels) do
+        C_Timer.After(step * 1.5, function()
+            callLogged("channels", "SetSelectedDisplayChannel", channel.index)
+            C_Timer.After(1, function()
+                readCounts(channel)
+            end)
+        end)
+    end
+    C_Timer.After(#channels * 1.5 + 3, function()
+        local names = {}
+        for _, channel in ipairs(channels) do
+            local known = channelCounts[channel.name]
+            names[#names + 1] = string.format("%s=%s", show(channel.name), known and known.count or "?")
+        end
+        log("INFO", "channels: done. %s", table.concat(names, ", "))
+        log("INFO", "channels: /reload or log out to save the results to ForeverGroupsProbeDB")
+    end)
+end
+
+local function cmdChannels(rest)
+    local present = {}
+    for _, path in ipairs(CHANNEL_COUNT_APIS) do
+        present[#present + 1] = path .. "=" .. (type(resolve(path)) == "function" and "yes" or "no")
+    end
+    log("INFO", "channels: APIs %s", table.concat(present, ", "))
+    channelWatchUntil = GetTime() + CHANNEL_WATCH_SECONDS + 30
+    local name = rest ~= "" and rest or nil
+    if not name or (GetChannelName(name) or 0) > 0 then
+        surveyChannels()
+        return
+    end
+    local ok, err = pcall(JoinTemporaryChannel, name)
+    if not ok then
+        log("FAIL", "channels: JoinTemporaryChannel('%s') raised %s", name, show(err))
+        return
+    end
+    log("INFO", "channels: joining '%s' for the check, leaving it again after %d s", name, CHANNEL_WATCH_SECONDS + 15)
+    C_Timer.After(3, function()
+        if (GetChannelName(name) or 0) == 0 then
+            log("FAIL", "channels: could not join '%s' (see the notices above, if any)", name)
+        end
+        if type(resolve("ListChannelByName")) == "function" then
+            callLogged("channels", "ListChannelByName", name)
+        end
+        surveyChannels()
+    end)
+    C_Timer.After(CHANNEL_WATCH_SECONDS + 15, function()
+        pcall(LeaveChannelByName, name)
+        log("INFO", "channels: left '%s'", name)
+    end)
+end
+
+local function onChannelCount(event, index, count)
+    if not watchingChannels() then
+        return
+    end
+    local found, name = callLogged("channels", "GetChannelDisplayInfo", index)
+    log("EVENT", "%s index=%s count=%s (%s)", event, show(index), show(count), found and show(name) or "?")
+    if found then
+        noteCount(name, count, event)
+    end
+end
+
+local function onChannelList(event, text, _, _, channelString, _, _, _, _, baseName)
+    if not watchingChannels() or isSecret(text) then
+        return
+    end
+    local members = 0
+    if type(text) == "string" and text ~= "" then
+        members = select(2, text:gsub(",", ",")) + 1
+    end
+    log("EVENT", "%s %s: %d names listed", event, show(channelString), members)
+    noteCount(baseName, members, event)
+end
+
 local COMMANDS = {
     { "all", "run info, api, join, chan, whisper, big, ping and popup", cmdAll },
     { "info", "build, names, time, lockdown, group state", cmdInfo },
@@ -1564,6 +1729,7 @@ local COMMANDS = {
     { "loadscreens", "[page] show the loading screens (classic by name, Forever's by file id)", cmdLoadScreens },
     { "images", "[page] show the dungeon background pictures the client has", cmdImages },
     { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },
+    { "channels", "[name] member count of every joined channel (with a name: join it for the check)", cmdChannels },
     { "log", "[n] print the last n stored log lines", cmdLog },
     { "clear", "clear the stored log", cmdClear },
 }
@@ -1651,7 +1817,9 @@ local function onLogin()
 end
 
 local function onChannelNotice(event, text, _, _, channelString, _, _, _, _, baseName)
-    if type(baseName) == "string" and baseName:lower() == channelName:lower() then
+    local ours = type(baseName) == "string" and not isSecret(baseName) and baseName:lower() == channelName:lower()
+    local unusual = type(text) == "string" and not isSecret(text) and not ROUTINE_NOTICES[text]
+    if ours or unusual or watchingChannels() then
         log("EVENT", "%s %s %s", event, show(text), show(channelString))
     end
 end
@@ -1703,6 +1871,10 @@ local handlers = {
     CHAT_MSG_ADDON = onAddonMessage,
     CHAT_MSG_ADDON_LOGGED = onAddonMessage,
     CHAT_MSG_CHANNEL_NOTICE = onChannelNotice,
+    CHAT_MSG_CHANNEL_NOTICE_USER = onChannelNotice,
+    CHAT_MSG_CHANNEL_LIST = onChannelList,
+    CHANNEL_COUNT_UPDATE = onChannelCount,
+    CHANNEL_ROSTER_UPDATE = onChannelCount,
     ADDON_ACTION_BLOCKED = onActionBlocked,
     ADDON_ACTION_FORBIDDEN = onActionBlocked,
     PARTY_INVITE_REQUEST = onInviteRequest,

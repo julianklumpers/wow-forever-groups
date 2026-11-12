@@ -54,6 +54,8 @@ Lua 5.1, luacheck and busted are installed locally in `.lua51/`
 .lua51/bin/luacheck .             # lint
 .lua51/bin/busted --coverage && .lua51/bin/luacov   # coverage report in luacov.report.out
 SOAK_SEED=7 SOAK_STEPS=2000 .lua51/bin/busted tests/soak_spec.lua   # a longer random session
+LOAD=1 .lua51/bin/busted tests/load_spec.lua   # channel load measurement (left out of the normal run)
+LOAD_CLIENTS=150 LOAD_SECONDS=300 .lua51/bin/busted tests/load_spec.lua   # a bigger one
 python3 scripts/package.py        # dist/ForeverGroups-<version>.zip with only what the .toc loads
 ```
 
@@ -61,6 +63,12 @@ python3 scripts/package.py        # dist/ForeverGroups-<version>.zip with only w
 proposals, logging out) and checks after every step that nobody is stuck: no queue held without a proposal in the
 other, no proposal open past its deadline, no popup without a proposal or proposal without a popup. The mock keeps
 Group Finder results secret during chat-messaging lockdown (`World.SECRET`), as Midnight does.
+
+`tests/load_spec.lua` (only with `LOAD=1` or a `LOAD_*` setting) measures the channel load: many dungeon engines on one channel, with players logging in and
+out, reloading, queueing and answering proposals, once at a quiet login rate and once at a busy one (`LOAD_LOGINS`,
+about what ~5000 players online would give). It prints the messages per second by kind, the queue messages per
+queued player (and what that means for 1000 queued), how long a newcomer and a reloaded matchmaker take to see the
+whole queue, the wait until a group per role, and how long `findGroups` takes on queues of 250 to 1000 players.
 
 In game, `/fg selftest` tells which client features Forever Groups can use, and `/fg bugreport` opens the version,
 the self-test, the addon's last errors (kept by a chained error handler, `wow/diagnostics.lua`) and the log, ready
