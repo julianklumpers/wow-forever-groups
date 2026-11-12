@@ -4,3 +4,4 @@ luacov.stats.out
 luacov.report.out
 dist/
 /*.zip
+RELEASE_NOTES.md

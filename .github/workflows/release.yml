@@ -46,4 +46,11 @@ jobs:
         run: |
           version="$(sed -n 's/^## Version: *//p' ForeverGroups.toc)"
           test "v$version" = "$GITHUB_REF_NAME"
+      # This version's part of CHANGELOG.md becomes the release notes; a
+      # version without an entry stops the release.
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '/^## /{p = ($0 == "## " v || index($0, "## " v " ") == 1)} p' CHANGELOG.md > RELEASE_NOTES.md
+          test -s RELEASE_NOTES.md
       - uses: BigWigsMods/packager@v2
