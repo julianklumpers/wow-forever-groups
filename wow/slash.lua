@@ -198,6 +198,26 @@ end
 
 local FAKE_ROLES = { "T", "H", "D", "D", "D", "TD", "HD", "D", "THD", "D" }
 
+-- Made-up names for fake players, first and last name like Forever's.
+local FIRST_NAMES = {
+    "Aldric", "Brynna", "Corvin", "Dagny", "Elowen", "Fenrik", "Gwyra", "Haldor", "Isolde", "Jorund",
+    "Kaelis", "Liora", "Morwen", "Nyssa", "Orrin", "Perrin", "Quilla", "Rowan", "Sylas", "Talia",
+    "Ulric", "Vesna", "Wren", "Xandra", "Yorick", "Zephyra", "Brom", "Ilsa", "Torvin", "Maren",
+}
+local LAST_NAMES = {
+    "Ashvale", "Brightforge", "Coldbrook", "Duskwhisper", "Emberfall", "Frostmantle", "Grimbough",
+    "Hollowmere", "Ironveil", "Juniperfall", "Kettleborn", "Lightwater", "Moonwhistle", "Nettlefield",
+    "Oakhollow", "Pinecrest", "Quickbrook", "Ravenmoor", "Stormbanner", "Thornwick", "Umberfield",
+    "Valecrest", "Willowbend", "Yarrowmere", "Zephyrdale", "Amberline", "Copperkettle", "Deepforge",
+    "Silverbough", "Blackbriar", "Mistral",
+}
+
+-- The name of the n-th fake player: the lists have coprime lengths, so the
+-- first 930 names are all different.
+function Slash.fakeName(n)
+    return FIRST_NAMES[(n * 7) % #FIRST_NAMES + 1] .. " " .. LAST_NAMES[(n * 11) % #LAST_NAMES + 1]
+end
+
 local function cmdFake(rest)
     local engine = ns.engine
     if not engine then
@@ -236,7 +256,7 @@ local function cmdFake(rest)
     for _ = 1, count do
         ns.fakeCounter = (ns.fakeCounter or 0) + 1
         local fakeRoles = roles or FAKE_ROLES[(ns.fakeCounter - 1) % #FAKE_ROLES + 1]
-        local name = "Fake " .. ns.fakeCounter
+        local name = Slash.fakeName(ns.fakeCounter)
         local ok = engine:addFake({ { name = name, roles = fakeRoles, level = UnitLevel("player") } }, dungeons)
         if ok then
             added[#added + 1] = name .. " (" .. Widgets.describeRoles(fakeRoles) .. ")"

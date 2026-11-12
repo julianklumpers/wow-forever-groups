@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.2 (2026-11-12)
+
+- Fake players for testing (`/fg fake`) get made-up names instead of "Fake 1", "Fake 2"…
+
 ## 0.23.1 (2026-11-12)
 
 - Also released on Wago.

@@ -504,10 +504,10 @@ describe("WoW test tools", function()
         client:slash("/dq fake 4")
         world:advance(MATCH)
         assert.is_true(client:proposalShown())
-        assert.is_not_nil(client:find("FontString", "Fake 5 (fake)"))
+        assert.is_not_nil(client:find("FontString", client.ns.Slash.fakeName(5) .. " (fake)"))
         assert.is_not_nil(client:find("FontString", "Solo Player (you)"))
         world:advance(4)
-        local row = client:find("FontString", "Fake 6 (fake)").parent
+        local row = client:find("FontString", client.ns.Slash.fakeName(6) .. " (fake)").parent
         assert.are.equal("Interface\\RaidFrame\\ReadyCheck-Ready", row.status.texture)
         client:acceptPopup()
         world:advance(1)
@@ -526,7 +526,19 @@ describe("WoW test tools", function()
         local _, client = queuedWithFakes("2 healer")
         client:slash("/dq queuelist")
         assert.is_true(client:said("Solo Player DPS.*%[you%]"))
-        assert.is_true(client:said("Fake 1 Healer.*%[fake%]"))
+        assert.is_true(client:said(client.ns.Slash.fakeName(1) .. " Healer.*%[fake%]"))
+    end)
+
+    it("gives fake players made-up names, all different", function()
+        local _, client = queuedWithFakes("100")
+        local seen = {}
+        for i = 1, 100 do
+            local name = client.ns.Slash.fakeName(i)
+            assert.is_truthy(name:find("^%a+ %a+$"), name)
+            assert.is_nil(seen[name], name)
+            seen[name] = true
+        end
+        assert.is_true(client:said(client.ns.Slash.fakeName(1)))
     end)
 
     it("adds up to 100 fake players at once", function()
