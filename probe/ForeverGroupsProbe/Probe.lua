@@ -1830,6 +1830,40 @@ local function cmdDropdown()
     table.insert(UISpecialFrames, "ForeverGroupsProbeDropdowns")
 end
 
+-- Hiding our own outgoing whispers: registers a filter for "To X: ..."
+-- lines (CHAT_MSG_WHISPER_INFORM) and whispers yourself twice; the line
+-- with "fgp-hide" should not show in chat, the other should. Run it again
+-- in combat to see whether the text is readable then (secret values).
+local chatFilterAdded = false
+local function cmdChatFilter()
+    local add = resolve("ChatFrameUtil.AddMessageEventFilter") or ChatFrame_AddMessageEventFilter
+    log("INFO", "chatfilter: ChatFrameUtil.AddMessageEventFilter=%s ChatFrame_AddMessageEventFilter=%s",
+        type(resolve("ChatFrameUtil.AddMessageEventFilter")), type(ChatFrame_AddMessageEventFilter))
+    if type(add) ~= "function" then
+        log("FAIL", "chatfilter: no filter function")
+        return
+    end
+    if not chatFilterAdded then
+        local ok, err = pcall(add, "CHAT_MSG_WHISPER_INFORM", function(_, _, text, target)
+            local readable = not isSecret(text)
+            local hide = false
+            if readable then
+                hide = string.find(text, "fgp-hide", 1, true) ~= nil
+            end
+            store("RECV", "chatfilter: called, readable=%s target=%s hide=%s", show(readable),
+                readable and show(target) or "secret", show(hide))
+            return hide
+        end)
+        chatFilterAdded = ok
+        log(ok and "INFO" or "FAIL", "chatfilter: filter added %s %s", show(ok), show(err))
+    end
+    local me = myFullName()
+    local send = resolve("C_ChatInfo.SendChatMessage") or SendChatMessage
+    pcall(send, "fgp-hide this line should NOT show", "WHISPER", nil, me)
+    pcall(send, "fgp-show this line should show", "WHISPER", nil, me)
+    log("INFO", "chatfilter: whispered yourself twice; only the 'should show' line should be in chat")
+end
+
 local COMMANDS = {
     { "all", "run info, api, join, chan, whisper, big, ping and popup", cmdAll },
     { "info", "build, names, time, lockdown, group state", cmdInfo },
@@ -1856,6 +1890,7 @@ local COMMANDS = {
     { "images", "[page] show the dungeon background pictures the client has", cmdImages },
     { "zonelevels", "level ranges of the Quests & Zones activities", cmdZoneLevels },
     { "dropdown", "show the dropdown styles this client has", cmdDropdown },
+    { "chatfilter", "check that our own outgoing whispers can be hidden from chat", cmdChatFilter },
     { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },
     { "channels", "[name] member count of every joined channel (with a name: join it for the check)", cmdChannels },
     { "log", "[n] print the last n stored log lines", cmdLog },
