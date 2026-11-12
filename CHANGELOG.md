@@ -12,8 +12,8 @@
 - Next to each dungeon's counts: how many groups in WoW's Group Finder need one of your roles
   ("5 groups", hover for the leaders), and the total in "Looking now" ("14 groups need you").
   Hidden while "I'd like to lead" is on, since you then build your own group.
-- "Who is looking" has no tabs any more: one framed block per source, Forever Groups (Players,
-  Parties) and WoW Group Finder (Players, Groups), each table with its count (an empty one is a
+- "Who is looking" has no tabs any more: one framed block per source, Forever Groups (Parties,
+  Players) and WoW Group Finder (Groups, Players), each table with its count (an empty one is a
   single line) and the same columns, including a new "Needs" column: the
   places a party or group still has open. A small number on a needed role says how many (2 DPS
   still needed); the tooltip also says how many are in the group. "+3" after a name means the leader

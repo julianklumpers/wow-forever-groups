@@ -909,15 +909,16 @@ function QueueWindow.refresh()
     local suffix = shownRoles() and "  ·  filtered" or ""
     local top = -64 - TOP
     local y = top - BLOCK_BAND - 6
-    showSection(sections.queue, true)
+    -- Groups first, then players, in both blocks.
     local solo, parties, anyParty = queueLists()
-    sections.queue.header:SetText(caption("Players", #solo, suffix))
-    y = fillSection(sections.queue, y, solo, shownRoles() and "Nobody with these roles in the queue."
-        or "Nobody is in the Forever Groups queue right now.")
     showSection(sections.parties, true)
     sections.parties.header:SetText(caption("Parties", #parties, suffix))
     y = fillSection(sections.parties, y, parties, anyParty and "No party needs these roles."
         or "No Forever Groups party is queued right now.")
+    showSection(sections.queue, true)
+    sections.queue.header:SetText(caption("Players", #solo, suffix))
+    y = fillSection(sections.queue, y, solo, shownRoles() and "Nobody with these roles in the queue."
+        or "Nobody is in the Forever Groups queue right now.")
     placeBlock(blocks.addon, top, y + 4, true)
     -- With WoW's Group Finder turned off only Forever Groups players are shown.
     local useFinder = ns.Features.groupFinder()
@@ -941,12 +942,12 @@ function QueueWindow.refresh()
     else
         blocks.finder.note:SetText("not searched yet")
     end
-    sections.finder.header:SetText(caption("Players", #finder, suffix))
-    y = fillSection(sections.finder, y, finder, shownRoles() and "Nobody with these roles listed."
-        or "Nobody listed for your dungeons.")
     sections.groups.header:SetText(caption("Groups", #groups, suffix))
     y = fillSection(sections.groups, y, groups, shownRoles() and "No group needs these roles."
         or "No groups listed for your dungeons.")
+    sections.finder.header:SetText(caption("Players", #finder, suffix))
+    y = fillSection(sections.finder, y, finder, shownRoles() and "Nobody with these roles listed."
+        or "Nobody listed for your dungeons.")
     placeBlock(blocks.finder, top, y + 4, true)
     frame:SetHeight(-y + 10)
 end
