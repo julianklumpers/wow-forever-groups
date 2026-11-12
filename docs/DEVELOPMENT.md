@@ -194,7 +194,7 @@ their roles to invite them, by whisper to the leader (at most 3, nearest to full
 leader twice), and waits 60 s. An invite from an asked leader holds off building; joining that group leaves the
 Forever Groups queue. With no fitting group, or no invite in time, the player builds a group instead (inviting a player
 makes you a party leader, after which another group's invite cannot be accepted, hence this order). A solo player who
-ticked "I'd like to lead" (under the roles, `charDb.wantsLead`) asks no groups (`Apply.isSeeker`, and the questing
+turned on "Lead the group" (a toggle under the roles, `charDb.wantsLead`) asks no groups (`Apply.isSeeker`, and the questing
 side in `wow/questfinder.lua`) and builds the group right away. The wish travels as the last field of the queue
 entry (`v2|Q|…|<lead>`, "1"; older clients ignore it), and `Matchmaker.chooseLeaderEntry` picks the leader in this
 order: a party (it never breaks up), a solo player who would like to lead, the tank, the earliest entry. While a group is

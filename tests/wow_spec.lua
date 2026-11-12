@@ -485,7 +485,7 @@ describe("WoW UI", function()
         world:advance(CONNECT)
         local dps = clients[3]
         dps:slash("/dq")
-        local lead = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:14:14|t I'd like to lead"
+        local lead = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:14:14|t Lead the group"
         dps:click("CheckButton", lead)
         dps:click("CheckButton", "DPS")
         assert.is_not_nil(dps:findText("lead  ·"))
@@ -512,7 +512,7 @@ describe("WoW UI", function()
         local leader = world:addClient("Party Lead")
         world:advance(CONNECT)
         leader:slash("/dq")
-        local lead = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:14:14|t I'd like to lead"
+        local lead = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:14:14|t Lead the group"
         assert.is_not_nil(leader:find("CheckButton", lead))
         leader:joins("Friend One")
         leader:slash("/dq")

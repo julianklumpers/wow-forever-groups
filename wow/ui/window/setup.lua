@@ -291,11 +291,11 @@ function W.layoutChoices(y, withPlaystyle)
     -- Alone, the wish to lead sits on the same line, on the right; a party
     -- already has its leader.
     local solo = Party.state() == "solo"
-    ui.roleHint:SetWidth(WIDTH - 2 * PAD - (solo and LEAD_WIDTH or 0))
+    ui.roleHint:SetWidth(WIDTH - 2 * PAD - (solo and LEAD_WIDTH + 8 or 0))
     ui.leadCheck:SetShown(solo)
     if solo then
-        ui.leadCheck:SetChecked(ns.charDb.wantsLead == true)
-        W.place(ui.leadCheck, WIDTH - PAD - LEAD_WIDTH + 8, y + 5)
+        Widgets.paintChoice(ui.leadCheck, ns.charDb.wantsLead == true)
+        W.place(ui.leadCheck, WIDTH - PAD - LEAD_WIDTH, y + 8)
     end
     y = y - 26
     if not withPlaystyle then
@@ -437,10 +437,10 @@ function W.buildRoles()
     ui.roleHint:SetWidth(WIDTH - 2 * PAD)
     ui.roleHint:SetTextColor(0.85, 0.85, 0.85)
     ui.roleHint:SetWordWrap(false)
-    ui.leadCheck = Widgets.check(W.frame, "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:14:14|t I'd like to lead",
-        function(self)
-        W.setWantsLead(self:GetChecked())
-    end)
+    ui.leadCheck = Widgets.choice(W.frame, "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:14:14|t Lead the group",
+        LEAD_WIDTH, function()
+            W.setWantsLead(not ns.charDb.wantsLead)
+        end)
     Widgets.tooltip(ui.leadCheck, "I'd like to lead the group", "You become the group's leader when a group forms "
         .. "with you, unless a party already has a leader. Forever Groups won't ask listed groups to invite you: it "
         .. "builds the group for you, with you as its leader.")

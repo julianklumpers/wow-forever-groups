@@ -19,7 +19,7 @@ in the group, with roles set for you.
 
 - **Dungeons** — queue for one or more dungeons that fit your level, solo or with your party.
 - **Group quests** — a Quests tab with the group and elite quests in your quest log.
-- **Lead if you like** — tick "I'd like to lead" and you become the leader of the group that
+- **Lead if you like** — turn on "Lead the group" and you become the leader of the group that
   forms; Forever Groups builds it for you.
 - **Playstyle** — Learning, Relaxed, Competitive or Carry Offered; you're grouped with
   like-minded players.
