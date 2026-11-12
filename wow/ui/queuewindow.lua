@@ -819,7 +819,7 @@ end
 local function groupFinderItems()
     local items = {}
     for _, listing in ipairs(QueueWindow.groupFinderPlayers(mode)) do
-        items[#items + 1] = { roles = listing.roles, needs = "", name = listing.name,
+        items[#items + 1] = { roles = listing.roles, needs = "", name = listing.name, listing = listing,
             dungeonText = areaText(listing.dungeons, listing.zones), player = listing.name,
             time = Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
             level = listing.level,
@@ -855,10 +855,21 @@ end
 -- Hovering a party (Forever Groups) or a listed group: who is in it and
 -- what it still needs.
 function QueueWindow.showRowTooltip(row, item)
-    if not GameTooltip or not item or not (item.party or item.group) then
+    local listing = item and (item.group or item.listing)
+    local comment = listing and listing.comment
+    if not GameTooltip or not item or not (item.party or item.group or comment) then
         return
     end
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+    if not item.party and not item.group then
+        GameTooltip:SetText(item.name, unpack(item.color))
+        GameTooltip:AddLine("\"" .. comment .. "\"", 1, 1, 1, true)
+        if item.player then
+            GameTooltip:AddLine("Right-click: whisper or invite", 0.6, 0.6, 0.6)
+        end
+        GameTooltip:Show()
+        return
+    end
     local needs = (item.needs or "") ~= "" and ("needs " .. describe(item.needs, item.needCounts)) or "full"
     if item.party then
         local entry = item.party
@@ -873,10 +884,12 @@ function QueueWindow.showRowTooltip(row, item)
                 spec and (spec .. ", ") or "", Widgets.describeRoles(member.roles)), r, g, b)
         end
     else
-        local listing = item.group
         GameTooltip:SetText(string.format("Group of %d  ·  %s", listing.members or 1, needs), 1, 0.82, 0)
         local r, g, b = Widgets.classColor(listing.classToken)
         GameTooltip:AddLine(listing.leader .. " (leader)", r, g, b)
+        if comment then
+            GameTooltip:AddLine("\"" .. comment .. "\"", 1, 1, 1, true)
+        end
         if item.roles ~= "" then
             GameTooltip:AddLine("Has: " .. describe(item.roles, item.roleCounts), 0.85, 0.85, 0.85)
         end

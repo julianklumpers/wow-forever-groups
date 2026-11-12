@@ -218,7 +218,9 @@ when it last searched): **Forever Groups** with Parties and then Players (queued
 Finder** with Groups and then Players (solo players listed for your dungeons). Every table has the same columns: Roles (what the
 players can play; a party or group: the roles already in it), Needs (the places a party or group still has open,
 empty for a solo player; a party's from `Filler.missingFor`, a listed group's from its `remaining`), Name ("+N" for
-the other members), Lvl, Dungeons and Time. Hovering a party or group lists who is in it and what it needs. An empty table shows only its caption and a line of
+the other members), Lvl, Dungeons and Time. Hovering a party or group lists who is in it and what it needs, plus a Group Finder listing's note
+(`listing.comment`, also for a solo player). WoW passes the note as a protected `|K...|k` string: shown as text by a
+font string or tooltip, but unreadable to addons, so it cannot be matched to quests. An empty table shows only its caption and a line of
 text, without column headers. Each table folds (its caption is a +/- button) to one line with a summary ("5 tanks,
 16 DPS", "12 need DPS"). By default the half that fits what the player does is open: players with "I'd like to
 lead" on (they build a group), groups otherwise (they look for a place); a fold the player sets is kept in

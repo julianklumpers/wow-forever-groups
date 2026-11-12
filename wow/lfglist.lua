@@ -152,8 +152,15 @@ local function readResult(id, areasOf, field)
             end
         end
     end
+    -- The listing's note is a protected string (|K...|k): it can be shown in
+    -- a tooltip or font string, but its text cannot be read.
+    local comment = info.comment
+    if type(comment) ~= "string" or isSecret(comment) or comment == "" then
+        comment = nil
+    end
     return {
         id = id, name = name, leader = name, level = tonumber(leader.level), classToken = leader.classFilename,
+        comment = comment,
         roles = roles, [field] = areas, age = tonumber(info.age) or 0, solo = info.numMembers == 1,
         members = tonumber(info.numMembers) or 1,
         remaining = remaining, playstyle = ns.Playstyle.fromWoW(info.generalPlaystyle),

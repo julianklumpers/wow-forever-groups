@@ -577,6 +577,17 @@ describe("Who is looking for group quests", function()
         assert.is_nil(client:findText("^Dungeon Dps$"))
         assert.is_not_nil(client:find("Button", "Zone"))
         assert.is_not_nil(client:findText("^Elwynn Forest$"))
+        for _, listing in ipairs(world.listings) do
+            listing.comment = listing.leaderName == "Zone Group" and "|Kt157|k" or nil
+        end
+        world:advance(11)
+        client:click("Button", "Refresh")
+        client:click("Button", "Refresh")
+        world:advance(1)
+        local groupRow = client:findText("^Zone Group %+2$").parent
+        groupRow.scripts.OnEnter(groupRow)
+        local tip = table.concat(client.env.GameTooltip.lines, "\n")
+        assert.is_truthy(tip:find('"|Kt157|k"', 1, true))
 
         client:click("Button", "Dungeons")
         world:advance(1)

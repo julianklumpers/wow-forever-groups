@@ -748,6 +748,14 @@ local function buildEnv(world, client)
     function methods.SetText(widget, text)
         widget.text = text
     end
+    -- A tooltip keeps its lines from SetOwner on.
+    function methods.SetOwner(widget)
+        widget.lines = {}
+    end
+    function methods.AddLine(widget, text)
+        widget.lines = widget.lines or {}
+        widget.lines[#widget.lines + 1] = text
+    end
     function methods.GetText(widget)
         return widget.text
     end
@@ -1087,7 +1095,8 @@ local function buildEnv(world, client)
         GetSearchResultInfo = function(id)
             local l = world.listings[id]
             local info = { leaderName = l.leaderName, numMembers = l.numMembers, activityIDs = l.activityIDs,
-                age = l.age, isDelisted = l.isDelisted == true, generalPlaystyle = l.generalPlaystyle or 0 }
+                age = l.age, isDelisted = l.isDelisted == true, generalPlaystyle = l.generalPlaystyle or 0,
+                comment = l.comment or "" }
             return client.lockdown and secretCopy(info) or info
         end,
         GetSearchResultLeaderInfo = function(id)

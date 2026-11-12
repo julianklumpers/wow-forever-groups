@@ -16,6 +16,8 @@
   the questing queue plus the players and groups listed in WoW's Group Finder (Quests & Zones)
   in those zones and in every zone suggested for your level, also without group quests of your
   own. An open "Who is looking" switches along when you switch tabs.
+- "Who is looking" shows a Group Finder listing's note in its tooltip (often which quest a
+  group is for), for groups and for solo players who wrote one.
 - Next to each dungeon's counts: how many groups in WoW's Group Finder need one of your roles
   ("5 groups", hover for the leaders), and the total in "Looking now" ("14 groups need you").
   Hidden while "I'd like to lead" is on, since you then build your own group.
