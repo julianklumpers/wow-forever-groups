@@ -622,6 +622,12 @@ function Engine:receive(sender, text)
         return
     end
     local msg = Protocol.decode(text, self.space)
+    -- A newcomer's sync request only exists in the dungeon protocol; the
+    -- questing queue answers it too.
+    if not msg and self.space then
+        local request = Protocol.decode(text)
+        msg = request and request.kind == "sync" and request or nil
+    end
     if not msg or not Protocol.isValidName(sender) or not handlers[msg.kind] then
         return
     end

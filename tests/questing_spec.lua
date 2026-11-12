@@ -536,6 +536,18 @@ describe("the window's status card", function()
     end)
 end)
 
+describe("a player who logs in while others look for a questing group", function()
+    it("sees them within seconds, not at their next heartbeat", function()
+        local world = World.new()
+        local waiting = questers(world, { "Aaa Player" })[1]
+        world:advance(2)
+        assert.is_not_nil(waiting.ns.questEngine.myEntry)
+        local newcomer = world:addClient("Bbb Player", { level = 20, questLog = questLog() })
+        world:advance(12 + 6)
+        assert.is_not_nil(newcomer.ns.questEngine.queue:get("Aaa Player"))
+    end)
+end)
+
 describe("the tabs while waiting", function()
     it("hide in one queue, come back through the link and in both queues", function()
         local world = World.new()

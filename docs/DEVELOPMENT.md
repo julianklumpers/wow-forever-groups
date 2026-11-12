@@ -20,7 +20,8 @@ The matchmaker is the queued player whose client has been online longest (ties b
 stable client. The three likeliest matchmakers also send a keep-alive (`v2|K`) every 10 s; one that is silent for 25 s
 is skipped and the next takes over. Any message of a player counts as alive in both queues (dungeons and questing),
 and a keep-alive is only sent when the client sent nothing else in the last 10 s, so a player in both queues sends
-one stream of keep-alives, not two. A client that joins asks for the state (`v2|S`); queued players answer with their
+one stream of keep-alives, not two. A client that joins asks for the state (`v2|S`); queued players (in both queues: the questing engine answers the
+dungeon protocol's sync too) answer with their
 entry and re-send the open proposals they made or answered, so the newcomer knows who is reserved. Proposals resolve
 on every client, so they complete even if the matchmaker disappears.
 
