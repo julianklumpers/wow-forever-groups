@@ -163,35 +163,60 @@ describe("playstyles in the game", function()
         assert.are.same({ "Calm Group" }, asked)
     end)
 
-    it("lets the player choose in the window", function()
+    local function pick(client, word)
+        for _, item in ipairs(client:dropdownItems(client:find("DropdownButton", client.ns.Playstyle.word(
+            client.ns.Playstyle.mine())))) do
+            if item.text == word then
+                return item.pick()
+            end
+        end
+        error("no playstyle " .. word)
+    end
+
+    it("lets the player choose in WoW's dropdown on the roles header", function()
         local world = World.new()
-        world:list("Listed Heal", "H", 799, 20, 300)
         local client = world:addClient("Solo Tank", { level = 20 })
         world:advance(30)
         client:slash("/dq")
         assert.are.equal(0, client.ns.Playstyle.mine())
         assert.is_not_nil(client:findText("^Playstyle:$"))
-        client:click("Button", "Any")
-        local menu = client:frame("ForeverGroupsPlaystyleMenu")
-        assert.is_true(menu:IsShown())
-        assert.is_not_nil(client:findText("^Grouped with everyone%.$"))
-        client:click("Button", "Expert", menu)
-        assert.is_false(menu:IsShown())
+        local items = client:dropdownItems(client:find("DropdownButton", "Any"))
+        local words, selected = {}, {}
+        for _, item in ipairs(items) do
+            words[#words + 1] = item.text
+            if item.selected then
+                selected[#selected + 1] = item.text
+            end
+        end
+        assert.are.same({ "Any", "Relaxed", "Learning", "Serious", "Expert" }, words)
+        assert.are.same({ "Any" }, selected)
+        assert.are.equal("Grouped with everyone.", items[1].tooltip[3])
+        pick(client, "Expert")
         assert.are.equal(EXPERT, client.ns.charDb.playstyle)
-        assert.is_not_nil(client:find("Button", "Expert"))
-        client:slash("/dq style serious")
-        assert.is_not_nil(client:find("Button", "Serious"))
+        assert.is_not_nil(client:find("DropdownButton", "Expert"))
         client:slash("/dq style any")
-        assert.are.equal(0, client.ns.Playstyle.mine())
-        assert.is_not_nil(client:find("Button", "Any"))
+        assert.is_not_nil(client:find("DropdownButton", "Any"))
         assert.are.equal(World.PLAYSTYLE.FunRelaxed, client.ns.Playstyle.listingValue())
-        client:click("Button", "Any")
-        client:click("Button", "Expert", menu)
+        pick(client, "Expert")
         client:click("CheckButton", "Tank")
         client:slash("/dq join tank dm")
         client.ns.Filler.stop()
         world:advance(1)
         assert.are.equal(EXPERT, client.ns.engine.myEntry.playstyle)
         assert.is_not_nil(client:findText("^Searching 1 dungeon  ·  Expert or Serious$"))
+    end)
+
+    it("falls back to its own list on a client without WoW's dropdown", function()
+        local world = World.new()
+        local client = world:addClient("Solo Tank", { level = 20, noDropdownButton = true })
+        world:advance(30)
+        client:slash("/dq")
+        client:click("Button", "Any")
+        local menu = client:frame("ForeverGroupsPlaystyleMenu")
+        assert.is_true(menu:IsShown())
+        client:click("Button", "Learning", menu)
+        assert.is_false(menu:IsShown())
+        assert.are.equal(LEARNING, client.ns.charDb.playstyle)
+        assert.is_not_nil(client:find("Button", "Learning"))
     end)
 end)

@@ -27,7 +27,6 @@ local PARTY_ROW_HEIGHT = W.PARTY_ROW_HEIGHT
 local QUEUE_ROWS = W.QUEUE_ROWS
 local QUEUE_ROW_HEIGHT = W.QUEUE_ROW_HEIGHT
 local ERRORS = W.ERRORS
-local PLAYSTYLE_WIDTH = 120
 local LEAD_BOX = 20
 local ui = W.ui
 local roleToggles = W.roleToggles
@@ -246,7 +245,7 @@ function W.setSetupShown(shown)
         ui.leadCheck:Hide()
         ui.playstyleButton:Hide()
         ui.playstyleLabel:Hide()
-        ns.PlaystyleMenu.hide()
+        W.hidePlaystyleMenu()
     end
     if not shown then
         ui.partyHeader:Hide()
@@ -300,12 +299,15 @@ function W.layoutChoices(y, withPlaystyle)
     ui.playstyleLabel:SetShown(withPlaystyle)
     if withPlaystyle then
         local mine = ns.Playstyle.mine()
-        ui.playstyleButton.label:SetText(ns.Playstyle.word(mine))
-        W.place(ui.playstyleButton, right - PLAYSTYLE_WIDTH, y + 3)
+        local button = ui.playstyleButton
+        button.label:SetText(ns.Playstyle.word(mine))
+        local width = (button.label:GetStringWidth() or 0) + 17
+        button:SetWidth(width)
+        W.place(button, right - width, y + 3)
         ui.playstyleLabel:ClearAllPoints()
         ui.playstyleLabel:SetPoint("RIGHT", ui.playstyleButton, "LEFT", -6, 0)
     else
-        ns.PlaystyleMenu.hide()
+        W.hidePlaystyleMenu()
     end
     y = y - 26
     for i, role in ipairs(Widgets.ROLES) do
@@ -461,38 +463,77 @@ function W.buildRoles()
     end
 end
 
--- The playstyle as a dropdown on the roles header: a button with the
--- current choice that opens the list (wow/ui/playstylemenu.lua).
+local function pickPlaystyle(id)
+    ns.Playstyle.set(id)
+    W.setHint("")
+    ns.Window.refresh()
+end
+
+-- WoW's own menu (the one of its Group Finder's playstyle dropdown): a radio
+-- per playstyle, with who you are grouped with in its tooltip.
+local function setupMenu(button)
+    button:SetupMenu(function(_, root)
+        for _, id in ipairs(ns.Playstyle.ORDER) do
+            local radio = root:CreateRadio(ns.Playstyle.word(id), function(value)
+                return ns.Playstyle.mine() == value
+            end, function(value)
+                pickPlaystyle(value)
+                return MenuResponse and MenuResponse.Close
+            end, id)
+            if radio and radio.SetTooltip then
+                radio:SetTooltip(function(tooltip)
+                    tooltip:SetText(ns.Playstyle.word(id), 1, 0.82, 0)
+                    tooltip:AddLine(ns.Playstyle.DESCRIPTIONS[id], 1, 1, 1, true)
+                    tooltip:AddLine(ns.Playstyle.partnersText(id), 0.8, 0.8, 0.8, true)
+                end)
+            end
+        end
+    end)
+end
+
+-- The playstyle on the roles header: the choice and WoW's yellow arrow, no
+-- frame around them; it opens WoW's own menu, or our list on a client
+-- without one (wow/ui/playstylemenu.lua).
 function W.buildPlaystyle()
     ui.playstyleLabel = Widgets.text(W.frame, "GameFontNormalSmall")
     ui.playstyleLabel:SetText("Playstyle:")
-    local button = CreateFrame("Button", nil, W.frame)
-    button:SetSize(PLAYSTYLE_WIDTH, 20)
-    button.bg = button:CreateTexture(nil, "BACKGROUND")
-    button.bg:SetAllPoints()
-    button.bg:SetColorTexture(0, 0, 0, 0.5)
-    button.edge = button:CreateTexture(nil, "BORDER")
-    button.edge:SetPoint("TOPLEFT", -1, 1)
-    button.edge:SetPoint("BOTTOMRIGHT", 1, -1)
-    button.edge:SetColorTexture(1, 0.82, 0, 0.35)
-    button.label = Widgets.text(button, "GameFontHighlightSmall")
-    button.label:SetPoint("LEFT", 6, 0)
-    button.arrow = button:CreateTexture(nil, "ARTWORK")
-    button.arrow:SetSize(14, 14)
-    button.arrow:SetPoint("RIGHT", -3, 0)
-    button.arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
-    button.arrow:SetRotation(-math.pi / 2)
-    button:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-    button:SetScript("OnClick", function(self)
-        ns.PlaystyleMenu.toggle(self, function(id)
-            ns.Playstyle.set(id)
-            W.setHint("")
-            ns.Window.refresh()
+    local ok, button = pcall(CreateFrame, "DropdownButton", nil, W.frame)
+    local native = ok and button and type(button.SetupMenu) == "function"
+    if not native then
+        if ok and button then
+            button:Hide()
+        end
+        button = CreateFrame("Button", nil, W.frame)
+        button:SetScript("OnClick", function(self)
+            ns.PlaystyleMenu.toggle(self, pickPlaystyle)
         end)
+    end
+    button:SetHeight(20)
+    button.label = Widgets.text(button, "GameFontHighlightSmall")
+    button.label:SetPoint("LEFT", 0, 0)
+    button.arrow = button:CreateTexture(nil, "ARTWORK")
+    button.arrow:SetSize(16, 16)
+    button.arrow:SetPoint("LEFT", button.label, "RIGHT", 1, 0)
+    button.arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
+    button:HookScript("OnEnter", function(self)
+        self.label:SetTextColor(1, 0.82, 0)
     end)
-    Widgets.tooltip(button, "Playstyle", "Who you are grouped with. Any: everyone. Relaxed and Learning go "
-        .. "together, and so do Competitive and Carry Offered.")
+    button:HookScript("OnLeave", function(self)
+        self.label:SetTextColor(1, 1, 1)
+    end)
+    if native then
+        setupMenu(button)
+    end
+    button.native = native
     ui.playstyleButton = button
+end
+
+function W.hidePlaystyleMenu()
+    local button = ui.playstyleButton
+    if button and button.native and type(button.CloseMenu) == "function" then
+        pcall(button.CloseMenu, button)
+    end
+    ns.PlaystyleMenu.hide()
 end
 
 function W.buildParty()

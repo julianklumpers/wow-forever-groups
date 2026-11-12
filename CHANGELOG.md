@@ -8,7 +8,7 @@
   the "reversed order" note.
 - Playstyle is no longer required: "Any" is the new default and groups you with everyone, so
   more players fit together. The playstyle moved from its own section to a dropdown on the
-  "Your roles" header; pick one there (or `/fg style relaxed`, `/fg style any`) to be grouped
+  "Your roles" header, in WoW's own menu style; pick one there (or `/fg style relaxed`, `/fg style any`) to be grouped
   with like-minded players only. A playstyle you picked before is kept. Your own WoW Group
   Finder listing still says Relaxed when you have no preference, since WoW requires one.
 - "I'd like to lead" on the roles header: when a group forms with you, you become its leader (a

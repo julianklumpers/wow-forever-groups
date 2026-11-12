@@ -293,6 +293,31 @@ function Client:click(kind, text, root)
     self.inClick = false
 end
 
+-- The radios of a WoW dropdown menu (SetupMenu), as WoW builds them on
+-- opening: { text, selected, pick(), tooltip lines }.
+function Client:dropdownItems(button)
+    local items = {}
+    local root = {}
+    function root.CreateRadio(_, text, isSelected, setSelected, data)
+        local item = { text = text, selected = isSelected(data) and true or false }
+        item.pick = function()
+            setSelected(data)
+        end
+        items[#items + 1] = item
+        return { SetTooltip = function(_, fn)
+            local lines = {}
+            local tooltip = {
+                SetText = function(_, line) lines[#lines + 1] = line end,
+                AddLine = function(_, line) lines[#lines + 1] = line end,
+            }
+            fn(tooltip)
+            item.tooltip = lines
+        end }
+    end
+    assert(button.menuGenerator, self.name .. ": no menu on this dropdown")(button, root)
+    return items
+end
+
 function Client:frame(name)
     return self.env[name]
 end
@@ -705,6 +730,9 @@ local function buildEnv(world, client)
         end
         return widget
     end
+    function methods.SetupMenu(widget, generator)
+        widget.menuGenerator = generator
+    end
     function methods.RegisterEvent(widget, event)
         widget.events[event] = true
     end
@@ -825,6 +853,9 @@ local function buildEnv(world, client)
     env.CreateFrame = function(kind, name, parent, template)
         if template == "EyeTemplate" and client.noEyeTemplate then
             error("Couldn't find inherited node \"EyeTemplate\"")
+        end
+        if kind == "DropdownButton" and client.noDropdownButton then
+            error("Unknown frame type 'DropdownButton'")
         end
         local frame = newWidget(kind, name, parent)
         frame.template = template
@@ -1148,7 +1179,8 @@ function World:addClient(name, opts)
         widgets = {}, party = {}, partyClasses = {}, isLeader = false, class = opts.class,
         searches = 0, blockedSearches = 0, roles = {}, roleSets = {}, notices = {},
         applicants = {}, applicantInvites = {},
-        noEyeTemplate = opts.noEyeTemplate, version = opts.version, talents = opts.talents,
+        noEyeTemplate = opts.noEyeTemplate, noDropdownButton = opts.noDropdownButton,
+        version = opts.version, talents = opts.talents,
         questLog = opts.questLog or {}, positions = {}, visible = {}, popups = {}, pushed = {},
         inspectTalents = {}, inspects = {}, farAway = {},
         activityLevels = opts.activityLevels or World.ACTIVITY_LEVELS, journalEntrances = opts.journalEntrances or {},

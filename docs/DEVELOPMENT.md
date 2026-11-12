@@ -85,12 +85,13 @@ to copy.
 
 ### Playstyle
 
-A dropdown on the roles header (dungeons tab only; `W.buildPlaystyle` in `wow/ui/window/setup.lua`, its list in
-`wow/ui/playstylemenu.lua`) offers "Any" (the default, `Playstyles.ANY`) and the four playstyles of WoW's Group
+A dropdown on the roles header (dungeons tab only; `W.buildPlaystyle` in `wow/ui/window/setup.lua`): the choice
+and WoW's yellow arrow without a frame, on a `DropdownButton` whose `SetupMenu` builds WoW's own menu with a radio per
+playstyle (its tooltip says who you're grouped with). A client without `DropdownButton` gets our own list instead
+(`wow/ui/playstylemenu.lua`). It offers "Any" (the default, `Playstyles.ANY`) and the four playstyles of WoW's Group
 Finder: Relaxed, Learning, Serious or Expert (the words come from `GetGeneralPlaystyleString`). "Any" goes with
 everyone; Learning and Relaxed players are grouped together, and so are Serious and Expert ones; the two camps never
-are (`core/playstyles.lua`). The list closes on a choice, on Escape (`UISpecialFrames`) and on a click elsewhere
-(`GLOBAL_MOUSE_DOWN`). The playstyle travels in the queue entry, the matchmaker keeps each group within one camp,
+are (`core/playstyles.lua`). The playstyle travels in the queue entry, the matchmaker keeps each group within one camp,
 and a client turns down a proposal that mixes them. The proposal popup, the status and the party message name the
 group's playstyles, the one most players picked first (on a tie the calmer one).
 

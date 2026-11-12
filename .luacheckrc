@@ -4,6 +4,14 @@ codes = true
 exclude_files = { ".lua51/", "dist/", ".lua/", ".luarocks/", ".install/" }
 
 local wow_read_globals = {
+    "MenuResponse",
+    "GameTooltip_AddNormalLine",
+    "GameTooltip_SetTitle",
+    "UIDropDownMenu_AddButton",
+    "UIDropDownMenu_CreateInfo",
+    "UIDropDownMenu_Initialize",
+    "UIDropDownMenu_SetText",
+    "UIDropDownMenu_SetWidth",
     "ACCEPT",
     "Ambiguate",
     "C_AddOns",

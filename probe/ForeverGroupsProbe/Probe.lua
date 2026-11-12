@@ -1742,6 +1742,94 @@ local function cmdZoneLevels()
         count, show(category), withLevels)
 end
 
+local dropdownFrame
+local DROPDOWN_STYLES = { "Any", "Relaxed", "Learning", "Competitive", "Carry Offered" }
+
+-- Which dropdowns this client has: the 11.0 one (WowStyle1DropdownTemplate,
+-- SetupMenu with radios) and the old UIDropDownMenu. Shows each that exists.
+local function cmdDropdown()
+    log("INFO", "dropdown: MenuUtil=%s CreateContextMenu=%s UIDropDownMenu_Initialize=%s",
+        type(MenuUtil), type(MenuUtil) == "table" and type(MenuUtil.CreateContextMenu) or "nil",
+        type(UIDropDownMenu_Initialize))
+    if dropdownFrame then
+        dropdownFrame:SetShown(not dropdownFrame:IsShown())
+        return
+    end
+    dropdownFrame = CreateFrame("Frame", "ForeverGroupsProbeDropdowns", UIParent, "BasicFrameTemplateWithInset")
+    dropdownFrame:SetSize(420, 170)
+    dropdownFrame:SetPoint("CENTER")
+    dropdownFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    dropdownFrame:EnableMouse(true)
+    dropdownFrame:SetMovable(true)
+    dropdownFrame:RegisterForDrag("LeftButton")
+    dropdownFrame:SetScript("OnDragStart", dropdownFrame.StartMoving)
+    dropdownFrame:SetScript("OnDragStop", dropdownFrame.StopMovingOrSizing)
+    local title = dropdownFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    title:SetPoint("TOP", 0, -5)
+    title:SetText("Dropdowns (/fgp dropdown)")
+
+    local chosenNew, chosenOld = 1, 1
+    local newLabel = dropdownFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    newLabel:SetPoint("TOPLEFT", 20, -40)
+    newLabel:SetText("1) WowStyle1DropdownTemplate")
+    local ok, newDropdown = pcall(CreateFrame, "DropdownButton", nil, dropdownFrame, "WowStyle1DropdownTemplate")
+    if ok and newDropdown and type(newDropdown.SetupMenu) == "function" then
+        newDropdown:SetPoint("TOPLEFT", 20, -60)
+        if newDropdown.SetWidth then
+            newDropdown:SetWidth(150)
+        end
+        local setupOk, err = pcall(newDropdown.SetupMenu, newDropdown, function(_, root)
+            for i, word in ipairs(DROPDOWN_STYLES) do
+                local radio = root:CreateRadio(word, function()
+                    return chosenNew == i
+                end, function()
+                    chosenNew = i
+                    log("RECV", "dropdown: new style picked %s", word)
+                end)
+                if radio and radio.SetTooltip then
+                    radio:SetTooltip(function(tooltip)
+                        GameTooltip_SetTitle(tooltip, word)
+                        GameTooltip_AddNormalLine(tooltip, "Tooltip for " .. word)
+                    end)
+                end
+            end
+        end)
+        log("INFO", "dropdown: new style created, SetupMenu %s %s", show(setupOk), show(err))
+    else
+        log("WARN", "dropdown: no WowStyle1DropdownTemplate (%s)", show(newDropdown))
+        newLabel:SetText("1) WowStyle1DropdownTemplate: not available")
+    end
+
+    local oldLabel = dropdownFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    oldLabel:SetPoint("TOPLEFT", 20, -100)
+    oldLabel:SetText("2) UIDropDownMenuTemplate")
+    local oldOk, oldDropdown = pcall(CreateFrame, "Frame", "ForeverGroupsProbeOldDropdown", dropdownFrame,
+        "UIDropDownMenuTemplate")
+    if oldOk and oldDropdown and type(UIDropDownMenu_Initialize) == "function" then
+        oldDropdown:SetPoint("TOPLEFT", 4, -116)
+        UIDropDownMenu_SetWidth(oldDropdown, 130)
+        UIDropDownMenu_Initialize(oldDropdown, function()
+            for i, word in ipairs(DROPDOWN_STYLES) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = word
+                info.checked = chosenOld == i
+                info.func = function()
+                    chosenOld = i
+                    UIDropDownMenu_SetText(oldDropdown, word)
+                    log("RECV", "dropdown: old style picked %s", word)
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end)
+        UIDropDownMenu_SetText(oldDropdown, DROPDOWN_STYLES[1])
+        log("INFO", "dropdown: old style created")
+    else
+        log("WARN", "dropdown: no UIDropDownMenuTemplate (%s)", show(oldDropdown))
+        oldLabel:SetText("2) UIDropDownMenuTemplate: not available")
+    end
+    table.insert(UISpecialFrames, "ForeverGroupsProbeDropdowns")
+end
+
 local COMMANDS = {
     { "all", "run info, api, join, chan, whisper, big, ping and popup", cmdAll },
     { "info", "build, names, time, lockdown, group state", cmdInfo },
@@ -1767,6 +1855,7 @@ local COMMANDS = {
     { "loadscreens", "[page] show the loading screens (classic by name, Forever's by file id)", cmdLoadScreens },
     { "images", "[page] show the dungeon background pictures the client has", cmdImages },
     { "zonelevels", "level ranges of the Quests & Zones activities", cmdZoneLevels },
+    { "dropdown", "show the dropdown styles this client has", cmdDropdown },
     { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },
     { "channels", "[name] member count of every joined channel (with a name: join it for the check)", cmdChannels },
     { "log", "[n] print the last n stored log lines", cmdLog },

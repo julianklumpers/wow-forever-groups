@@ -13,7 +13,7 @@ local menu
 
 local function build()
     menu = CreateFrame("Frame", "ForeverGroupsPlaystyleMenu", UIParent)
-    menu:SetFrameStrata("DIALOG")
+    menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetClampedToScreen(true)
     menu:EnableMouse(true)
     local background = menu:CreateTexture(nil, "BACKGROUND")
