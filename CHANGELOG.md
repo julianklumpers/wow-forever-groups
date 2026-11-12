@@ -12,8 +12,8 @@
 - "Who is looking" has no tabs any more: one framed block per source, Forever Groups (Players,
   Parties) and WoW Group Finder (Players, Groups), each table with its count (an empty one is a
   single line) and the same columns, including a new "Needs" column: the
-  places a party or group still has open. A small number on a role icon says how many (2 DPS in
-  the group, or 2 DPS still needed). "+3" after a name means the leader
+  places a party or group still has open. A small number on a needed role says how many (2 DPS
+  still needed); the tooltip also says how many are in the group. "+3" after a name means the leader
   plus three. Hover a party or group to see who is in it.
 - Filling from WoW's Group Finder no longer holds a role for a Forever Groups player who is
   building a group of their own, or when your own group isn't in the queue (e.g. "Fill from

@@ -462,7 +462,7 @@ describe("Queue window", function()
         assert.are.equal("2", groupRow.needs[1].count.text)
         assert.are.equal("", groupRow.icons[3].count.text)
         local healRow = client:findText("^Needs Heal %+3$").parent
-        assert.are.equal("3", healRow.icons[2].count.text)
+        assert.are.equal("", healRow.icons[2].count.text)
         assert.are.equal("", healRow.needs[1].count.text)
         local needsHeaders = 0
         for _, widget in ipairs(client.widgets) do

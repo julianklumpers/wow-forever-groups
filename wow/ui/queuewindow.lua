@@ -364,7 +364,7 @@ end
 local function paintRow(row, item)
     row.item = item
     local name, color = item.name, item.color
-    paintIcons(row.icons, item.roles, item.roleCounts)
+    paintIcons(row.icons, item.roles)
     paintIcons(row.needs, item.needs or "", item.needCounts)
     row.name:SetText(name)
     row.name:SetTextColor(color[1], color[2], color[3])
