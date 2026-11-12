@@ -218,7 +218,9 @@ long they are listed). Each list has its own column headers (Role, Name, Level, 
 second click reverses (`db.queueSort`, `db.queueSortReverse`). Right-clicking a row opens `wow/ui/playermenu.lua`
 (WoW's `MenuUtil` context menu, else a small menu of our own): Whisper and Invite to group for a player; Request to
 join and Whisper leader for a group. Request to join whispers the leader the `applyAsk` message
-(`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised.
+(`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised. The main window
+counts, per dungeon and in "Looking now", the listed groups that need one of the player's ticked roles
+(`QueueWindow.groupsNeedingMe`, from the listings' `remaining`); the dungeon's tooltip names their leaders.
 
 ### During and after forming
 
