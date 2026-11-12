@@ -9,9 +9,10 @@
 - Next to each dungeon's counts: how many groups in WoW's Group Finder need one of your roles
   ("5 groups", hover for the leaders), and the total in "Looking now" ("14 groups need you").
   Hidden while "I'd like to lead" is on, since you then build your own group.
-- "Who is looking" has no tabs any more: three tables (Forever Groups players, solo players in
-  WoW's Group Finder, and groups in WoW's Group Finder) with the same columns, including a new
-  "Needs" column: the places a party or group still has open. "+3" after a name means the leader
+- "Who is looking" has no tabs any more: solo players and groups in separate tables (Forever
+  Groups players, Forever Groups parties when there are any, solo players in WoW's Group Finder,
+  and groups in WoW's Group Finder) with the same columns, including a new "Needs" column: the
+  places a party or group still has open. "+3" after a name means the leader
   plus three. Hover a party or group to see who is in it.
 - Filling from WoW's Group Finder no longer holds a role for a Forever Groups player who is
   building a group of their own, or when your own group isn't in the queue (e.g. "Fill from

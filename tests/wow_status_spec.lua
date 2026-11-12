@@ -495,10 +495,13 @@ describe("Queue window", function()
         local client = world:addClient("Solo Player", { level = 20 })
         world:advance(CONNECT)
         local engine = client.ns.engine
+        client:slash("/dq queue")
+        assert.is_nil(client:findText("^Forever Groups parties"))
         engine.queue:upsert({ id = "Party Lead", joinedAt = 1, dungeons = { "5" }, reserved = "", members = {
             { name = "Party Lead", roles = "H", level = 20 }, { name = "Friend One", roles = "T", level = 20 },
         } }, engine:now())
-        client:slash("/dq queue")
+        client.ns.QueueWindow.refresh()
+        assert.is_not_nil(client:findText("^Forever Groups parties$"))
         local row = client:findText("^Party Lead %+1$").parent
         assert.is_true(row.needs[1].shown)
         assert.is_nil(row.needs[2].shown == true and row.needs[2] or nil)

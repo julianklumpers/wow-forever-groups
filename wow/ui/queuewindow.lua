@@ -557,7 +557,18 @@ local function queueItems()
             level = entry.members[1].level,
             color = entry.id == ns.selfName and { 1, 0.82, 0 } or { Widgets.classColor(ns.Specs.decode(entry.spec)) } }
     end
-    return sorted(items)
+    return items
+end
+
+-- Queued solo players and queued parties, each list sorted; also whether any
+-- party is queued at all (before the role filter).
+local function queueLists()
+    local solo, parties = {}, {}
+    for _, item in ipairs(queueItems()) do
+        local list = item.party and parties or solo
+        list[#list + 1] = item
+    end
+    return sorted(solo), sorted(parties), #parties > 0
 end
 
 -- A listed group's roles already in it and its open places, e.g. "HD", "T".
@@ -685,7 +696,7 @@ end
 
 local function refreshSortBar()
     local key = ns.db.queueSort or "role"
-    for _, section in ipairs({ sections.queue, sections.finder, sections.groups }) do
+    for _, section in ipairs({ sections.queue, sections.parties, sections.finder, sections.groups }) do
         for _, header in ipairs(section.columns) do
             if header.sort ~= nil and header.sort == key then
                 header.label:SetTextColor(1, 0.82, 0)
@@ -718,9 +729,16 @@ function QueueWindow.refresh()
     local y = -60 - TOP
     showSection(sections.queue, true)
     local suffix = shownRoles() and " (filtered)" or ""
+    local solo, parties, anyParty = queueLists()
     sections.queue.header:SetText("Forever Groups players" .. suffix)
-    y = fillSection(sections.queue, y, queueItems(), shownRoles() and "Nobody with these roles in the queue."
+    y = fillSection(sections.queue, y, solo, shownRoles() and "Nobody with these roles in the queue."
         or "Nobody is in the Forever Groups queue right now.")
+    -- Parties get their own table, only while one is queued.
+    showSection(sections.parties, anyParty)
+    if anyParty then
+        sections.parties.header:SetText("Forever Groups parties" .. suffix)
+        y = fillSection(sections.parties, y, parties, "No party needs these roles.")
+    end
     -- With WoW's Group Finder turned off only Forever Groups players are shown.
     local useFinder = ns.Features.groupFinder()
     sections.refresh:SetShown(useFinder)
@@ -793,6 +811,7 @@ local function build()
         end
     end)
     sections.queue = buildSection("Forever Groups players", 6)
+    sections.parties = buildSection("Forever Groups parties", 4)
     sections.finder = buildSection("WoW Group Finder", 8)
     sections.groups = buildSection("Groups in WoW's Group Finder", 8)
 end
