@@ -25,7 +25,8 @@ in the group, with roles set for you.
   Competitive or Carry Offered in the dropdown on the roles header to be grouped with
   like-minded players only.
 - **Uses WoW's Group Finder too** — invites solo players listed for your dungeon, asks listed
-  groups to invite you, lists your own group, and invites players who whisper a needed role.
+  groups to invite you (and joins when they do, as the role they still need), lists your own
+  group, and invites players who whisper a needed role.
 - **In the group** — a card with every member's role, spec, distance to the entrance and
   dungeon quests; share your quests in one click; a waypoint to the entrance.
 - **Status bar** — boss progress (e.g. 4/7 bosses) and everyone's quest progress, folded out
@@ -35,7 +36,7 @@ in the group, with roles set for you.
   for quests); right-click to whisper, invite or request to join. Open by default; the tab with
   the eye on the window's edge opens and closes it.
 - **Your own words** — every whisper and party message can be rewritten (any language) or
-  turned off.
+  turned off. The whispers it sends for you stay out of your own chat; answers always show.
 
 <p align="center">
   <img src="media/screenshots/group-card.png" width="420" alt="The group card: every member with role, spec, distance to the entrance and dungeon quests, with buttons for a waypoint, sharing quests and quest progress">
@@ -56,7 +57,7 @@ servers or websites involved; everything happens in game.
 | Command | What it does |
 |---|---|
 | `/fg` | Open the window |
-| `/fg queue` | Who is looking |
+| `/fg queue` | Open Who is looking |
 | `/fg settings` | Settings: Groups, Messages, Display |
 | `/fg messages` | Edit the whispers and party messages |
 | `/fg progress` | Fold the quest progress in or out |
@@ -78,7 +79,8 @@ It only contacts players listed for the same dungeon or quest, asks one group le
 time (the next after 20 seconds without an invite, or at once when the leader says no or the
 group fills up), recently listed groups first, and doesn't ask the same leader again for 15
 minutes. When a leader you asked invites you, you join right away (a setting). You can change
-or turn off every message.
+or turn off every message. The "To ..." copies of these whispers are left out of your own chat
+(a setting); the other player gets them as usual.
 
 **Can I use it without WoW's Group Finder?**
 Yes: turn off "Use WoW's Group Finder" in the settings. Forever Groups then only works with
