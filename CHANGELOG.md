@@ -16,6 +16,9 @@
 - "Who is looking" is a table: columns Role, Name, Level, Dungeons and Time, for Forever
   Groups players and the Group Finder list alike. Click a column header to sort, again to
   reverse (replaces the sort buttons). A long dungeon list is shortened ("RFC, HoT, RoL, +32").
+- The "Group found!" popup lists tank, healer, then DPS, with names in class colours, a crown
+  on the leader, your own row lit up, spec (or "fake") under each name and "3/5 accepted" next
+  to the timer. After you accept, the buttons make way for "Waiting for the others".
 - While you wait in one queue the Dungeons/Quests tabs are hidden; a link "Also find a questing
   group »" (or "dungeon group") opens the other one. Waiting in both shows the tabs again.
 

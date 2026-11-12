@@ -103,8 +103,8 @@ describe("the player's spec in the game", function()
         world:advance(20)
         local dps = clients[5]
         assert.is_true(dps:proposalShown())
-        assert.is_not_nil(dps:findText("^Heally Mcheal  |cff999999Restoration Shaman|r$"))
-        assert.is_not_nil(dps:findText("^Tanky Mctank  |cff999999Protection Warrior|r$"))
+        assert.are.equal("Restoration Shaman", dps:find("FontString", "Heally Mcheal").parent.detail.text)
+        assert.are.equal("Protection Warrior", dps:find("FontString", "Tanky Mctank").parent.detail.text)
         assert.is_not_nil(dps:findText("^Dps Two$"))
         for _, client in ipairs(clients) do
             client:acceptPopup()

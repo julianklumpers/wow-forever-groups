@@ -34,42 +34,112 @@ local function myAnswer(view)
     end
 end
 
+local WIDTH = 320
+local ROW_WIDTH = 268
+local ROW_HEIGHT = 30
+local ROWS_TOP = 80
+local ROLE_ORDER = { T = 1, H = 2, D = 3 }
+
+-- Tank, healer, then DPS; within a role the order of the proposal.
+local function ordered(members)
+    local list = {}
+    for i, member in ipairs(members) do
+        list[i] = { member = member, index = i }
+    end
+    table.sort(list, function(a, b)
+        local ra, rb = ROLE_ORDER[a.member.role] or 4, ROLE_ORDER[b.member.role] or 4
+        if ra ~= rb then
+            return ra < rb
+        end
+        return a.index < b.index
+    end)
+    for i, item in ipairs(list) do
+        list[i] = item.member
+    end
+    return list
+end
+
+local function classOf(member)
+    if member.name == ns.selfName then
+        local _, token = UnitClass("player")
+        return token
+    end
+    return (ns.Specs.decode(member.spec))
+end
+
+local function paintRow(row, member, leader)
+    local mine = member.name == ns.selfName
+    Widgets.setRoleIcon(row.icon, member.role)
+    row.name:SetText(member.name .. (mine and " (you)" or ""))
+    if member.fake then
+        row.name:SetTextColor(0.85, 0.85, 0.85)
+    else
+        row.name:SetTextColor(Widgets.classColor(classOf(member)))
+    end
+    local detail = member.fake and "fake" or ns.Spec.label(member.spec)
+        or (mine and ns.Spec.myLabel()) or ""
+    row.detail:SetText(detail)
+    row.name:ClearAllPoints()
+    if detail ~= "" then
+        row.name:SetPoint("TOPLEFT", 30, -2)
+    else
+        row.name:SetPoint("LEFT", 30, 0)
+    end
+    row.crown:ClearAllPoints()
+    row.crown:SetPoint("LEFT", row.name, "LEFT", (row.name:GetStringWidth() or 0) + 4, 1)
+    row.crown:SetShown(member.name == leader)
+    row.highlight:SetShown(mine)
+    row.status:SetTexture(STATUS_TEXTURES[statusOf(member.answer)])
+end
+
 local function render(view)
+    ui.dungeon:SetText(ns.Quests.nameOf(view.dungeon))
+    local members = ordered(view.members)
+    local parts = {}
     local styles = ns.Playstyle.describe(view.playstyles)
-    ui.dungeon:SetText(ns.Quests.nameOf(view.dungeon) .. (styles and ("  |cffbbbbbb" .. styles .. "|r") or ""))
-    local mine
-    for _, member in ipairs(view.members) do
+    if styles then
+        parts[#parts + 1] = styles
+    end
+    local accepted = 0
+    for _, member in ipairs(members) do
         if member.name == ns.selfName then
-            mine = member.role
+            parts[#parts + 1] = "you play " .. Widgets.ROLE_NAMES[member.role]
+        end
+        if member.answer == "Y" then
+            accepted = accepted + 1
         end
     end
-    ui.leader:SetText("Leader: " .. view.leader .. (mine and (".  You play " .. Widgets.ROLE_NAMES[mine] .. ".") or ""))
+    ui.subtitle:SetText(table.concat(parts, "  ·  "))
     for i, row in ipairs(rows) do
-        local member = view.members[i]
+        local member = members[i]
         if member then
-            Widgets.setRoleIcon(row.icon, member.role)
-            local suffix = (member.name == ns.selfName and " (you)") or (member.fake and " (fake)") or ""
-            local spec = ns.Spec.label(member.spec)
-            row.name:SetText(member.name .. suffix .. (spec and ("  |cff999999" .. spec .. "|r") or ""))
-            row.status:SetTexture(STATUS_TEXTURES[statusOf(member.answer)])
+            paintRow(row, member, view.leader)
             row:Show()
         else
             row:Hide()
         end
     end
+    local y = ROWS_TOP + #members * ROW_HEIGHT + 6
     if view.missing and view.missing ~= "" then
         local names = {}
         for letter in string.gmatch(view.missing, ".") do
             names[#names + 1] = Widgets.ROLE_NAMES[letter]
         end
         ui.missing:SetText("From the Group Finder: " .. table.concat(names, ", "))
+        ui.missing:ClearAllPoints()
+        ui.missing:SetPoint("TOP", 0, -y)
+        ui.missing:Show()
+        y = y + 20
     else
         ui.missing:SetText("")
+        ui.missing:Hide()
     end
+    ui.count:SetText(string.format("%d/%d accepted", accepted, #members))
     local answered = myAnswer(view) == "Y"
-    Widgets.setEnabled(ui.accept, not answered)
-    Widgets.setEnabled(ui.decline, not answered)
+    ui.accept:SetShown(not answered)
+    ui.decline:SetShown(not answered)
     ui.waiting:SetShown(answered)
+    frame:SetHeight(y + 82)
 end
 
 local function onUpdate()
@@ -81,8 +151,30 @@ local function onUpdate()
     ui.bar.text:SetText(string.format("%d s", math.ceil(left)))
 end
 
+local function buildRow(i)
+    local row = CreateFrame("Frame", nil, frame)
+    row:SetSize(ROW_WIDTH, ROW_HEIGHT - 2)
+    row:SetPoint("TOPLEFT", (WIDTH - ROW_WIDTH) / 2, -ROWS_TOP - (i - 1) * ROW_HEIGHT)
+    row.highlight = row:CreateTexture(nil, "BACKGROUND")
+    row.highlight:SetAllPoints()
+    row.highlight:SetColorTexture(1, 0.82, 0, 0.12)
+    row.icon = Widgets.roleIcon(row, "D", 20)
+    row.icon:SetPoint("LEFT", 4, 0)
+    row.name = Widgets.text(row, "GameFontHighlight")
+    row.detail = Widgets.text(row, "GameFontDisableSmall")
+    row.detail:SetPoint("BOTTOMLEFT", 30, 2)
+    row.crown = row:CreateTexture(nil, "ARTWORK")
+    row.crown:SetSize(14, 14)
+    row.crown:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
+    row.crown.iconLabel = "Leader"
+    row.status = row:CreateTexture(nil, "ARTWORK")
+    row.status:SetSize(18, 18)
+    row.status:SetPoint("RIGHT", -4, 0)
+    return row
+end
+
 local function build()
-    frame = Widgets.window("ForeverGroupsProposalFrame", "Group found!", 320, 300, false)
+    frame = Widgets.window("ForeverGroupsProposalFrame", "Group found!", WIDTH, 300, false)
     if type(frame.CloseButton) == "table" then
         frame.CloseButton:Hide()
     end
@@ -90,33 +182,38 @@ local function build()
     frame:SetPoint("TOP", 0, -140)
     ui.dungeon = Widgets.text(frame, "GameFontNormalLarge", "CENTER")
     ui.dungeon:SetPoint("TOP", 0, -32)
-    ui.dungeon:SetWidth(300)
-    ui.leader = Widgets.text(frame, "GameFontHighlightSmall", "CENTER")
-    ui.leader:SetPoint("TOP", 0, -56)
+    ui.dungeon:SetWidth(WIDTH - 20)
+    ui.subtitle = Widgets.text(frame, "GameFontDisableSmall", "CENTER")
+    ui.subtitle:SetPoint("TOP", 0, -54)
+    ui.subtitle:SetWidth(WIDTH - 20)
+    local line = frame:CreateTexture(nil, "ARTWORK")
+    line:SetSize(ROW_WIDTH, 1)
+    line:SetPoint("TOP", 0, -72)
+    line:SetColorTexture(1, 0.82, 0, 0.35)
     for i = 1, 5 do
-        local row = CreateFrame("Frame", nil, frame)
-        row:SetSize(260, 22)
-        row:SetPoint("TOPLEFT", 30, -76 - (i - 1) * 24)
-        row.icon = Widgets.roleIcon(row, "D", 18)
-        row.icon:SetPoint("LEFT", 0, 0)
-        row.name = Widgets.text(row, "GameFontHighlight")
-        row.name:SetPoint("LEFT", 26, 0)
-        row.status = row:CreateTexture(nil, "ARTWORK")
-        row.status:SetSize(18, 18)
-        row.status:SetPoint("RIGHT", 0, 0)
-        rows[i] = row
+        rows[i] = buildRow(i)
     end
+    ui.missing = Widgets.text(frame, "GameFontNormalSmall", "CENTER")
+    ui.count = Widgets.text(frame, "GameFontHighlightSmall")
+    ui.count:SetPoint("BOTTOMLEFT", (WIDTH - ROW_WIDTH) / 2, 48)
+    local barLeft = (WIDTH - ROW_WIDTH) / 2 + 96
+    local barWidth = ROW_WIDTH - 96
+    ui.barBorder = frame:CreateTexture(nil, "BORDER")
+    ui.barBorder:SetSize(barWidth + 2, 14)
+    ui.barBorder:SetPoint("BOTTOMLEFT", barLeft - 1, 45)
+    ui.barBorder:SetColorTexture(1, 0.82, 0, 0.35)
     ui.bar = CreateFrame("StatusBar", nil, frame)
-    ui.bar:SetSize(260, 12)
-    ui.bar:SetPoint("BOTTOM", 0, 46)
+    ui.bar:SetSize(barWidth, 12)
+    ui.bar:SetPoint("BOTTOMLEFT", barLeft, 46)
     ui.bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     ui.bar:SetStatusBarColor(1, 0.8, 0)
+    ui.barBack = ui.bar:CreateTexture(nil, "BACKGROUND")
+    ui.barBack:SetAllPoints()
+    ui.barBack:SetColorTexture(0, 0, 0, 0.8)
     ui.bar.text = Widgets.text(ui.bar, "GameFontHighlightSmall", "CENTER")
     ui.bar.text:SetPoint("CENTER")
-    ui.missing = Widgets.text(frame, "GameFontNormalSmall", "CENTER")
-    ui.missing:SetPoint("BOTTOM", 0, 80)
-    ui.waiting = Widgets.text(frame, "GameFontNormalSmall", "CENTER")
-    ui.waiting:SetPoint("BOTTOM", 0, 64)
+    ui.waiting = Widgets.text(frame, "GameFontNormal", "CENTER")
+    ui.waiting:SetPoint("BOTTOM", 0, 18)
     ui.waiting:SetText("Accepted. Waiting for the others...")
     ui.accept = Widgets.button(frame, ACCEPT or "Accept", 120)
     ui.accept:SetPoint("BOTTOMLEFT", 30, 14)

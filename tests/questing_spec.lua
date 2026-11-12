@@ -137,7 +137,7 @@ describe("the questing queue", function()
         end
         world:advance(15)
         assert.is_true(both:proposalShown())
-        assert.is_not_nil(both:findText("^The Deadmines  "))
+        assert.is_not_nil(both:findText("^The Deadmines$"))
         assert.are.equal("found", both:find("Button", "Dungeons").statusKind)
         assert.are.equal("paused", both:find("Button", "Quests").statusKind)
         assert.is_nil(quester.ns.questEngine.queue:get("Both Queues"))

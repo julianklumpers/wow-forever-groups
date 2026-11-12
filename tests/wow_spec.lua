@@ -46,7 +46,8 @@ describe("WoW layer", function()
         local world, clients = fullWorld()
         for _, client in ipairs(clients) do
             assert.is_true(client:proposalShown(), client.name)
-            assert.is_not_nil(client:findText("^Leader: Tanky Mctank%."), client.name)
+            local tankRow = client:findText("^Tanky Mctank").parent
+            assert.is_not_nil(client:find("Texture", "Leader", tankRow), client.name)
         end
         for _, client in ipairs(clients) do
             client:acceptPopup()
@@ -278,8 +279,8 @@ describe("WoW UI", function()
             client:slash("/dq join " .. client.role .. " auto")
         end
         world:advance(MATCH)
-        assert.is_not_nil(flex:findText("You play Tank%."))
-        assert.is_not_nil(others[2]:findText("You play DPS%."))
+        assert.is_not_nil(flex:findText("you play Tank$"))
+        assert.is_not_nil(others[2]:findText("you play DPS$"))
     end)
 
     it("accepts several roles on the command line", function()
@@ -482,7 +483,7 @@ describe("WoW UI", function()
         local healRow = heal:find("FontString", "Heally Mcheal (you)").parent
         assert.are.equal("Interface\\RaidFrame\\ReadyCheck-Ready", tankRow.status.texture)
         assert.are.equal("Interface\\RaidFrame\\ReadyCheck-Waiting", healRow.status.texture)
-        assert.is_false(clients[1]:find("Button", "Accept").enabled)
+        assert.is_nil(clients[1]:find("Button", "Accept"))
         assert.is_not_nil(clients[1]:find("FontString", "Accepted. Waiting for the others..."))
     end)
 end)
@@ -504,15 +505,36 @@ describe("WoW test tools", function()
         client:slash("/dq fake 4")
         world:advance(MATCH)
         assert.is_true(client:proposalShown())
-        assert.is_not_nil(client:find("FontString", client.ns.Slash.fakeName(5) .. " (fake)"))
+        assert.are.equal("fake", client:find("FontString", client.ns.Slash.fakeName(5)).parent.detail.text)
         assert.is_not_nil(client:find("FontString", "Solo Player (you)"))
         world:advance(4)
-        local row = client:find("FontString", client.ns.Slash.fakeName(6) .. " (fake)").parent
+        local row = client:find("FontString", client.ns.Slash.fakeName(6)).parent
         assert.are.equal("Interface\\RaidFrame\\ReadyCheck-Ready", row.status.texture)
         client:acceptPopup()
         world:advance(1)
         assert.is_true(client:said("Its leader is a fake player"))
         assert.are.same({}, client.invites)
+    end)
+
+    it("lists the proposal as tank, healer, then DPS", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 20 })
+        world:advance(CONNECT)
+        client:slash("/dq join dps auto")
+        client:slash("/dq fake 2 dps")
+        client:slash("/dq fake 1 healer")
+        client:slash("/dq fake 1 tank")
+        world:advance(MATCH)
+        assert.is_true(client:proposalShown())
+        local fake = client.ns.Slash.fakeName
+        local function rowY(name)
+            return client:find("FontString", name).parent.point[3]
+        end
+        assert.is_true(rowY(fake(4)) > rowY(fake(3)))
+        assert.is_true(rowY(fake(3)) > rowY("Solo Player (you)"))
+        assert.is_true(rowY(fake(3)) > rowY(fake(1)))
+        assert.is_true(rowY(fake(3)) > rowY(fake(2)))
+        assert.is_not_nil(client:find("Texture", "Leader", client:find("FontString", fake(4)).parent))
     end)
 
     it("groups you with the fakes when many were added before you joined", function()
