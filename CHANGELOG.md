@@ -2,6 +2,13 @@
 
 ## 0.25.0 (2026-11-12)
 
+- Fixes: "Request to join" on a questing group in "Who is looking" no longer causes an error
+  (it now asks for a quest of yours in that zone). Quest listings are no longer filtered by your
+  dungeon playstyle. Questing parties no longer show dungeon roles under Needs. An open "Who is
+  looking" switches along when the main window changes page by itself (a group formed, a queue
+  left). With "Who is looking" open on the Quests tab, the dungeon queue's Group Finder
+  results still refresh. A quest in a zone that wasn't searched shows no counts instead of
+  zeros.
 - "Who is looking": sorting a table by a column no longer sorts the other tables too; each
   table keeps its own order until you close the game or reload, then it's back to the default.
   A small arrow next to the column a table is sorted by shows the direction (up: A to Z, tank

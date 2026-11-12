@@ -236,8 +236,11 @@ brings back the default: by role), shown by WoW's `Arrow-Up-Up`/`Arrow-Down-Up` 
 matches a solo player's roles and a party's or group's needs. Right-clicking a row opens `wow/ui/playermenu.lua`
 (WoW's `MenuUtil` context menu, else a small menu of our own): Whisper and Invite to group for a player; Request to
 join and Whisper leader for a group. Request to join whispers the leader the `applyAsk` message
-(`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised. Opened from the Quests tab the window
-shows group quests instead (`QueueWindow.subject()`): the questing queue, and the Group Finder's "Quests & Zones"
+(`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised. For a questing group
+it is the `questAsk` message naming a wanted quest in the group's zone (`QuestFinder.request`). Opened from the Quests
+tab the window shows group quests instead (`QueueWindow.subject()`, which follows the main window's page, also when
+that page changes by itself), without the playstyle filter and without a Needs column for questing parties (quest
+groups have their own sizes and no fixed roles): the questing queue, and the Group Finder's "Quests & Zones"
 listings (`LfgList.zoneListings`) in the zones of the wanted quests (the questing entry's, else the ticked ones) and in
 every zone whose suggested levels (the zone activity's `minLevelSuggestion`/`maxLevelSuggestion`, verified for all 41
 zones) include the player's level (`LfgList.zonesForLevel`), with a

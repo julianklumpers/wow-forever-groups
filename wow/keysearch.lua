@@ -28,12 +28,16 @@ local function onInput()
     if ns.QuestFinder.searchIfUseful(INTERVAL) or ns.Filler.searchIfUseful(INTERVAL) then
         return
     end
+    -- The dungeon queue comes first: an open Who is looking on the Quests
+    -- tab must not keep the dungeon results from being refreshed.
+    if ns.Apply.isSeeker() and ns.LfgList.searchIfStale(INTERVAL) then
+        return
+    end
+    if (ns.Filler.isActive() or (ns.engine and ns.engine.myEntry)) and ns.LfgList.searchIfStale(FRESH) then
+        return
+    end
     if ns.QueueWindow.isShown() then
         ns.QueueWindow.searchIfStale(INTERVAL)
-    elseif ns.Apply.isSeeker() then
-        ns.LfgList.searchIfStale(INTERVAL)
-    elseif ns.Filler.isActive() or (ns.engine and ns.engine.myEntry) then
-        ns.LfgList.searchIfStale(FRESH)
     elseif ns.Window.isShown() then
         ns.QueueWindow.searchIfStale(FRESH, ns.WindowParts.currentTab())
     end

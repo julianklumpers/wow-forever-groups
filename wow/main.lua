@@ -424,7 +424,7 @@ ns.on("ADDON_LOADED", function(name)
     ForeverGroupsCharDB = ForeverGroupsCharDB or {}
     ns.db = ForeverGroupsDB
     ns.charDb = ForeverGroupsCharDB
-    ns.db.queueSort, ns.db.queueSortReverse, ns.db.queueSorts = nil, nil, nil
+    ns.db.queueSort, ns.db.queueSortReverse, ns.db.queueSorts, ns.db.queueTab = nil, nil, nil, nil
     Comm.init(onReady, onMessage, function(sender, text)
         ns.Presence.seen(sender)
         if not ns.QuestShare.onMessage(sender, text) and not ns.QuestGroup.onMessage(sender, text)

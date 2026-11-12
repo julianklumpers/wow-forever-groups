@@ -51,7 +51,7 @@ function W.showQuestRow(row, key, quest, y, enabled)
     row.zoneName = quest and quest.zone
     row.waitingCount = ns.QuestQueue.waitingFor(key)
     local wanted = { [key] = true }
-    Widgets.setRoleCounts(row.counts, ns.QueueWindow.questCountsKnown()
+    Widgets.setRoleCounts(row.counts, ns.QueueWindow.questCountsKnown(row.zoneName)
         and ns.QueueWindow.lookingCounts(wanted, "quest"))
     local groups = #ns.QueueWindow.groupsNeedingMe(wanted, "quest")
     row.groups:SetText(groups > 0 and string.format("%d group%s", groups, groups == 1 and "" or "s") or "")

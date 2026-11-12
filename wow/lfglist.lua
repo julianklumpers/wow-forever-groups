@@ -36,6 +36,8 @@ local version = 0
 local zoneCategory = CATEGORY_ZONES
 local zoneByActivity, activityByZone = {}, {}
 local zoneListings = {}
+-- The zones of the last zone search, and of the results we have.
+local searchingZones, resultZones = {}, {}
 -- Each zone's level range as the Group Finder suggests it: name => { min, max }.
 local zoneLevels = {}
 local zoneUpdatedAt
@@ -189,6 +191,7 @@ local function refreshZones(ids)
     end
     zoneListings = result
     zoneUpdatedAt = GetTime()
+    resultZones = searchingZones
     version = version + 1
     Log.debug("group finder zones: %d usable listings of %d results", #result, #ids)
     for _, listener in ipairs(listeners) do
@@ -372,6 +375,10 @@ function LfgList.searchZones(zones)
     end
     zoneSearchedAt, anySearchAt = GetTime(), GetTime()
     lastKind = "zones"
+    searchingZones = {}
+    for _, zone in ipairs(zones) do
+        searchingZones[zone] = true
+    end
     local ok, err = pcall(fn, zoneCategory, 0, 0, languageFilter(), false, nil, activities)
     if not ok then
         Log.debug("zone search failed: %s", tostring(err))
@@ -381,6 +388,11 @@ end
 
 function LfgList.zoneListings()
     return zoneListings, zoneUpdatedAt
+end
+
+-- Whether the zone results we have cover this zone.
+function LfgList.zoneSearched(zone)
+    return zoneUpdatedAt ~= nil and resultZones[zone] == true
 end
 
 function LfgList.secondsSinceZoneSearch()

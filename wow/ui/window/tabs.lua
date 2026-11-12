@@ -62,7 +62,9 @@ function W.buildTabs()
         ui.tabs[tab[1]] = Widgets.tab(W.frame, tab[2], TAB_WIDTH, function()
             ns.charDb.tab = tab[1]
             W.setHint("")
-            ns.QueueWindow.searchIfStale(10, tab[1])
+            if not ns.Input.run() then
+                ns.QueueWindow.searchIfStale(10, tab[1])
+            end
             ns.Window.refresh()
             ns.QueueWindow.follow(tab[1])
         end)
@@ -71,6 +73,9 @@ function W.buildTabs()
         W.browsingOther = true
         ns.charDb.tab = self.target
         W.setHint("")
+        if not ns.Input.run() then
+            ns.QueueWindow.searchIfStale(10, self.target)
+        end
         ns.Window.refresh()
         ns.QueueWindow.follow(self.target)
     end)

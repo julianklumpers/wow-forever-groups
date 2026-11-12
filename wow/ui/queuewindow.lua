@@ -18,6 +18,7 @@ local wheelSearching = false
 local wheelBlocked = false
 -- "dungeons" or "quests": the main window's tab when the window opened.
 local mode = "dungeons"
+local setMode
 
 -- The group quests this player is looking for: the questing queue's, else
 -- the ones ticked on the Quests tab; as a set of quest keys.
@@ -152,6 +153,15 @@ function QueueWindow.wantedDungeons()
     return wanted
 end
 
+local function isQuests(subject)
+    return subject == "quests" or subject == "quest"
+end
+
+-- Playstyles are for dungeons only; quest listings are never filtered on it.
+local function styleFits(listing, subject)
+    return isQuests(subject) or ns.Playstyle.fits(listing.playstyle, ns.Playstyle.mine())
+end
+
 -- Listed groups (not solo, not full) for the wanted dungeons (or, with
 -- subject "quests", in the zones of the wanted quests).
 function QueueWindow.groupFinderGroups(subject)
@@ -160,10 +170,9 @@ function QueueWindow.groupFinderGroups(subject)
     if not ns.Features.groupFinder() then
         return result
     end
-    local style = ns.Playstyle.mine()
     for _, listing in ipairs(listings) do
         if not listing.solo and (listing.members or 1) < 5 and listing.leader ~= ns.selfName
-            and matches(listing) and ns.Playstyle.fits(listing.playstyle, style) then
+            and matches(listing) and styleFits(listing, subject) then
             result[#result + 1] = listing
         end
     end
@@ -174,16 +183,10 @@ end
 -- of the player's roles; empty without roles, with the Group Finder off, or
 -- when the player would like to lead (then they build their own group).
 -- subject "quests": wanted is a set of quest keys, matched by their zones.
-function QueueWindow.groupsNeedingMe(wanted, subject)
-    local roles = ns.charDb and ns.charDb.lastRoles
+local function needingMe(wanted, subject, roles)
     local result = {}
-    local leading = ns.charDb[(subject == "quests" or subject == "quest") and "wantsLeadQuests" or "wantsLead"]
-    if not roles or not ns.Features.groupFinder() or not ns.Features.apply() or leading then
-        return result
-    end
-    local style = ns.Playstyle.mine()
     local listings, field = ns.LfgList.listings(), "dungeons"
-    if subject == "quests" or subject == "quest" then
+    if isQuests(subject) then
         listings, field, wanted = (ns.LfgList.zoneListings()), "zones", (zonesOf(wanted, subject == "quests"))
     end
     for _, listing in ipairs(listings) do
@@ -192,11 +195,35 @@ function QueueWindow.groupsNeedingMe(wanted, subject)
             needs = needs or (listing.remaining and (listing.remaining[role] or 0) > 0)
         end
         if needs and not listing.solo and (listing.members or 1) < 5 and listing.leader ~= ns.selfName
-            and sharesDungeon(listing[field], wanted) and ns.Playstyle.fits(listing.playstyle, style) then
+            and sharesDungeon(listing[field], wanted) and styleFits(listing, subject) then
             result[#result + 1] = listing
         end
     end
     return result
+end
+
+local EMPTY = {}
+local cachedResult
+
+local function wantedKey(wanted)
+    local ids = {}
+    for id in pairs(wanted) do
+        ids[#ids + 1] = id
+    end
+    table.sort(ids)
+    return table.concat(ids, ",")
+end
+
+
+function QueueWindow.groupsNeedingMe(wanted, subject)
+    local roles = ns.charDb and ns.charDb.lastRoles
+    local leading = ns.charDb[isQuests(subject) and "wantsLeadQuests" or "wantsLead"]
+    if not roles or not ns.Features.groupFinder() or not ns.Features.apply() or leading then
+        return EMPTY
+    end
+    return cachedResult("needing:" .. (subject or "dungeons") .. ":" .. roles, wanted, function()
+        return needingMe(wanted, subject, roles)
+    end)
 end
 
 -- Solo Group Finder listings for the wanted dungeons (or quest zones),
@@ -207,10 +234,8 @@ function QueueWindow.groupFinderPlayers(subject)
     if not ns.Features.groupFinder() then
         return result
     end
-    local style = ns.Playstyle.mine()
     for _, listing in ipairs(listings) do
-        if listing.solo and listing.name ~= ns.selfName and matches(listing)
-            and ns.Playstyle.fits(listing.playstyle, style) then
+        if listing.solo and listing.name ~= ns.selfName and matches(listing) and styleFits(listing, subject) then
             result[#result + 1] = listing
         end
     end
@@ -224,13 +249,21 @@ end
 -- player's playstyle change: the window asks for them every second, per row.
 local countCache, countToken = {}, nil
 
-local function wantedKey(wanted)
-    local ids = {}
-    for id in pairs(wanted) do
-        ids[#ids + 1] = id
+-- A result kept per kind and wanted set until anything it depends on changes.
+function cachedResult(kind, wanted, compute)
+    local engine = ns.engine
+    local _, zonesAt = ns.LfgList.zoneListings()
+    local token = string.format("%d:%d:%d:%d:%s:%s:%d", ns.LfgList.version(), engine and engine.queue.version or -1,
+        ns.questEngine and ns.questEngine.queue.version or -1, ns.Playstyle.mine(),
+        tostring(ns.Features.groupFinder()), tostring(zonesAt), UnitLevel("player") or 0)
+    if token ~= countToken then
+        countCache, countToken = {}, token
     end
-    table.sort(ids)
-    return table.concat(ids, ",")
+    local key = kind .. ":" .. wantedKey(wanted)
+    if not countCache[key] then
+        countCache[key] = compute()
+    end
+    return countCache[key]
 end
 
 local function countLooking(wanted, subject)
@@ -262,7 +295,7 @@ local function countLooking(wanted, subject)
     end
     for _, listing in ipairs(ns.Features.groupFinder() and listings or {}) do
         if listing.solo and listing.name ~= ns.selfName and sharesDungeon(listing[field], areas)
-            and (quests or ns.Playstyle.fits(listing.playstyle, style)) then
+            and styleFits(listing, subject) then
             add(listing.roles)
         end
     end
@@ -275,26 +308,24 @@ end
 -- subject "quests": wanted is a set of quest keys (the questing queue, and
 -- solo players listed in those quests' zones).
 function QueueWindow.lookingCounts(wanted, subject)
-    local engine = ns.engine
-    local _, zonesAt = ns.LfgList.zoneListings()
-    local token = string.format("%d:%d:%d:%d:%s:%s", ns.LfgList.version(), engine and engine.queue.version or -1,
-        ns.questEngine and ns.questEngine.queue.version or -1, ns.Playstyle.mine(),
-        tostring(ns.Features.groupFinder()), tostring(zonesAt))
-    if token ~= countToken then
-        countCache, countToken = {}, token
-    end
-    local key = (subject or "dungeons") .. ":" .. wantedKey(wanted)
-    if not countCache[key] then
-        countCache[key] = countLooking(wanted, subject)
-    end
-    return countCache[key]
+    return cachedResult("looking:" .. (subject or "dungeons"), wanted, function()
+        return countLooking(wanted, subject)
+    end)
 end
 
 -- Whether the counts for quests can be told: WoW's Group Finder is off (only
--- Forever Groups counts) or the quests' zones were searched.
-function QueueWindow.questCountsKnown()
+-- Forever Groups counts) or the quests' zones were searched. With a zone:
+-- whether that zone was (a zone the Group Finder has no activity for can
+-- only count Forever Groups players).
+function QueueWindow.questCountsKnown(zone)
+    if not ns.Features.groupFinder() then
+        return true
+    end
+    if zone then
+        return not ns.LfgList.zoneActivity(zone) or ns.LfgList.zoneSearched(zone)
+    end
     local _, zonesAt = ns.LfgList.zoneListings()
-    return not ns.Features.groupFinder() or zonesAt ~= nil
+    return zonesAt ~= nil
 end
 
 -- The table's columns, x within a row (rows start 22 px in from the frame).
@@ -774,7 +805,10 @@ local function queueItems()
         local menu = entry.id ~= ns.selfName and not snap.fakes[entry.id]
         local needs, roleCounts = "", nil
         if #entry.members > 1 then
-            needs = ns.Filler.missingFor(ns.Roles.withReserved(entry.members, entry.reserved)) or ""
+            -- Quest groups have their own sizes and no fixed roles, so only a
+            -- dungeon party has places of a role still open.
+            needs = mode ~= "quests" and ns.Filler.missingFor(ns.Roles.withReserved(entry.members, entry.reserved))
+                or ""
             roleCounts = { T = 0, H = 0, D = 0 }
             for _, member in ipairs(entry.members) do
                 for letter in string.gmatch(member.roles, ".") do
@@ -943,7 +977,11 @@ function QueueWindow.openMenu(row, item)
     local request
     if not IsInGroup() then
         request = { label = "Request to join", run = function()
-            ns.Apply.request(item.group, myRoles(), firstWanted(item.group.dungeons))
+            if item.group.dungeons then
+                ns.Apply.request(item.group, myRoles(), firstWanted(item.group.dungeons))
+            else
+                ns.QuestFinder.request(item.group, myRoles(), QueueWindow.wantedQuests())
+            end
         end }
     end
     ns.PlayerMenu.open(row, item.player, { first = request, whisperLabel = "Whisper leader", noInvite = true })
@@ -1049,10 +1087,26 @@ local function caption(word, count, suffix)
     return string.format("%s (%d)%s", word, count, suffix)
 end
 
+-- Shows the subject of the main window's page, also when that page changed
+-- by itself (a group formed, a queue was left).
+function setMode(tab)
+    tab = tab == "quests" and "quests" or "dungeons"
+    if tab == mode then
+        return
+    end
+    mode = tab
+    for _, section in pairs(sections) do
+        if type(section) == "table" and section.offset then
+            section.offset = 0
+        end
+    end
+end
+
 function QueueWindow.refresh()
     if not frame or not frame:IsShown() then
         return
     end
+    setMode(ns.WindowParts.currentTab())
     refreshSortBar()
     local quests = mode == "quests"
     for _, section in ipairs({ sections.queue, sections.parties, sections.finder, sections.groups }) do
@@ -1206,31 +1260,19 @@ function QueueWindow.toggle()
         return
     end
     ns.Window.show()
-    mode = ns.WindowParts.currentTab() == "quests" and "quests" or "dungeons"
+    setMode(ns.WindowParts.currentTab())
     dock()
     frame:Show()
     QueueWindow.searchIfStale(10)
 end
 
-function QueueWindow.hide()
-    if frame then
-        frame:Hide()
-    end
-end
-
--- The main window switched tabs: an open window switches with it
--- ("dungeons" or "quests"); from a click, so it may search.
+-- The main window switched tabs ("dungeons" or "quests"): an open window
+-- switches with it.
 function QueueWindow.follow(tab)
     if not frame or not frame:IsShown() then
         return
     end
-    mode = tab == "quests" and "quests" or "dungeons"
-    for _, section in pairs(sections) do
-        if type(section) == "table" and section.offset then
-            section.offset = 0
-        end
-    end
-    QueueWindow.searchIfStale(10)
+    setMode(tab)
     QueueWindow.refresh()
 end
 

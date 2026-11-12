@@ -628,6 +628,48 @@ describe("Who is looking for group quests", function()
         assert.is_not_nil(client:findText("^1 group$"))
         assert.is_not_nil(client:findText("^·  1 group needs you$"))
     end)
+
+    it("ignores the dungeon playstyle and asks a questing group's leader for a quest in its zone", function()
+        local world = World.new()
+        world:list("Zone Dps", "D", ELWYNN, 20, 300, "Learning")
+        world:listGroup("Zone Group", ELWYNN, { T = 0, H = 0, D = 1 }, 120, "FunRelaxed")
+        local client = world:addClient("Solo Player", { level = 20, questLog = questLog() })
+        world:advance(12)
+        client:slash("/dq style expert")
+        client.ns.db.queueFold = { join = { finderPlayers = false } }
+        client:slash("/dq")
+        client:click("CheckButton", "DPS")
+        client:click("Button", "Quests")
+        client:click("Button", "Who is looking »")
+        world:advance(1)
+        assert.is_not_nil(client:findText("^Zone Dps$"))
+        local groupRow = client:findText("^Zone Group %+3$").parent
+        groupRow.scripts.OnMouseUp(groupRow, "RightButton")
+        client:click("Button", "Request to join")
+        local asked
+        for _, w in ipairs(client.whispers) do
+            if w.target == "Zone Group" then
+                asked = w.text
+            end
+        end
+        assert.is_truthy(asked and asked:find("could you invite me for Hogger", 1, true))
+    end)
+
+    it("switches along when the main window's page changes by itself", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 20, questLog = questLog() })
+        world:advance(12)
+        client.ns.charDb.tab = "quests"
+        client:slash("/dq join dps dm")
+        client:slash("/dq")
+        client:click("Button", "Who is looking »")
+        world:advance(1)
+        assert.are.equal("dungeons", client.ns.QueueWindow.subject())
+        client:slash("/dq leave")
+        world:advance(1)
+        client.ns.QueueWindow.refresh()
+        assert.are.equal("quests", client.ns.QueueWindow.subject())
+    end)
 end)
 
 describe("the wish to lead", function()

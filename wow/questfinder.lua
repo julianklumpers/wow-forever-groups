@@ -312,6 +312,39 @@ function QuestFinder.focus()
     return focus
 end
 
+-- A click on "Request to join" on a listed questing group in Who is looking:
+-- asks its leader to invite the player, naming a wanted quest in its zone.
+function QuestFinder.request(listing, roles, wanted)
+    if C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
+        Log.info("WoW blocks whispers right now (a boss fight?); try again in a moment.")
+        return
+    end
+    local keys = {}
+    for key in pairs(wanted or {}) do
+        keys[#keys + 1] = key
+    end
+    table.sort(keys)
+    local subject
+    for _, key in ipairs(keys) do
+        local quest = questFor(key)
+        if quest and hasZone(listing, quest.zone) then
+            subject = quest.title
+            break
+        end
+    end
+    subject = subject or (listing.zones and listing.zones[1]) or "your group"
+    asked[listing.leader] = GetTime()
+    if ns.db.dryRun then
+        Log.info("Dry run: would ask %s to invite you for %s.", listing.leader, subject)
+        return
+    end
+    whisper(listing.leader, ns.Messages.text("questAsk", {
+        level = UnitLevel("player"), spec = ns.Spec.myLabel(),
+        role = ns.Widgets.describeRoles(roles or "D"), quest = subject,
+    }))
+    Log.info("Asked %s to invite you for %s.", listing.leader, subject)
+end
+
 function QuestFinder.wasAsked(leader)
     return asked[leader] ~= nil
 end
