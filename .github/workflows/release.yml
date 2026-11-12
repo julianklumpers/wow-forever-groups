@@ -43,5 +43,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: The tag matches the version in the .toc
-        run: test "v$(sed -n 's/^## Version: *//p' ForeverGroups.toc)" = "$GITHUB_REF_NAME"
+        run: |
+          version="$(sed -n 's/^## Version: *//p' ForeverGroups.toc)"
+          test "v$version" = "$GITHUB_REF_NAME"
       - uses: BigWigsMods/packager@v2

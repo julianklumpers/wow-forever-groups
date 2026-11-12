@@ -8,7 +8,7 @@ Automatic groups for dungeons and group quests on WoW Forever, peer-to-peer over
 - `wow/` – thin WoW layer: hidden channel, send queue, invites, `/fg` commands (`/dq` still works); `wow/ui/` window and proposal popup;
   the main window is `wow/ui/window.lua` plus its parts in `wow/ui/window/` (shared, card, setup, quests, tabs)
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
-- `probe/DungeonQueueProbe/` – phase 0 API probe addon (`/dqp help`)
+- `probe/ForeverGroupsProbe/` – API probe addon for in-game checks (`/fgp help`)
 - `tests/` – busted specs; `tests/helpers/sim.lua` simulates engines on a shared channel,
   `tests/helpers/wowmock.lua` loads the full addon (per the .toc) into mocked WoW clients
 

@@ -112,8 +112,9 @@ files["wow/"] = {
 files["probe/"] = {
     read_globals = wow_read_globals,
     globals = {
-        "DungeonQueueProbeDB",
-        "SLASH_DUNGEONQUEUEPROBE1",
+        "ForeverGroupsProbeDB",
+        "SLASH_FOREVERGROUPSPROBE1",
+        "SLASH_FOREVERGROUPSPROBE2",
         "SlashCmdList",
         "StaticPopupDialogs",
     },

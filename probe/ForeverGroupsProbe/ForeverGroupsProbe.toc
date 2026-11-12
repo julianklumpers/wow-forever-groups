@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: Forever Groups Probe
+## Notes: API probe for Forever Groups. Type /fgp help
+## Author: julianklumpers
+## Version: 0.1.0
+## SavedVariables: ForeverGroupsProbeDB
+
+Probe.lua

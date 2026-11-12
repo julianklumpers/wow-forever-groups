@@ -1,7 +1,7 @@
 local ADDON_NAME = ...
 
-local PREFIX = "DQProbe"
-local DEFAULT_CHANNEL = "DQProbeChan"
+local PREFIX = "FGProbe"
+local DEFAULT_CHANNEL = "FGProbeChan"
 local MAX_LOG_LINES = 1500
 local SYSTEM_WATCH_SECONDS = 6
 
@@ -307,7 +307,7 @@ end
 local function cmdChannel(text)
     local id = channelId()
     if not id then
-        log("FAIL", "chan: not in '%s', run /dqp join first", channelName)
+        log("FAIL", "chan: not in '%s', run /fgp join first", channelName)
         return
     end
     sendAddon("HELLO|" .. (text ~= "" and text or "channel test"), "CHANNEL", tostring(id))
@@ -332,7 +332,7 @@ end
 local function cmdPing()
     local id = channelId()
     if not id then
-        log("FAIL", "ping: not in '%s', run /dqp join first", channelName)
+        log("FAIL", "ping: not in '%s', run /fgp join first", channelName)
         return
     end
     pingSeq = pingSeq + 1
@@ -399,7 +399,7 @@ local function cmdInvite(rest, defaultDelay)
         name = nil
     end
     if not name then
-        log("WARN", "usage: /dqp invite <Name> | /dqp invitelater <Name> [seconds]")
+        log("WARN", "usage: /fgp invite <Name> | /fgp invitelater <Name> [seconds]")
         return
     end
     delay = tonumber(delay) or defaultDelay
@@ -417,11 +417,11 @@ local function cmdTell(rest)
     local name, text = rest:match("^([^:]+):?%s*(.-)$")
     name = name and name:match("^%s*(.-)%s*$")
     if not name then
-        log("WARN", "usage: /dqp tell <Name>[: message]")
+        log("WARN", "usage: /fgp tell <Name>[: message]")
         return
     end
     if text == "" then
-        text = "DungeonQueue probe whisper test"
+        text = "Forever Groups probe whisper test"
     end
     local fn, label = resolve("C_ChatInfo.SendChatMessage"), "C_ChatInfo.SendChatMessage"
     if type(fn) ~= "function" then
@@ -441,7 +441,7 @@ local function cmdTell(rest)
 end
 
 StaticPopupDialogs.DQPROBE_PROPOSAL = {
-    text = "DungeonQueue probe: group found for %s. Accept?",
+    text = "Forever Groups probe: group found for %s. Accept?",
     button1 = ACCEPT or "Accept",
     button2 = DECLINE or "Decline",
     timeout = 30,
@@ -745,7 +745,7 @@ end
 
 local function cmdKeySearch(rest)
     if not keyFrame then
-        keyFrame = CreateFrame("Frame", "DungeonQueueProbeKeyFrame", UIParent)
+        keyFrame = CreateFrame("Frame", "ForeverGroupsProbeKeyFrame", UIParent)
         keyFrame:SetScript("OnKeyDown", onKeyDown)
     end
     keySearch.on = rest:match("^%s*off") == nil
@@ -755,7 +755,7 @@ local function cmdKeySearch(rest)
     end)
     log(ok and "INFO" or "FAIL", "keysearch: %s %s", keySearch.on and "on" or "off", ok and "" or show(err))
     if keySearch.on then
-        log("INFO", "keysearch: walk around or press keys for 30 s, then /dqp lfg keysearch off")
+        log("INFO", "keysearch: walk around or press keys for 30 s, then /fgp lfg keysearch off")
     end
 end
 
@@ -813,7 +813,7 @@ local function cmdClickSearch(rest)
     if clickSearch.on then
         hookClicks()
         log("INFO", "clicksearch: on. In the world (not on a window): left-click, right-click and scroll the "
-            .. "camera, each a few times about 5 s apart, for 30 s; then /dqp clicksearch off")
+            .. "camera, each a few times about 5 s apart, for 30 s; then /fgp clicksearch off")
         return
     end
     local parts = {}
@@ -831,7 +831,7 @@ local function cmdSearchFor(rest)
     local variant, activity = rest:match("^%s*(%a)%s+(%d+)")
     activity = tonumber(activity)
     if not variant or not activity then
-        log("WARN", "usage: /dqp lfg searchfor A|B <activityID>   (Deadmines = 799, Wailing Caverns = 796)")
+        log("WARN", "usage: /fgp lfg searchfor A|B <activityID>   (Deadmines = 799, Wailing Caverns = 796)")
         return
     end
     variant = variant:upper()
@@ -897,7 +897,7 @@ local function cmdGroups()
         end
     end
     if shown == 0 then
-        log("WARN", "groups: no groups in the last search; search first (/dqp lfg searchfor B <activity>)")
+        log("WARN", "groups: no groups in the last search; search first (/fgp lfg searchfor B <activity>)")
     end
 end
 
@@ -984,7 +984,7 @@ local function cmdApplyOrList(word, rest)
     end
     local id = tonumber(rest:match("(%d+)"))
     if not id then
-        log("WARN", "usage: /dqp lfg %s <%s>", word, word:find("list") and "activityID" or "resultID")
+        log("WARN", "usage: /fgp lfg %s <%s>", word, word:find("list") and "activityID" or "resultID")
         return
     end
     local action = word:find("list") and list or apply
@@ -1022,7 +1022,7 @@ local function cmdLfg(rest)
         or word == "unlist" then
         cmdApplyOrList(word, (rest:gsub("^%S+", "")))
     else
-        log("WARN", "usage: /dqp lfg info | search | searchlater | results | keysearch [off]"
+        log("WARN", "usage: /fgp lfg info | search | searchlater | results | keysearch [off]"
             .. " | searchfor A|B <activityID> | groups | apply[key] <groupID> | cancel <groupID>"
             .. " | list[key] <activityID> | unlist")
     end
@@ -1266,7 +1266,7 @@ end
 local function cmdInspect(rest)
     local unit = rest ~= "" and rest or (UnitExists("target") and "target" or "party1")
     if not UnitExists(unit) then
-        log("FAIL", "inspect: no %s; target a party member or use /dqp inspect party1", unit)
+        log("FAIL", "inspect: no %s; target a party member or use /fgp inspect party1", unit)
         return
     end
     log("INFO", "inspect: %s = %s, player=%s, CanInspect -> %s, in inspect range -> %s", unit,
@@ -1325,19 +1325,20 @@ local COMMANDS = {
 }
 
 local function cmdHelp()
-    print("|cffa0c8ffDungeonQueue Probe|r commands (results are saved in DungeonQueueProbeDB):")
+    print("|cffa0c8ffForever Groups Probe|r commands (results are saved in ForeverGroupsProbeDB):")
     for _, command in ipairs(COMMANDS) do
-        print(string.format("  /dqp %s - %s", command[1], command[2]))
+        print(string.format("  /fgp %s - %s", command[1], command[2]))
     end
 end
 
-SLASH_DUNGEONQUEUEPROBE1 = "/dqp"
-SlashCmdList.DUNGEONQUEUEPROBE = function(input)
+SLASH_FOREVERGROUPSPROBE1 = "/fgp"
+SLASH_FOREVERGROUPSPROBE2 = "/dqp"
+SlashCmdList.FOREVERGROUPSPROBE = function(input)
     local name, rest = (input or ""):match("^%s*(%S*)%s*(.-)%s*$")
     name = (name or ""):lower()
     for _, command in ipairs(COMMANDS) do
         if command[1] == name then
-            store("CMD", "/dqp %s %s", name, rest)
+            store("CMD", "/fgp %s %s", name, rest)
             command[3](rest)
             return
         end
@@ -1393,8 +1394,8 @@ local function onLoaded(_, name)
     if name ~= ADDON_NAME then
         return
     end
-    DungeonQueueProbeDB = DungeonQueueProbeDB or {}
-    db = DungeonQueueProbeDB
+    ForeverGroupsProbeDB = ForeverGroupsProbeDB or {}
+    db = ForeverGroupsProbeDB
     db.lines = db.lines or {}
     store("INFO", "==== session start, build: %s ====", showAll(GetBuildInfo()))
     local ok, ret = pcall(C_ChatInfo.RegisterAddonMessagePrefix, PREFIX)
@@ -1402,7 +1403,7 @@ local function onLoaded(_, name)
 end
 
 local function onLogin()
-    log("INFO", "loaded. Type /dqp help, or /dqp all for the standard checks")
+    log("INFO", "loaded. Type /fgp help, or /fgp all for the standard checks")
 end
 
 local function onChannelNotice(event, text, _, _, channelString, _, _, _, _, baseName)
