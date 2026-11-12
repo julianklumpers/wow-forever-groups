@@ -97,8 +97,14 @@ function W.setWantsLead(wants)
     if engine then
         engine:setLead(value)
     end
+    -- Who is looking opens the half that fits the new choice, whatever was
+    -- folded by hand before.
+    if ns.db.queueFold then
+        ns.db.queueFold[value and "lead" or "join"] = nil
+    end
     W.setHint("")
     ns.Window.refresh()
+    ns.QueueWindow.refresh()
 end
 
 -- "lead" for the Find group summary when a solo player wants to lead.

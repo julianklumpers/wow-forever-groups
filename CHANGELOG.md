@@ -9,7 +9,8 @@
   dungeons and for group quests.
 - "Who is looking" tables fold to one line with a summary ("Groups (18) · 12 need DPS"). By
   default the groups are open and the players folded; with "I'd like to lead" on it's the other
-  way round. Fold or open one yourself and it stays that way.
+  way round, right away when you tick it. Fold or open one yourself and it stays that way until
+  you change "I'd like to lead".
 - Group quests get the same overview as dungeons: on the Quests tab, "Looking now", per quest
   who is looking in its zone and the groups there that need you, and "Who is looking »" lists
   the questing queue plus the players and groups listed in those zones in WoW's Group Finder

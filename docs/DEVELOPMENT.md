@@ -222,7 +222,7 @@ the other members), Lvl, Dungeons and Time. Hovering a party or group lists who 
 text, without column headers. Each table folds (its caption is a +/- button) to one line with a summary ("5 tanks,
 16 DPS", "12 need DPS"). By default the half that fits what the player does is open: players with "I'd like to
 lead" on (they build a group), groups otherwise (they look for a place); a fold the player sets is kept in
-`db.queueFold`, separately for leading and not leading. A click
+`db.queueFold` until the wish to lead changes, which brings back that choice's defaults. A click
 on a header sorts every table, a second click reverses (`db.queueSort`, `db.queueSortReverse`); the Show filter
 matches a solo player's roles and a party's or group's needs. Right-clicking a row opens `wow/ui/playermenu.lua`
 (WoW's `MenuUtil` context menu, else a small menu of our own): Whisper and Invite to group for a player; Request to
