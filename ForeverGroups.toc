@@ -6,7 +6,7 @@
 ## X-Website: https://github.com/julianklumpers/wow-forever-groups
 ## X-Curse-Project-ID: 1800072
 ## X-Wago-ID: rNkgV8Na
-## Version: 0.25.0
+## Version: 0.25.1
 ## IconTexture: Interface\AddOns\ForeverGroups\media\icon
 ## AddonCompartmentFunc: ForeverGroups_OnAddonCompartmentClick
 ## SavedVariables: ForeverGroupsDB

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.25.1 (2026-11-12)
+## 0.25.1 (2026-11-13)
 
 - The whispers Forever Groups sends for you (asking a leader, before an invite, answers to "heal?")
   no longer show as "To ..." lines in your own chat; the other player still gets them. Answers
