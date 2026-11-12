@@ -212,10 +212,13 @@ group: inviting …".
 
 `wow/ui/queuewindow.lua` (the "Who is looking" link on the card, or `/fg queue`) is a separate window docked to the
 right of the main window (left when there is no room on the screen); it moves with the main window and hides with
-it. Two tabs: **Players** (queued Forever Groups players, then solo players listed in the Group Finder for your
-dungeons) and **Groups** (Group Finder groups for your dungeons, with the roles they still need, their size and how
-long they are listed). Each list has its own column headers (Role, Name, Level, Dungeons, Time); a click sorts, a
-second click reverses (`db.queueSort`, `db.queueSortReverse`). Right-clicking a row opens `wow/ui/playermenu.lua`
+it. Three tables, no tabs: **Forever Groups players** (queued players and parties), **WoW Group Finder** (solo players
+listed for your dungeons) and **Groups in WoW's Group Finder**. Every table has the same columns: Role (what the
+players can play; a party or group: the roles already in it), Needs (the places a party or group still has open,
+empty for a solo player; a party's from `Filler.missingFor`, a listed group's from its `remaining`), Name ("+N" for
+the other members), Lvl, Dungeons and Time. Hovering a party or group lists who is in it and what it needs. A click
+on a header sorts every table, a second click reverses (`db.queueSort`, `db.queueSortReverse`); the Show filter
+matches a solo player's roles and a party's or group's needs. Right-clicking a row opens `wow/ui/playermenu.lua`
 (WoW's `MenuUtil` context menu, else a small menu of our own): Whisper and Invite to group for a player; Request to
 join and Whisper leader for a group. Request to join whispers the leader the `applyAsk` message
 (`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised. The main window
