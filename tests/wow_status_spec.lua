@@ -377,7 +377,7 @@ describe("Queue window", function()
         assert.is_not_nil(client:findText("^%[fake%]  %a"))
         assert.is_not_nil(client:findText("^0:0%d$"))
         assert.is_not_nil(client:findText("^20$"))
-        for _, header in ipairs({ "Role", "Needs", "Name", "Lvl", "Dungeons", "Time" }) do
+        for _, header in ipairs({ "Roles", "Needs", "Name", "Lvl", "Dungeons", "Time" }) do
             assert.is_not_nil(client:find("Button", header), header)
         end
         assert.is_not_nil(client:findText("^Listed Tank$"))

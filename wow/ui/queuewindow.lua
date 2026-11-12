@@ -192,7 +192,7 @@ local ROW_LEFT = 22
 local ROW_WIDTH = WIDTH - 46
 local NAME_X, LEVEL_X, DUNGEONS_X, TIME_WIDTH = 100, 254, 296, 70
 local COLUMNS = {
-    { label = "Role", x = 0, width = 46, sort = "role" },
+    { label = "Roles", x = 0, width = 46, sort = "role" },
     { label = "Needs", x = 50, width = 46, sort = "needs" },
     { label = "Name", x = NAME_X, width = 150, sort = "name" },
     { label = "Lvl", x = LEVEL_X, width = 38, sort = "level" },
