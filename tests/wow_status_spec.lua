@@ -454,6 +454,10 @@ describe("Queue window", function()
         end
         assert.is_truthy(asked and asked:find("could you invite me for The Deadmines", 1, true))
         assert.is_truthy(asked:find("Level 20 DPS here", 1, true))
+        world:advance(20)
+        client:fire("PARTY_INVITE_REQUEST", "Needs Dps")
+        world:advance(1)
+        assert.is_true(client:said("Needs Dps invited you for The Deadmines%. Accept the invite!"))
 
         client:click("Button", "Players")
         assert.is_nil(client:findText("^Needs Heal$"))

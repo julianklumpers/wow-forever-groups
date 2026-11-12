@@ -8,6 +8,7 @@
 - "Who is looking" has a Groups tab: groups in WoW's Group Finder for your dungeons, with the
   roles they still need, their size and how long they're listed. Right-click a group to
   request to join (a whisper to the leader asking for an invite) or to whisper the leader.
+  The leader's invite is then recognised, with a sound and a note to accept it.
 - "Who is looking" is a table: columns Role, Name, Level, Dungeons and Time, for Forever
   Groups players and the Group Finder list alike. Click a column header to sort, again to
   reverse (replaces the sort buttons). A long dungeon list is shortened ("RFC, HoT, RoL, +32").

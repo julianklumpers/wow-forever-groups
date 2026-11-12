@@ -21,6 +21,9 @@ local INVITE_VALID = 60
 -- The Find group click searches a moment before the first tick sees us
 -- seeking; that search still counts as fresh.
 local SEARCH_SLACK = 2
+-- How long a request the player clicked (Who is looking) is remembered, so
+-- the leader's invite is recognised.
+local REQUEST_KEPT = 300
 
 local asks = {}
 local askedLeaders = {}
@@ -87,6 +90,17 @@ function Apply.reset()
     seekingSince, seekingStartedAt = nil, nil
 end
 
+-- Out of the queue: the automatic asks end, the player's own requests stay
+-- for a while.
+local function keepRequests()
+    for leader, a in pairs(asks) do
+        if not a.request or GetServerTime() - a.at > REQUEST_KEPT then
+            asks[leader] = nil
+        end
+    end
+    seekingSince, seekingStartedAt = nil, nil
+end
+
 local function askText(pick)
     local roles = {}
     for _, role in ipairs({ "T", "H", "D" }) do
@@ -106,9 +120,14 @@ local ask
 -- group to invite the player (roles: the player's letters), for a dungeon both
 -- look for. The invite is then followed like any ask.
 function Apply.request(listing, roles, dungeon)
+    if C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
+        Log.info("WoW blocks whispers right now (a boss fight?); try again in a moment.")
+        return
+    end
     roles = roles or ""
-    ask({ leader = listing.leader, dungeon = dungeon, tank = string.find(roles, "T", 1, true) ~= nil,
-        healer = string.find(roles, "H", 1, true) ~= nil, dps = string.find(roles, "D", 1, true) ~= nil })
+    ask({ leader = listing.leader, dungeon = dungeon, request = true,
+        tank = string.find(roles, "T", 1, true) ~= nil, healer = string.find(roles, "H", 1, true) ~= nil,
+        dps = string.find(roles, "D", 1, true) ~= nil })
 end
 
 function ask(pick)
@@ -132,7 +151,7 @@ function ask(pick)
         return
     end
     askedLeaders[pick.leader] = true
-    asks[pick.leader] = { dungeon = pick.dungeon, at = GetServerTime() }
+    asks[pick.leader] = { dungeon = pick.dungeon, at = GetServerTime(), request = pick.request }
     Log.info("Asked %s to invite you for %s.", pick.leader, Dungeons.name(pick.dungeon))
 end
 
@@ -161,7 +180,7 @@ function Apply.tick()
         return
     end
     if not Apply.isSeeker() then
-        Apply.reset()
+        keepRequests()
         return
     end
     seekingSince = seekingSince or GetServerTime()
