@@ -80,6 +80,28 @@ function QueueWindow.groupFinderGroups()
     return result
 end
 
+-- Listed groups for the given dungeons ({ [id] = true }) that still need one
+-- of the player's roles; empty without roles or with the Group Finder off.
+function QueueWindow.groupsNeedingMe(wanted)
+    local roles = ns.charDb and ns.charDb.lastRoles
+    local result = {}
+    if not roles or not ns.Features.groupFinder() then
+        return result
+    end
+    local style = ns.Playstyle.mine()
+    for _, listing in ipairs(ns.LfgList.listings()) do
+        local needs = false
+        for role in string.gmatch(roles, ".") do
+            needs = needs or (listing.remaining and (listing.remaining[role] or 0) > 0)
+        end
+        if needs and not listing.solo and (listing.members or 1) < 5 and listing.leader ~= ns.selfName
+            and sharesDungeon(listing.dungeons, wanted) and ns.Playstyle.fits(listing.playstyle, style) then
+            result[#result + 1] = listing
+        end
+    end
+    return result
+end
+
 -- Solo Group Finder listings for the wanted dungeons, longest listed first.
 function QueueWindow.groupFinderPlayers()
     local wanted = QueueWindow.wantedDungeons()

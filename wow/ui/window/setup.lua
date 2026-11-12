@@ -213,12 +213,14 @@ function W.refreshDungeons()
                 cell.hover:SetPoint("BOTTOMRIGHT", cell, "BOTTOMLEFT", ROW_WIDTH, -1)
                 local known = ns.Features.countsKnown()
                 Widgets.setRoleCounts(cell.counts, known and ns.QueueWindow.lookingCounts({ [dungeon.id] = true }))
+                W.paintGroupsNeeding(cell.groups, dungeon.id)
             else
                 cell.range:SetPoint("LEFT", cell.label, "RIGHT", 6, 0)
                 Widgets.fitClickArea(cell, cell.range)
                 cell.hover:SetPoint("BOTTOMRIGHT", cell, "BOTTOMLEFT", CELL_WIDTH - 8, -1)
             end
             cell.counts:SetShown(detailed)
+            cell.groups:SetShown(detailed)
             local quests = #ns.Quests.forDungeon(dungeon.id)
             cell.quests:SetShown(detailed and quests > 0)
             cell.quests:SetText(string.format("%d quest%s", quests, quests == 1 and "" or "s"))
@@ -263,6 +265,13 @@ end
 
 -- Places the role, party and dungeon choices from y downwards; returns the
 -- new y.
+-- "5 groups" after a dungeon's counts: listed groups that need one of the
+-- player's roles; empty when none.
+function W.paintGroupsNeeding(text, dungeonId)
+    local count = #ns.QueueWindow.groupsNeedingMe({ [dungeonId] = true })
+    text:SetText(count > 0 and string.format("%d group%s", count, count == 1 and "" or "s") or "")
+end
+
 -- The roles, shared by both tabs, and the playstyle (dungeons only);
 -- returns the new y.
 function W.layoutChoices(y, withPlaystyle)
@@ -380,6 +389,7 @@ function W.layoutQueued(y, entry)
             row.name:SetTextColor(Widgets.levelColor(UnitLevel("player"), dungeon.min, dungeon.max))
             row.range:SetText(Dungeons.rangeText(dungeon))
             Widgets.setRoleCounts(row.counts, known and ns.QueueWindow.lookingCounts({ [dungeon.id] = true }))
+            W.paintGroupsNeeding(row.groups, dungeon.id)
             W.place(row, PAD - CHECK_INSET, y)
             row:Show()
             y = y - QUEUE_ROW_HEIGHT
@@ -526,6 +536,8 @@ function W.buildDungeons()
         cell.quests:SetPoint("LEFT", cell.range, "RIGHT", 10, 0)
         cell.counts = Widgets.roleCounts(cell, COUNT_SIZE)
         cell.counts:SetPoint("LEFT", cell, "LEFT", COUNTS_X, 0)
+        cell.groups = Widgets.text(cell, "GameFontNormalSmall", "RIGHT")
+        cell.groups:SetPoint("RIGHT", cell.counts, "LEFT", -14, 0)
         cell.hover = cell:CreateTexture(nil, "HIGHLIGHT")
         cell.hover:SetColorTexture(1, 1, 1, 0.06)
         cell.chosen = cell:CreateTexture(nil, "BACKGROUND")
@@ -536,6 +548,17 @@ function W.buildDungeons()
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(self.dungeon.name)
                 GameTooltip:AddLine("Level " .. Dungeons.rangeText(self.dungeon), 1, 1, 1)
+                local groups = ns.QueueWindow.groupsNeedingMe({ [self.dungeon.id] = true })
+                if #groups > 0 then
+                    GameTooltip:AddLine("Groups in WoW's Group Finder that need you:", 1, 0.82, 0)
+                    for n, group in ipairs(groups) do
+                        if n > 6 then
+                            GameTooltip:AddLine(string.format("  and %d more", #groups - 6), 1, 1, 1)
+                            break
+                        end
+                        GameTooltip:AddLine(string.format("  %s (%d/5)", group.leader, group.members or 1), 1, 1, 1)
+                    end
+                end
                 local quests = ns.Quests.forDungeon(self.dungeon.id)
                 if #quests > 0 then
                     GameTooltip:AddLine("Your quests here:", 1, 0.82, 0)

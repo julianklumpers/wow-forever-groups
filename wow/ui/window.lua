@@ -240,6 +240,8 @@ function W.build()
         row.range:SetPoint("LEFT", RANGE_X, 0)
         row.counts = Widgets.roleCounts(row, COUNT_SIZE)
         row.counts:SetPoint("LEFT", COUNTS_X, 0)
+        row.groups = Widgets.text(row, "GameFontNormalSmall", "RIGHT")
+        row.groups:SetPoint("RIGHT", row.counts, "LEFT", -14, 0)
         queueRows[i] = row
     end
     ui.queueMore = Widgets.text(W.frame, "GameFontDisableSmall")

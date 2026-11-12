@@ -288,7 +288,7 @@ function W.refreshCard(state, full, tab)
             slot:Hide()
         end
     end
-    for _, widget in ipairs({ card.lookingLabel, card.looking, card.whoLink }) do
+    for _, widget in ipairs({ card.lookingLabel, card.looking, card.lookingGroups, card.whoLink }) do
         widget:SetShown(not full and not questTab)
     end
     -- The group's actions, as one row of buttons.
@@ -323,6 +323,12 @@ function W.refreshCard(state, full, tab)
         card.looking:SetPoint("LEFT", card.lookingLabel, "RIGHT", 10, 0)
         Widgets.setRoleCounts(card.looking, ns.Features.countsKnown()
             and ns.QueueWindow.lookingCounts(ns.QueueWindow.wantedDungeons()))
+        local needing = #ns.QueueWindow.groupsNeedingMe(ns.QueueWindow.wantedDungeons())
+        card.lookingGroups:ClearAllPoints()
+        card.lookingGroups:SetPoint("LEFT", card.looking, "RIGHT", 6, 0)
+        local plural = needing ~= 1
+        card.lookingGroups:SetText(needing > 0
+            and string.format("·  %d group%s need%s you", needing, plural and "s" or "", plural and "" or "s") or "")
         card.whoLink:ClearAllPoints()
         card.whoLink:SetPoint("TOPRIGHT", card, "TOPRIGHT", -12, y)
         y = y - 20
@@ -405,6 +411,7 @@ function W.buildCard()
     card.lookingLabel:SetText("Looking now:")
     card.looking = Widgets.roleCounts(card, 14)
     card.looking:EnableMouse(true)
+    card.lookingGroups = Widgets.text(card, "GameFontNormalSmall")
     Widgets.tooltip(card.looking, "Looking now", "Tanks, healers and DPS looking for your dungeons: other "
         .. "Forever Groups players and solo players in WoW's Group Finder. Someone who can play more roles counts "
         .. "for each.")
