@@ -31,13 +31,25 @@ function QueueWindow.wantedQuests()
     return wanted
 end
 
--- The zones of those quests (zone name => true) and as a list.
-local function zonesOf(wanted)
+-- The zones of those quests (zone name => true) and as a list; with
+-- forLevel also every zone the Group Finder suggests for the player's level,
+-- so the window shows questing there without group quests of your own.
+local function zonesOf(wanted, forLevel)
     local set, list = {}, {}
+    local function add(zone)
+        if zone and not set[zone] then
+            set[zone] = true
+            list[#list + 1] = zone
+        end
+    end
     for _, quest in ipairs(ns.Quests.groupQuests()) do
-        if wanted[quest.key] and quest.zone and not set[quest.zone] then
-            set[quest.zone] = true
-            list[#list + 1] = quest.zone
+        if wanted[quest.key] then
+            add(quest.zone)
+        end
+    end
+    if forLevel then
+        for _, zone in ipairs(ns.LfgList.zonesForLevel(UnitLevel("player") or 1)) do
+            add(zone)
         end
     end
     return set, list
@@ -53,7 +65,7 @@ function QueueWindow.searchIfStale(age, subject)
     if ns.LfgList.secondsSinceZoneSearch() < age then
         return false
     end
-    local _, zones = zonesOf(QueueWindow.wantedQuests())
+    local _, zones = zonesOf(QueueWindow.wantedQuests(), true)
     return ns.LfgList.searchZones(zones)
 end
 
@@ -117,7 +129,7 @@ end
 -- in the zones of the wanted quests. Returns the listings and a match test.
 local function finderSource(subject)
     if subject == "quests" then
-        local zones = zonesOf(QueueWindow.wantedQuests())
+        local zones = zonesOf(QueueWindow.wantedQuests(), true)
         return (ns.LfgList.zoneListings()), function(listing)
             return sharesDungeon(listing.zones, zones)
         end
@@ -165,14 +177,14 @@ end
 function QueueWindow.groupsNeedingMe(wanted, subject)
     local roles = ns.charDb and ns.charDb.lastRoles
     local result = {}
-    local leading = ns.charDb[subject == "quests" and "wantsLeadQuests" or "wantsLead"]
+    local leading = ns.charDb[(subject == "quests" or subject == "quest") and "wantsLeadQuests" or "wantsLead"]
     if not roles or not ns.Features.groupFinder() or leading then
         return result
     end
     local style = ns.Playstyle.mine()
     local listings, field = ns.LfgList.listings(), "dungeons"
-    if subject == "quests" then
-        listings, field, wanted = (ns.LfgList.zoneListings()), "zones", (zonesOf(wanted))
+    if subject == "quests" or subject == "quest" then
+        listings, field, wanted = (ns.LfgList.zoneListings()), "zones", (zonesOf(wanted, subject == "quests"))
     end
     for _, listing in ipairs(listings) do
         local needs = false
@@ -230,12 +242,12 @@ local function countLooking(wanted, subject)
             end
         end
     end
-    local quests = subject == "quests"
+    local quests = subject == "quests" or subject == "quest"
     local engine = quests and ns.questEngine or ns.engine
     local style = ns.Playstyle.mine()
     local listings, field, areas = ns.LfgList.listings(), "dungeons", wanted
     if quests then
-        listings, field, areas = (ns.LfgList.zoneListings()), "zones", (zonesOf(wanted))
+        listings, field, areas = (ns.LfgList.zoneListings()), "zones", (zonesOf(wanted, subject == "quests"))
     end
     if engine then
         for _, entry in ipairs(engine.queue:list()) do

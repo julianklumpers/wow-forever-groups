@@ -36,6 +36,8 @@ local version = 0
 local zoneCategory = CATEGORY_ZONES
 local zoneByActivity, activityByZone = {}, {}
 local zoneListings = {}
+-- Each zone's level range as the Group Finder suggests it: name => { min, max }.
+local zoneLevels = {}
 local zoneUpdatedAt
 local zoneSearchedAt = -math.huge
 -- WoW may not have its activities ready at login (0 zones then, 41 later in
@@ -387,6 +389,19 @@ function LfgList.zoneCount()
     return count
 end
 
+-- The zones whose suggested levels include this level, A-Z.
+function LfgList.zonesForLevel(level)
+    zonesNeeded()
+    local zones = {}
+    for name, range in pairs(zoneLevels) do
+        if level >= range[1] and level <= range[2] then
+            zones[#zones + 1] = name
+        end
+    end
+    table.sort(zones)
+    return zones
+end
+
 function LfgList.zoneActivity(zone)
     zonesNeeded()
     return activityByZone[zone]
@@ -410,6 +425,10 @@ function LfgList.loadZones()
         if type(name) == "string" and not isSecret(name) then
             zoneByActivity[activity] = name
             activityByZone[name] = activity
+            local min, max = tonumber(info.minLevelSuggestion), tonumber(info.maxLevelSuggestion)
+            if min and max and min > 0 and max >= min then
+                zoneLevels[name] = { min, max }
+            end
             count = count + 1
         end
     end

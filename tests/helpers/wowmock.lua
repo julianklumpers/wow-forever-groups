@@ -54,7 +54,8 @@ local function secretCopy(fields)
 end
 
 -- The "Quests & Zones" activities of the Group Finder in the tests.
-World.ZONE_ACTIVITIES = { [9001] = "Elwynn Forest", [9002] = "Westfall" }
+World.ZONE_ACTIVITIES = { [9001] = "Elwynn Forest", [9002] = "Westfall", [9003] = "Stranglethorn Vale" }
+World.ZONE_LEVELS = { [9001] = { 1, 14 }, [9002] = { 8, 24 }, [9003] = { 28, 50 } }
 
 World.QUEST_TAG_NAMES = { [1] = "Elite", [41] = "PvP", [81] = "Dungeon" }
 
@@ -1055,7 +1056,9 @@ local function buildEnv(world, client)
         end,
         GetActivityInfoTable = function(activity)
             if World.ZONE_ACTIVITIES[activity] then
-                return { fullName = World.ZONE_ACTIVITIES[activity] }
+                local range = World.ZONE_LEVELS[activity]
+                return { fullName = World.ZONE_ACTIVITIES[activity], minLevelSuggestion = range[1],
+                    maxLevelSuggestion = range[2] }
             end
             local levels = client.activityLevels[activity]
             if levels then

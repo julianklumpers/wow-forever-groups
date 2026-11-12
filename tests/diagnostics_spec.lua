@@ -48,11 +48,11 @@ describe("the Quests & Zones activities", function()
         world:advance(5)
         client.zonesLate = false
         world:advance(12)
-        assert.are.equal(2, client.ns.LfgList.zoneCount())
+        assert.are.equal(3, client.ns.LfgList.zoneCount())
         client:slash("/dq selftest")
         local logged = false
         for _, line in ipairs(client.ns.db.log) do
-            logged = logged or line:find("selftest: works  Quests & Zones category  (2 zones)", 1, true) ~= nil
+            logged = logged or line:find("selftest: works  Quests & Zones category  (3 zones)", 1, true) ~= nil
         end
         assert.is_true(logged)
     end)

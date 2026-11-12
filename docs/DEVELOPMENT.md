@@ -229,7 +229,9 @@ matches a solo player's roles and a party's or group's needs. Right-clicking a r
 join and Whisper leader for a group. Request to join whispers the leader the `applyAsk` message
 (`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised. Opened from the Quests tab the window
 shows group quests instead (`QueueWindow.subject()`): the questing queue, and the Group Finder's "Quests & Zones"
-listings (`LfgList.zoneListings`) in the zones of the wanted quests (the questing entry's, else the ticked ones), with a
+listings (`LfgList.zoneListings`) in the zones of the wanted quests (the questing entry's, else the ticked ones) and in
+every zone whose suggested levels (the zone activity's `minLevelSuggestion`/`maxLevelSuggestion`, verified for all 41
+zones) include the player's level (`LfgList.zonesForLevel`), with a
 Quests/Zone column; it searches those zones on input. An open window switches along with the main window's tab (`QueueWindow.follow`). The Quests tab shows
 the same counts per quest (`lookingCounts(wanted, "quests")`, `groupsNeedingMe(wanted, "quests")`). The main window
 counts, per dungeon and in "Looking now", the listed groups that need one of the player's ticked roles
