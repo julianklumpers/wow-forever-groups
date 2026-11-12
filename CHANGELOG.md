@@ -4,6 +4,8 @@
 
 - Fake players for testing (`/fg fake`) get made-up names instead of "Fake 1", "Fake 2"…
 - Fake players only queue for the dungeons of your level.
+- Fake players are always grouped with you: with many fakes, or fakes added before you joined,
+  they used to form groups among themselves and no proposal came.
 - Right-click a player in "Who is looking" to whisper or invite them.
 - "Who is looking" has a Groups tab: groups in WoW's Group Finder for your dungeons, with the
   roles they still need, their size and how long they're listed. Right-click a group to

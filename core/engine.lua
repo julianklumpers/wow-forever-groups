@@ -753,7 +753,14 @@ function Engine:runMatchmaking()
         summaries[#summaries + 1] = summarize("players", real, groups)
     end
     if self.myEntry and next(self.fakes) and not self:isReserved(self.name) then
-        local pool = { self.queue:get(self.name) }
+        -- The player anchors the search: fakes added earlier waited longer
+        -- and would otherwise fill groups among themselves first.
+        local own = {}
+        for key, value in pairs(self.queue:get(self.name) or self.myEntry) do
+            own[key] = value
+        end
+        own.joinedAt = 0
+        local pool = { own }
         for _, entry in ipairs(self.queue:list()) do
             if self.fakes[entry.id] and not self:isReserved(entry.id) then
                 pool[#pool + 1] = entry

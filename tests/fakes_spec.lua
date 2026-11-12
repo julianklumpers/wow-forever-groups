@@ -87,6 +87,8 @@ describe("Fake players", function()
     end)
 
     it("never expire and never become matchmaker", function()
+        me:leave()
+        sim:join("Me-R", "D", { "WC" })
         fake(me, "Aaa Fake", "D")
         sim:advance(Config.ENTRY_TIMEOUT * 2)
         assert.are.equal("Me-R", me:matchmaker())
