@@ -14,7 +14,8 @@
 - When a leader you asked invites you, you join right away instead of having to click the
   invite in time (also after "Request to join" in "Who is looking"). Settings → Joining: "Join
   a group I asked to invite me by itself". Invites from leaders you didn't ask are never
-  accepted for you.
+  accepted for you. WoW's role window for that invite is closed for you and your role is set:
+  DPS when the group still has a DPS place, else tank, else healer (of the roles you ticked).
 - Recently listed groups are asked first; a listing that has been up for half an hour or more
   and still isn't full (often an away leader) comes last.
 - A leader who was asked isn't asked again for 15 minutes, also when you queue again or reload.

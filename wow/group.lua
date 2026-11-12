@@ -196,9 +196,27 @@ end
 -- Everyone said yes in the proposal popup, so the expected leader's invite
 -- is accepted without a second click (verified in Forever: AcceptGroup from
 -- this event joins, StaticPopup_Hide removes WoW's invite popup).
-local function acceptInvite()
+-- An invite from a group listed in WoW's Group Finder shows WoW's role
+-- window (LFGInvitePopup) instead; it stays up after joining, so it is
+-- closed and the role set for the player (verified in Forever with the
+-- probe: the window and StaticPopupSpecial_Hide exist).
+local function closeRoleWindow()
+    local popup = LFGInvitePopup
+    if type(popup) ~= "table" or not popup.IsShown or not popup:IsShown() then
+        return
+    end
+    if type(StaticPopupSpecial_Hide) ~= "function" or not pcall(StaticPopupSpecial_Hide, popup) then
+        pcall(popup.Hide, popup)
+    end
+end
+
+-- role: the role ("T", "H", "D") to play in the joined group, or nil.
+local function acceptInvite(role)
     if IsInGroup() or type(AcceptGroup) ~= "function" then
         return false
+    end
+    if role then
+        ns.RoleSync.expect(ns.selfName, role)
     end
     local ok = pcall(AcceptGroup)
     if ok and type(StaticPopup_Hide) == "function" then
@@ -210,6 +228,13 @@ local function acceptInvite()
             popup.inviteAccepted = 1
         end
         pcall(StaticPopup_Hide, "PARTY_INVITE")
+    end
+    if ok then
+        closeRoleWindow()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.3, closeRoleWindow)
+            C_Timer.After(1, closeRoleWindow)
+        end
     end
     return ok
 end

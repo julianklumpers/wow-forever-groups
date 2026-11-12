@@ -165,6 +165,27 @@ describe("asking groups in WoW's Group Finder to invite you", function()
         assert.is_false(solo.ns.Filler.isActive())
     end)
 
+    it("joins as the role the group still needs and closes WoW's role window", function()
+        local world, solo = setup()
+        world:listGroup("Needs Tank", 799, { T = 1, H = 0, D = 0 })
+        solo:slash("/dq join tank,dps dm")
+        world:advance(2)
+        assert.are.same({ "Needs Tank" }, asked(solo))
+        local popup = { shown = true }
+        function popup.IsShown(self)
+            return self.shown
+        end
+        function popup.Hide(self)
+            self.shown = false
+        end
+        solo.env.LFGInvitePopup = popup
+        solo:invitedBy("Needs Tank")
+        assert.are.equal("Needs Tank", solo.acceptedFrom)
+        assert.is_false(popup.shown)
+        world:advance(2)
+        assert.is_truthy(table.concat(solo.roleSets, ","):find("Solo Dps=TANK", 1, true))
+    end)
+
     it("does not ask a leader again for a quarter of an hour, also in a new queue", function()
         local world, solo = setup()
         world:listGroup("Group Lead", 799, { T = 0, H = 0, D = 2 })

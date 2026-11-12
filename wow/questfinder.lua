@@ -450,13 +450,23 @@ end
 
 -- An invite from a leader we asked while still looking alone is joined at
 -- once, unless switched off.
-function QuestFinder.onInvite(inviter)
+function QuestFinder.onInvite(inviter, tank, healer, dps)
     local current = entry()
     if not asked[inviter] or not current or #current.members ~= 1 or ns.db.noAutoAcceptAsked then
         return
     end
-    if ns.Group.acceptInvite() then
-        Log.info("Joined %s's group.", inviter)
+    local remaining
+    for _, listing in ipairs((ns.LfgList.zoneListings())) do
+        if not listing.solo and listing.leader == inviter then
+            remaining = listing.remaining
+        end
+    end
+    if not remaining and (tank or healer or dps) then
+        remaining = { T = tank and 1 or 0, H = healer and 1 or 0, D = dps and 1 or 0 }
+    end
+    local role = ns.LfgPick.joinRole(current.members[1].roles, remaining)
+    if ns.Group.acceptInvite(role) then
+        Log.info("Joined %s's group as %s.", inviter, ns.Widgets.ROLE_NAMES[role] or "?")
     end
 end
 

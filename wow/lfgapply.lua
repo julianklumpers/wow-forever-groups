@@ -282,14 +282,33 @@ end
 
 -- An invite from a leader we asked is joined at once, while still looking
 -- (or for a request the player clicked), unless switched off.
-local function onInviteRequest(inviter)
+-- The role to join an asked group with: DPS while it has a DPS place, else
+-- tank, else healer, of the roles the player plays. The open places come
+-- from the group's listing, else from the invite (the roles it asks for).
+local function joinRole(inviter, tank, healer, dps)
+    local entry = ns.engine and ns.engine.myEntry
+    local roles = entry and #entry.members == 1 and entry.members[1].roles or ns.charDb.lastRoles
+    local remaining
+    for _, group in ipairs(ns.LfgList.groups()) do
+        if group.leader == inviter then
+            remaining = group.remaining
+        end
+    end
+    if not remaining and (tank or healer or dps) then
+        remaining = { T = tank and 1 or 0, H = healer and 1 or 0, D = dps and 1 or 0 }
+    end
+    return LfgPick.joinRole(roles, remaining)
+end
+
+local function onInviteRequest(inviter, tank, healer, dps)
     local a = asks[inviter]
     if not a then
         return
     end
     a.invitedAt = GetServerTime()
-    if not ns.db.noAutoAcceptAsked and (a.request or Apply.isSeeker()) and ns.Group.acceptInvite() then
-        Log.info("Joined %s's group for %s.", inviter, Dungeons.name(a.dungeon))
+    local role = joinRole(inviter, tank == true, healer == true, dps == true)
+    if not ns.db.noAutoAcceptAsked and (a.request or Apply.isSeeker()) and ns.Group.acceptInvite(role) then
+        Log.info("Joined %s's group for %s as %s.", inviter, Dungeons.name(a.dungeon), Widgets.ROLE_NAMES[role] or "?")
         return
     end
     Log.info("%s invited you for %s. Accept the invite!", inviter, Dungeons.name(a.dungeon))

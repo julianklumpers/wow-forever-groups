@@ -4,6 +4,8 @@ codes = true
 exclude_files = { ".lua51/", "dist/", ".lua/", ".luarocks/", ".install/" }
 
 local wow_read_globals = {
+    "LFGInvitePopup",
+    "StaticPopupSpecial_Hide",
     "MenuResponse",
     "GameTooltip_AddNormalLine",
     "GameTooltip_SetTitle",
@@ -123,8 +125,7 @@ files["wow/"] = {
     },
 }
 
-local probe_read_globals = { "GetLFGRoles", "LFGInvitePopup", "LFGInvitePopupAccept_OnClick", "LFGInvitePopup_Show",
-    "SetLFGRoles", "StaticPopupSpecial_Hide" }
+local probe_read_globals = { "GetLFGRoles", "LFGInvitePopupAccept_OnClick", "LFGInvitePopup_Show", "SetLFGRoles" }
 for _, name in ipairs(wow_read_globals) do
     probe_read_globals[#probe_read_globals + 1] = name
 end

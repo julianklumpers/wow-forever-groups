@@ -200,7 +200,12 @@ away leader), then nearest to full, then the most recently listed; the next afte
 invites never arrive at once; a leader asked automatically is not asked again for 15 min, also in a later queue or
 after a reload (`charDb.askedLeaders`); the questing queue the same), and waits 60 s in all. An asked leader's invite
 is accepted at once while still looking, or for a "Request to join" click (`Group.acceptInvite`; off with
-`noAutoAcceptAsked`). An ask ends early when results that came in after it no longer list the group or show no
+`noAutoAcceptAsked`). An invite from a listed group brings up WoW's role window (`LFGInvitePopup`, with
+`PARTY_INVITE_REQUEST`'s tank/healer/damage flags) instead of the plain popup, and it stays up after joining
+(probe, 2026-11-12); it is closed with `StaticPopupSpecial_Hide` right away and again after 0.3 and 1 s, and the role
+is set through `RoleSync.expect` (`UnitSetRole("player")` once in the group): `LfgPick.joinRole` takes DPS while the
+group has a DPS place, else tank, else healer, of the player's roles, from the listing's open places, else the
+invite's flags. An ask ends early when results that came in after it no longer list the group or show no
 place for the player's roles, or when the leader whispers a clear no; a clear yes gives the leader 30 s more, also
 past the 60 s (`core/replies.lua` reads the answer: refusal and yes words and phrases, "no problem" taken out first;
 both or neither is left open). An invite from an asked leader holds off building; joining that group leaves the

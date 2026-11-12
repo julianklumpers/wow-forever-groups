@@ -72,5 +72,26 @@ function LfgPick.groupsToApply(groups, opts)
     return result
 end
 
+-- The role to join a group with: of the player's roles ("TD"), DPS when
+-- the group still has a DPS place, else tank, else healer. remaining: the
+-- group's open places per role, or nil when unknown (then the first of the
+-- player's roles in that order).
+local JOIN_ORDER = { "D", "T", "H" }
+
+function LfgPick.joinRole(roles, remaining)
+    roles = roles or ""
+    for _, role in ipairs(JOIN_ORDER) do
+        if Roles.has(roles, role) and (not remaining or (remaining[role] or 0) > 0) then
+            return role
+        end
+    end
+    for _, role in ipairs(JOIN_ORDER) do
+        if Roles.has(roles, role) then
+            return role
+        end
+    end
+    return nil
+end
+
 ns.LfgPick = LfgPick
 return LfgPick
