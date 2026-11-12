@@ -205,6 +205,10 @@ join and Whisper leader for a group. Request to join whispers the leader the `ap
 
 ### During and after forming
 
+- **Joining:** the leader's client invites everyone (`wow/group.lua`, from a timer, which Forever allows). A
+  member who accepted the proposal accepts the invite of that proposal's leader from `PARTY_INVITE_REQUEST` with
+  `AcceptGroup()` and hides WoW's invite popup (`StaticPopup_Hide("PARTY_INVITE")`); verified in Forever with
+  `/fgp autoaccept`. Off with the `noAutoAccept` setting; other inviters are never accepted.
 - **Taskbar flash:** proposals and invites flash the WoW icon in the taskbar and play a sound (`wow/notify.lua`).
 - **Dungeon quests:** the dungeon table shows how many quests from the quest log belong to each dungeon (the quest
   log's area headers; `wow/quests.lua`).

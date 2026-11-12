@@ -76,6 +76,7 @@ local wow_read_globals = {
     "Settings",
     "SendChatMessage",
     "StaticPopup_Hide",
+    "AcceptGroup",
     "StaticPopup_Show",
     "LeaveParty",
     "UnitFullName",

@@ -66,9 +66,9 @@ describe("WoW layer", function()
         assert.are.equal("WHISPER", tank.whispers[1].chatType)
         for i = 2, 5 do
             assert.are.same({}, clients[i].invites)
-            assert.is_true(clients[i]:said("This is your Forever Groups invite from Tanky Mctank"), clients[i].name)
-            clients[i].party = { "Tanky Mctank" }
-            clients[i]:fire("GROUP_ROSTER_UPDATE")
+            assert.are.equal("Tanky Mctank", clients[i].acceptedFrom, clients[i].name)
+            assert.is_true(clients[i].hiddenPopups.PARTY_INVITE)
+            assert.is_true(clients[i]:said("Joined Tanky Mctank's group"), clients[i].name)
             assert.is_false(clients[i].ns.engine:snapshot().queued)
         end
         assert.are.equal("HEALER", clients[2].roles["Heally Mcheal"])
@@ -472,6 +472,38 @@ describe("WoW UI", function()
         assert.is_not_nil(member:findText("^Your party leader queues for the group%.$"))
         assert.is_nil(member:find("Button", "Find group"))
         assert.is_nil(member:find("CheckButton", "Tank"))
+    end)
+
+    it("leaves the invite to the player when joining by itself is off", function()
+        local world = World.new()
+        local clients = {}
+        for i, p in ipairs(PLAYERS) do
+            clients[i] = world:addClient(p[1])
+            clients[i].ns.db.noAutoAccept = i == 2 or nil
+        end
+        world:advance(CONNECT)
+        for i, p in ipairs(PLAYERS) do
+            clients[i]:slash("/dq join " .. p[2] .. " auto")
+        end
+        world:advance(MATCH)
+        for _, client in ipairs(clients) do
+            client:acceptPopup()
+        end
+        world:advance(5)
+        assert.is_nil(clients[2].acceptedFrom)
+        assert.is_true(clients[2]:said("This is your Forever Groups invite from Tanky Mctank"))
+        assert.are.equal("Tanky Mctank", clients[3].acceptedFrom)
+    end)
+
+    it("never accepts an invite from someone else", function()
+        local world, clients = fullWorld()
+        for _, client in ipairs(clients) do
+            client:acceptPopup()
+        end
+        clients[2]:invitedBy("Random Stranger")
+        assert.is_nil(clients[2].acceptedFrom)
+        world:advance(5)
+        assert.are.equal("Tanky Mctank", clients[2].acceptedFrom)
     end)
 
     it("shows live answers in the proposal popup", function()

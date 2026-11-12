@@ -57,6 +57,16 @@ local TABS = {
                         tip = "Shows in chat who would be whispered and invited, without doing it." },
                 },
             },
+            {
+                title = "Joining",
+                options = {
+                    { key = "noAutoAccept", inverted = true,
+                        label = "Join the group by itself once everyone accepted",
+                        tip = "After you accepted a group proposal, the invite from that group's leader is "
+                            .. "accepted for you, so you are in the group right away. Invites from anyone else "
+                            .. "are never accepted for you." },
+                },
+            },
         },
     },
     {

@@ -201,6 +201,9 @@ local Client = {}
 Client.__index = Client
 
 function Client:fire(event, ...)
+    if event == "PARTY_INVITE_REQUEST" then
+        self.lastInviter = ...
+    end
     for _, frame in ipairs(self.frames) do
         if frame.events[event] and frame.scripts.OnEvent then
             frame.scripts.OnEvent(frame, event, ...)
@@ -590,6 +593,20 @@ local function buildEnv(world, client)
     env.StaticPopupDialogs = {}
     env.StaticPopup_Show = function(which)
         client.popups[#client.popups + 1] = which
+    end
+    env.StaticPopup_Hide = function(which)
+        client.hiddenPopups = client.hiddenPopups or {}
+        client.hiddenPopups[which] = true
+    end
+    -- Joins the group of the last player who invited this client.
+    env.AcceptGroup = function()
+        local leader = assert(client.lastInviter, client.name .. " accepted without an invite")
+        client.acceptedFrom = leader
+        client.party = { leader }
+        client.isLeader = false
+        world:schedule(client, 0.2, function()
+            client:fire("GROUP_ROSTER_UPDATE")
+        end)
     end
     local errorHandler = function(err)
         error(err, 0)

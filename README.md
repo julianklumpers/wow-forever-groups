@@ -5,8 +5,8 @@
 **Automatic groups for dungeons and group quests on WoW Forever: pick a role, get a group.**
 
 Tick the roles you can play, choose your dungeons or group quests and press **Find group**.
-When a group is found, everyone gets a short popup to accept, the invites go out by
-themselves and roles are set for you.
+When a group is found, everyone gets a short popup to accept; once all have accepted you're
+in the group, with roles set for you.
 
 <p align="center">
   <img src="media/screenshots/main-window.png" width="420" alt="The Forever Groups window: roles, playstyle and dungeons, with the Find group button">

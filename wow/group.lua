@@ -180,11 +180,29 @@ function Group.status()
     return session
 end
 
+-- Everyone said yes in the proposal popup, so the expected leader's invite
+-- is accepted without a second click (verified in Forever: AcceptGroup from
+-- this event joins, StaticPopup_Hide removes WoW's invite popup).
+local function acceptInvite()
+    if ns.db.noAutoAccept or IsInGroup() or type(AcceptGroup) ~= "function" then
+        return false
+    end
+    local ok = pcall(AcceptGroup)
+    if ok and type(StaticPopup_Hide) == "function" then
+        pcall(StaticPopup_Hide, "PARTY_INVITE")
+    end
+    return ok
+end
+
 local function onInviteRequest(inviter)
     if expectedLeader and inviter == expectedLeader then
+        expectedLeader = nil
+        if acceptInvite() then
+            Log.info("Joined %s's group.", inviter)
+            return
+        end
         ns.Notify.attention()
         Log.info("This is your Forever Groups invite from %s.", inviter)
-        expectedLeader = nil
     end
 end
 
