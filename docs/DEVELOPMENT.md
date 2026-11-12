@@ -166,7 +166,7 @@ the "looking" counts show Forever Groups players only. On, each part has its own
 presses, ask groups, invite listed players, list the group, invite players who whisper, every language, dry run);
 those are greyed out while the main setting is off.
 
-When players have waited 2 minutes without a full group, the matchmaker may propose a partial group (at least 2
+When queued players cannot make a full group, the matchmaker proposes a partial group right away (`PARTIAL_AFTER = 0`; at least 2
 players); the roles left open are filled from WoW's own Group Finder: the leader's Accept click also runs a Group
 Finder search (searching is protected and needs a click), then the best listed solo players (right role, level and
 dungeon; single-role players first, longest listed first) get a whisper and an invite. Anyone who declines or does not
