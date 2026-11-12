@@ -13,6 +13,7 @@ local ROW_HEIGHT = 18
 
 local frame
 local sections = {}
+local blocks = {}
 local wheelSearching = false
 local wheelBlocked = false
 
@@ -724,49 +725,131 @@ local function showSection(section, shown)
     end
 end
 
+-- Each source gets a framed block: a header band with its icon and name,
+-- then its two tables. Drawn as textures on the window, so the rows sit on
+-- top of them.
+local BLOCK_LEFT, BLOCK_BAND = 14, 24
+
+local function buildBlock(title, icon, coords)
+    local block = {}
+    block.bg = frame:CreateTexture(nil, "BORDER")
+    block.bg:SetColorTexture(1, 1, 1, 0.03)
+    block.band = frame:CreateTexture(nil, "BORDER", nil, 1)
+    block.band:SetColorTexture(1, 0.82, 0, 0.12)
+    block.edges = {}
+    for i = 1, 4 do
+        local edge = frame:CreateTexture(nil, "BORDER", nil, 2)
+        edge:SetColorTexture(1, 0.82, 0, 0.35)
+        block.edges[i] = edge
+    end
+    block.icon = frame:CreateTexture(nil, "ARTWORK")
+    block.icon:SetSize(18, 18)
+    block.icon:SetTexture(icon)
+    if coords then
+        block.icon:SetTexCoord(unpack(coords))
+    end
+    block.title = Widgets.text(frame, "GameFontNormal")
+    block.title:SetText(title)
+    block.note = Widgets.text(frame, "GameFontDisableSmall", "RIGHT")
+    return block
+end
+
+-- top and bottom: y of the block's edges (negative, from the window's top).
+local function placeBlock(block, top, bottom, shown)
+    local parts = { block.bg, block.band, block.icon, block.title, block.note }
+    for _, edge in ipairs(block.edges) do
+        parts[#parts + 1] = edge
+    end
+    for _, part in ipairs(parts) do
+        part:SetShown(shown)
+    end
+    if not shown then
+        return
+    end
+    local right = -BLOCK_LEFT
+    block.bg:ClearAllPoints()
+    block.bg:SetPoint("TOPLEFT", frame, "TOPLEFT", BLOCK_LEFT, top)
+    block.bg:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", right, bottom)
+    block.band:ClearAllPoints()
+    block.band:SetPoint("TOPLEFT", block.bg, "TOPLEFT")
+    block.band:SetPoint("TOPRIGHT", block.bg, "TOPRIGHT")
+    block.band:SetHeight(BLOCK_BAND)
+    local top1, bottom1, left1, right1 = unpack(block.edges)
+    top1:ClearAllPoints()
+    top1:SetPoint("TOPLEFT", block.bg, "TOPLEFT")
+    top1:SetPoint("TOPRIGHT", block.bg, "TOPRIGHT")
+    top1:SetHeight(1)
+    bottom1:ClearAllPoints()
+    bottom1:SetPoint("BOTTOMLEFT", block.bg, "BOTTOMLEFT")
+    bottom1:SetPoint("BOTTOMRIGHT", block.bg, "BOTTOMRIGHT")
+    bottom1:SetHeight(1)
+    left1:ClearAllPoints()
+    left1:SetPoint("TOPLEFT", block.bg, "TOPLEFT")
+    left1:SetPoint("BOTTOMLEFT", block.bg, "BOTTOMLEFT")
+    left1:SetWidth(1)
+    right1:ClearAllPoints()
+    right1:SetPoint("TOPRIGHT", block.bg, "TOPRIGHT")
+    right1:SetPoint("BOTTOMRIGHT", block.bg, "BOTTOMRIGHT")
+    right1:SetWidth(1)
+    block.icon:ClearAllPoints()
+    block.icon:SetPoint("LEFT", block.band, "LEFT", 6, 0)
+    block.title:ClearAllPoints()
+    block.title:SetPoint("LEFT", block.icon, "RIGHT", 6, 0)
+    block.note:ClearAllPoints()
+    block.note:SetPoint("RIGHT", block.band, "RIGHT", -8, 0)
+end
+
+local function caption(word, count, suffix)
+    return string.format("%s (%d)%s", word, count, suffix)
+end
+
 function QueueWindow.refresh()
     if not frame or not frame:IsShown() then
         return
     end
     refreshSortBar()
-    local y = -70 - TOP
+    local suffix = shownRoles() and "  ·  filtered" or ""
+    local top = -64 - TOP
+    local y = top - BLOCK_BAND - 6
     showSection(sections.queue, true)
-    local suffix = shownRoles() and " (filtered)" or ""
     local solo, parties, anyParty = queueLists()
-    sections.queue.header:SetText("Forever Groups players" .. suffix)
+    sections.queue.header:SetText(caption("Players", #solo, suffix))
     y = fillSection(sections.queue, y, solo, shownRoles() and "Nobody with these roles in the queue."
         or "Nobody is in the Forever Groups queue right now.")
     showSection(sections.parties, true)
-    sections.parties.header:SetText("Forever Groups parties" .. suffix)
+    sections.parties.header:SetText(caption("Parties", #parties, suffix))
     y = fillSection(sections.parties, y, parties, anyParty and "No party needs these roles."
         or "No Forever Groups party is queued right now.")
+    placeBlock(blocks.addon, top, y + 4, true)
     -- With WoW's Group Finder turned off only Forever Groups players are shown.
     local useFinder = ns.Features.groupFinder()
     sections.refresh:SetShown(useFinder)
     showSection(sections.finder, useFinder)
     showSection(sections.groups, useFinder)
     if not useFinder then
+        placeBlock(blocks.finder, 0, 0, false)
         frame:SetHeight(-y + 12)
         return
     end
+    top = y - 8
+    y = top - BLOCK_BAND - 6
     local _, updatedAt = ns.LfgList.listings()
     local finder = groupFinderItems()
     local groups = groupFinderGroupItems()
     if ns.LfgList.isSearching() then
-        sections.finder.header:SetText("WoW Group Finder: searching...")
+        blocks.finder.note:SetText("searching...")
     elseif updatedAt then
-        sections.finder.header:SetText(string.format(
-            "WoW Group Finder: %d solo player%s for your dungeons (searched %s ago)%s",
-            #finder, #finder == 1 and "" or "s", Widgets.formatTime(GetTime() - updatedAt), suffix))
+        blocks.finder.note:SetText("searched " .. Widgets.formatTime(GetTime() - updatedAt) .. " ago")
     else
-        sections.finder.header:SetText("WoW Group Finder (not searched yet)")
+        blocks.finder.note:SetText("not searched yet")
     end
+    sections.finder.header:SetText(caption("Players", #finder, suffix))
     y = fillSection(sections.finder, y, finder, shownRoles() and "Nobody with these roles listed."
         or "Nobody listed for your dungeons.")
-    sections.groups.header:SetText(string.format("Groups in WoW's Group Finder: %d for your dungeons%s", #groups,
-        suffix))
+    sections.groups.header:SetText(caption("Groups", #groups, suffix))
     y = fillSection(sections.groups, y, groups, shownRoles() and "No group needs these roles."
         or "No groups listed for your dungeons.")
+    placeBlock(blocks.finder, top, y + 4, true)
     frame:SetHeight(-y + 12)
 end
 
@@ -811,6 +894,8 @@ local function build()
             ns.Log.debug("scrolling may not search the Group Finder; only clicks and keys will")
         end
     end)
+    blocks.addon = buildBlock("Forever Groups", Widgets.ICON)
+    blocks.finder = buildBlock("WoW Group Finder", "Interface\\LFGFrame\\LFG-Eye", { 0, 0.125, 0, 0.25 })
     sections.queue = buildSection("Forever Groups players", 6)
     sections.parties = buildSection("Forever Groups parties", 4)
     sections.finder = buildSection("WoW Group Finder", 8)

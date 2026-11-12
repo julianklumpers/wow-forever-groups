@@ -92,7 +92,8 @@ describe("the Who is looking window with WoW's Group Finder turned off", functio
         assert.is_nil(client:findText("Listed Heal"))
         assert.is_nil(client:findText("^WoW Group Finder"))
         assert.is_nil(client:find("Button", "Refresh"))
-        assert.is_not_nil(client:findText("^Forever Groups players$"))
+        assert.is_not_nil(client:findText("^Forever Groups$"))
+        assert.is_not_nil(client:findText("^Players %(%d+%)$"))
     end)
 end)
 
