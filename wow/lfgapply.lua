@@ -100,7 +100,18 @@ local function askText(pick)
     })
 end
 
-local function ask(pick)
+local ask
+
+-- A click on "Request to join" in Who is looking: asks the leader of a listed
+-- group to invite the player (roles: the player's letters), for a dungeon both
+-- look for. The invite is then followed like any ask.
+function Apply.request(listing, roles, dungeon)
+    roles = roles or ""
+    ask({ leader = listing.leader, dungeon = dungeon, tank = string.find(roles, "T", 1, true) ~= nil,
+        healer = string.find(roles, "H", 1, true) ~= nil, dps = string.find(roles, "D", 1, true) ~= nil })
+end
+
+function ask(pick)
     lastAskAt = GetTime()
     if ns.db.dryRun then
         askedLeaders[pick.leader] = true

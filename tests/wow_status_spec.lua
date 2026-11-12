@@ -419,6 +419,46 @@ describe("Queue window", function()
         assert.is_true(invited)
     end)
 
+    it("lists groups on the Groups tab and asks a leader to invite you", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 20 })
+        world:listGroup("Needs Heal", 799, { T = 0, H = 1, D = 0 }, 120)
+        world:listGroup("Needs Dps", 799, { T = 0, H = 0, D = 2 }, 30)
+        world:listGroup("Other Dungeon", 800, { T = 0, H = 0, D = 1 }, 30)
+        world:advance(CONNECT)
+        client:slash("/dq")
+        client:click("CheckButton", "DPS")
+        client:click("Button", "None")
+        client:click("CheckButton", "The Deadmines")
+        client:click("Button", "Who is looking »")
+        world:advance(1)
+        client:click("Button", "Groups")
+        assert.are.equal("groups", client.ns.db.queueTab)
+        for _, header in ipairs({ "Needs", "Leader", "Size", "Dungeons", "Time" }) do
+            assert.is_not_nil(client:find("Button", header), header)
+        end
+        assert.is_not_nil(client:findText("^Needs Heal$"))
+        assert.is_not_nil(client:findText("^4/5$"))
+        assert.is_not_nil(client:findText("^3/5$"))
+        assert.is_nil(client:findText("^Other Dungeon$"))
+
+        local row = client:findText("^Needs Dps$").parent
+        row.scripts.OnMouseUp(row, "RightButton")
+        assert.is_nil(client:find("Button", "Invite to group"))
+        client:click("Button", "Request to join")
+        local asked
+        for _, w in ipairs(client.whispers) do
+            if w.target == "Needs Dps" then
+                asked = w.text
+            end
+        end
+        assert.is_truthy(asked and asked:find("could you invite me for The Deadmines", 1, true))
+        assert.is_truthy(asked:find("Level 20 DPS here", 1, true))
+
+        client:click("Button", "Players")
+        assert.is_nil(client:findText("^Needs Heal$"))
+    end)
+
     it("adds the Group Finder numbers to the counts in the main window", function()
         local world = World.new()
         local client = world:addClient("Solo Player", { level = 20 })

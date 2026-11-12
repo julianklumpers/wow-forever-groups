@@ -36,11 +36,18 @@ function PlayerMenu.invite(name)
     end
 end
 
-local function actions(name)
-    local list = { { label = "Whisper", run = function()
+-- opts.first: an action shown first ({ label, run }); opts.whisperLabel;
+-- opts.noInvite: no "Invite to group" (for a group's leader).
+local function actions(name, opts)
+    opts = opts or {}
+    local list = {}
+    if opts.first then
+        list[1] = opts.first
+    end
+    list[#list + 1] = { label = opts.whisperLabel or "Whisper", run = function()
         PlayerMenu.whisper(name)
-    end } }
-    if canInvite() then
+    end }
+    if not opts.noInvite and canInvite() then
         list[#list + 1] = { label = "Invite to group", run = function()
             PlayerMenu.invite(name)
         end }
@@ -109,8 +116,8 @@ local function showFallback(name, list)
 end
 
 -- Opens the menu for a player; owner is the row that was clicked.
-function PlayerMenu.open(owner, name)
-    local list = actions(name)
+function PlayerMenu.open(owner, name, opts)
+    local list = actions(name, opts)
     if type(MenuUtil) == "table" and type(MenuUtil.CreateContextMenu) == "function" then
         local ok = pcall(MenuUtil.CreateContextMenu, owner, function(_, root)
             root:CreateTitle(name)
