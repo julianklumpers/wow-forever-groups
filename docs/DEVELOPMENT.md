@@ -197,7 +197,10 @@ Forever's Group Finder is the board-style one (Blizzard_GroupFinder_VanillaStyle
 groups are listed and people whisper or invite each other. So a solo player first asks listed groups that need one of
 their roles to invite them, by whisper to the leader (one at a time, nearest to full first, the next after 20 s
 without an invite, so two invites never arrive at once; never the same leader twice; the questing queue the same),
-and waits 60 s in all. An invite from an asked leader holds off building; joining that group leaves the
+and waits 60 s in all. An ask ends early when results that came in after it no longer list the group or show no
+place for the player's roles, or when the leader whispers a clear no; a clear yes gives the leader 30 s more, also
+past the 60 s (`core/replies.lua` reads the answer: refusal and yes words and phrases, "no problem" taken out first;
+both or neither is left open). An invite from an asked leader holds off building; joining that group leaves the
 Forever Groups queue. With no fitting group, or no invite in time, the player builds a group instead (inviting a player
 makes you a party leader, after which another group's invite cannot be accepted, hence this order). A solo player who
 ticked "I'd like to lead" (on the right of the roles header; `charDb.wantsLead` for dungeons,

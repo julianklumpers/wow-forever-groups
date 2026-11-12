@@ -6,6 +6,11 @@
   next only after 20 seconds without an invite (it used to whisper three leaders within a few
   seconds). Two invites can no longer arrive at once, leaving one leader waiting for nothing.
   The same for group quests.
+- It doesn't wait the full 20 seconds when it's clear nothing will come: the next leader is
+  asked at once when the group leaves the Group Finder or has no place for your role any more,
+  or when the leader whispers a clear no ("sorry, full", "nope"). A leader who whispers yes
+  ("sure, sec") gets up to 30 seconds more for the invite, even past the moment Forever Groups
+  would start building your own group. Their whisper still shows in your chat as usual.
 
 ## 0.25.0 (2026-11-12)
 

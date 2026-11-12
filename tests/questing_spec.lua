@@ -463,6 +463,17 @@ describe("the questing queue and WoW's Group Finder", function()
         assert.are.equal(1, #whispered(client, "could you invite me for Hogger%?$"))
     end)
 
+    it("asks the next group leader at once when the first whispers no", function()
+        local world = World.new()
+        world:listGroup("Group Lead", ELWYNN, { T = 0, H = 1, D = 2 }, 200)
+        world:listGroup("Other Lead", ELWYNN, { T = 0, H = 1, D = 2 }, 100)
+        local client = queued(world)
+        local first = whispered(client, "could you invite me for Hogger%?$")[1]
+        client:whisperFrom(first, "nope, sorry")
+        world:advance(1)
+        assert.are.same({ "Group Lead", "Other Lead" }, whispered(client, "could you invite me for Hogger%?$"))
+    end)
+
     it("invites players who whisper about the listed group, while their role is still open", function()
         local world = World.new()
         local client = queued(world)

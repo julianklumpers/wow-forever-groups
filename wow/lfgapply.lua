@@ -17,6 +17,9 @@ local Apply = {}
 -- One leader at a time: two invites at once would leave one leader
 -- waiting for nothing. The next is asked when this one sent no invite.
 local ASK_TIMEOUT = 20
+-- A leader who whispered yes gets this long to send the invite, also past
+-- the time we would otherwise start building our own group.
+local PROMISE_WAIT = 30
 local WAIT_FOR_INVITE = 60
 local ASK_SPACING = 2
 local INVITE_VALID = 60
@@ -58,14 +61,48 @@ local function askCount()
     return count
 end
 
--- An automatic ask still waiting for its invite.
-local function waitingForInvite()
+-- A leader who said yes and has not invited yet.
+local function promised()
     for _, a in pairs(asks) do
-        if not a.request and GetServerTime() - a.at < ASK_TIMEOUT then
+        if a.yesAt and not a.over and GetServerTime() - a.yesAt < PROMISE_WAIT then
             return true
         end
     end
     return false
+end
+
+-- An automatic ask still waiting for its invite: not refused, not gone.
+local function waitingForInvite()
+    for _, a in pairs(asks) do
+        if not a.request and not a.over and GetServerTime() - a.at < ASK_TIMEOUT then
+            return true
+        end
+    end
+    return promised()
+end
+
+-- Results that came in after an ask tell whether its group still has a
+-- place for us: gone from the Group Finder or full, the ask is over.
+local function settleAsks(roles)
+    local _, updatedAt = ns.LfgList.listings()
+    for leader, a in pairs(asks) do
+        if not a.over and not a.invitedAt and not a.yesAt and updatedAt and a.askedAt and updatedAt > a.askedAt then
+            local found
+            for _, group in ipairs(ns.LfgList.groups()) do
+                if group.leader == leader then
+                    found = group
+                end
+            end
+            local room = false
+            for role in string.gmatch(found and roles or "", ".") do
+                room = room or (found.remaining[role] or 0) > 0
+            end
+            if not room then
+                a.over = true
+                Log.info("%s's group %s; asking another.", leader, found and "is full" or "is no longer listed")
+            end
+        end
+    end
 end
 
 local function invitedBy()
@@ -94,6 +131,9 @@ function Apply.wantsToBuild()
         return true
     end
     if invitedBy() then
+        return false
+    end
+    if promised() then
         return false
     end
     if seekingSince ~= nil and GetServerTime() - seekingSince >= WAIT_FOR_INVITE then
@@ -172,7 +212,7 @@ function ask(pick)
         return
     end
     askedLeaders[pick.leader] = true
-    asks[pick.leader] = { dungeon = pick.dungeon, at = GetServerTime(), request = pick.request }
+    asks[pick.leader] = { dungeon = pick.dungeon, at = GetServerTime(), askedAt = GetTime(), request = pick.request }
     Log.info("Asked %s to invite you for %s.", pick.leader, Dungeons.name(pick.dungeon))
 end
 
@@ -206,17 +246,18 @@ function Apply.tick()
     end
     seekingSince = seekingSince or GetServerTime()
     seekingStartedAt = seekingStartedAt or GetTime() - SEARCH_SLACK
-    if GetServerTime() - seekingSince >= WAIT_FOR_INVITE then
+    if GetServerTime() - seekingSince >= WAIT_FOR_INVITE and not promised() then
         if askCount() > 0 then
             Log.info("No invite from the groups you asked; building your own group now.")
         end
         dropAutomaticAsks()
         return
     end
+    local entry = ns.engine.myEntry
+    settleAsks(entry.members[1].roles)
     if waitingForInvite() or GetTime() - lastAskAt < ASK_SPACING or proposalOpen() or not freshResults() then
         return
     end
-    local entry = ns.engine.myEntry
     local wanted, exclude = {}, {}
     for _, id in ipairs(entry.dungeons) do
         wanted[id] = true
@@ -260,8 +301,28 @@ function Apply.summary()
     return nil
 end
 
+-- A whisper from a leader we asked: a clear no moves on to the next group
+-- at once, a clear yes holds off asking others while the invite comes.
+function Apply.onWhisper(text, sender)
+    local a = type(sender) == "string" and asks[sender]
+    if not a or a.over or a.invitedAt then
+        return
+    end
+    local ok, answer = pcall(ns.Replies.classify, text)
+    if not ok then
+        return
+    end
+    if answer == "no" then
+        a.over = true
+        Log.info("%s can't take you; asking another group.", sender)
+    elseif answer == "yes" then
+        a.yesAt = GetServerTime()
+    end
+end
+
 function Apply.init()
     ns.on("PARTY_INVITE_REQUEST", onInviteRequest)
+    ns.on("CHAT_MSG_WHISPER", Apply.onWhisper)
 end
 
 ns.Apply = Apply

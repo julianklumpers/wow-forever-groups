@@ -16,9 +16,13 @@ local INVITE_TIMEOUT = 30
 -- One leader at a time, the next after this long without an invite.
 local MAX_ASKS = 1
 local ASK_WAIT = 20
+local PROMISE_WAIT = 30
 
 local invited = {}
 local asked = {}
+-- Asked leaders who said no or whose group left the Group Finder, and those
+-- who said yes (when).
+local over, promisedAt = {}, {}
 -- Everyone invited while this queue entry lasts: a player who let the
 -- invite run out is not invited again.
 local tried = {}
@@ -163,12 +167,29 @@ end
 
 local function askCount()
     local count = 0
-    for _, at in pairs(asked) do
-        if GetTime() - at < ASK_WAIT then
+    for leader, at in pairs(asked) do
+        local promised = promisedAt[leader] and GetTime() - promisedAt[leader] < PROMISE_WAIT
+        if not over[leader] and (GetTime() - at < ASK_WAIT or promised) then
             count = count + 1
         end
     end
     return count
+end
+
+-- Zone results that came in after an ask: a group no longer listed is over.
+local function settleAsks(listings, updatedAt)
+    for leader, at in pairs(asked) do
+        if not over[leader] and not promisedAt[leader] and updatedAt > at and GetTime() - at < ASK_WAIT then
+            local listed = false
+            for _, listing in ipairs(listings) do
+                listed = listed or (not listing.solo and listing.leader == leader)
+            end
+            if not listed then
+                over[leader] = true
+                Log.info("%s's group is no longer listed; asking another.", leader)
+            end
+        end
+    end
 end
 
 -- With fresh zone results: invite listed players for the first queued quest
@@ -182,6 +203,7 @@ function QuestFinder.onResults()
     if ns.questEngine.myProposalKey or ns.questEngine.held or ns.Filler.isActive() then
         return
     end
+    settleAsks(listings, updatedAt)
     local keys = focus and { focus } or current.dungeons
     for _, key in ipairs(keys) do
         local quest = questFor(key)
@@ -350,8 +372,28 @@ function QuestFinder.wasAsked(leader)
     return asked[leader] ~= nil
 end
 
+-- A whisper from a leader we asked: a clear no moves on to the next group,
+-- a clear yes holds off asking others while the invite comes.
+function QuestFinder.onWhisper(text, sender)
+    if type(sender) ~= "string" or not asked[sender] or over[sender] then
+        return
+    end
+    local ok, answer = pcall(ns.Replies.classify, text)
+    if not ok then
+        return
+    end
+    if answer == "no" then
+        over[sender] = true
+        Log.info("%s can't take you; asking another group.", sender)
+        QuestFinder.onResults()
+    elseif answer == "yes" then
+        promisedAt[sender] = GetTime()
+    end
+end
+
 function QuestFinder.reset()
     invited, asked, tried, focus, chosen, focusJoined = {}, {}, {}, nil, nil, nil
+    over, promisedAt = {}, {}
 end
 
 -- For the status: { invited = n, asked = n }.
@@ -392,6 +434,7 @@ end
 
 function QuestFinder.init()
     ns.LfgList.onUpdate(QuestFinder.onResults)
+    ns.on("CHAT_MSG_WHISPER", QuestFinder.onWhisper)
 end
 
 ns.QuestFinder = QuestFinder
