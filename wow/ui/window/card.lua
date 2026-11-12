@@ -64,7 +64,7 @@ function W.cardContent(state)
         return { title = string.format("Your party: %d/5", size), subtitle = subtitle, color = GOLD,
             lead = state == "leader" }
     end
-    return { title = "Not in the queue", color = GOLD }
+    return { color = GOLD }
 end
 
 -- The Quests tab's card: the questing queue, a proposal, or the group.
@@ -119,7 +119,7 @@ function W.questCardContent(state)
     if state == "member" or state == "raid" then
         return { title = "Your party leader looks for questing groups", color = GOLD }
     end
-    return { title = "Not looking for a questing group", color = GOLD }
+    return { color = GOLD }
 end
 
 function W.refreshConnection()
@@ -174,11 +174,14 @@ function W.refreshCard(state, full, tab)
     card.crown:SetShown(content.lead == true)
     card.progressLink:SetShown(questTab and ns.QuestGroup.current() ~= nil and #ns.QuestGroup.rows() > 0)
     local x = content.lead and 32 or 12
-    card.title:ClearAllPoints()
-    card.title:SetPoint("TOPLEFT", card, "TOPLEFT", x, y)
-    card.title:SetText(content.title)
-    card.title:SetTextColor(content.color[1], content.color[2], content.color[3])
-    y = y - 22
+    card.title:SetShown(content.title ~= nil)
+    if content.title then
+        card.title:ClearAllPoints()
+        card.title:SetPoint("TOPLEFT", card, "TOPLEFT", x, y)
+        card.title:SetText(content.title)
+        card.title:SetTextColor(content.color[1], content.color[2], content.color[3])
+        y = y - 22
+    end
     for _, field in ipairs({ "subtitle", "detail" }) do
         local text = card[field]
         if content.group then

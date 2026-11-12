@@ -66,10 +66,23 @@ local function refreshMain()
     local y = -30
     W.place(ui.connectionBar, PAD - CARD_PADDING, y - 13)
     y = y - (W.paintTabs(y) and 38 or 26)
-    W.place(ui.card, PAD - CARD_PADDING, y)
-    y = y - W.refreshCard(state, full, W.currentTab())
-    local cardBottom = y
-    y = y - 12
+    local cardBottom
+    local function placeCard(top)
+        W.place(ui.card, PAD - CARD_PADDING, top)
+        cardBottom = top - W.refreshCard(state, full, W.currentTab())
+        return cardBottom - 12
+    end
+    -- Alone and choosing, the roles come first and the card (then only
+    -- "Looking now") follows them; otherwise the card leads.
+    local questsQueued = ns.QuestQueue.isQueued()
+    local choosing = state == "solo" and not ns.Filler.isActive()
+        and (W.currentTab() == "quests" and not questsQueued or W.currentTab() ~= "quests" and not queued)
+    if choosing then
+        W.cardBelowRoles = placeCard
+    else
+        W.cardBelowRoles = nil
+        y = placeCard(y)
+    end
 
     if W.currentTab() == "quests" then
         W.fitHeight(W.refreshQuestsTab(y, state))

@@ -636,7 +636,7 @@ describe("WoW test tools", function()
         assert.is_true(client:said("Its leader is a fake player"))
         assert.are.same({}, client.invites)
         client:slash("/dq")
-        assert.is_not_nil(client:findText("^Not in the queue$"))
+        assert.is_not_nil(client:findText("^Looking now:"))
         assert.is_nil(client:findText("^open$"))
     end)
 

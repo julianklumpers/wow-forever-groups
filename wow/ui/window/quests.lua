@@ -89,6 +89,9 @@ function W.layoutQuests(y, state)
     end
     W.refreshRoles(false)
     y = W.layoutChoices(y, false)
+    if W.cardBelowRoles then
+        y = W.cardBelowRoles(y)
+    end
     local quests = ns.Quests.groupQuests()
     ui.questHeader:SetText(string.format("Group and elite quests  ·  %d selected", #W.tickedQuestKeys()))
     W.place(ui.questHeader, PAD, y)

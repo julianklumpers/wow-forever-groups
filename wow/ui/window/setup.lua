@@ -354,6 +354,9 @@ end
 
 function W.layoutSetup(y, partyRowCount, levelCount, otherCount)
     y = W.layoutChoices(y, true)
+    if W.cardBelowRoles then
+        y = W.cardBelowRoles(y)
+    end
     if partyRowCount > 0 then
         W.place(ui.partyHeader, PAD, y)
         y = y - 26

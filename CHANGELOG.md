@@ -2,6 +2,8 @@
 
 ## 0.25.1 (2026-11-12)
 
+- Main window: while you choose alone, "Your roles" now comes first, with "Looking now" under
+  it; the "Not in the queue" / "Not looking for a questing group" line is gone. On both tabs.
 - "Who is looking" is now a drawer on the side of the main window instead of a separate window
   behind a small link: it's open by default and follows what you pick in the main window. A tab
   with the Group Finder eye on the window's edge opens and closes it, and it stays the way you

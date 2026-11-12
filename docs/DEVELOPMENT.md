@@ -7,7 +7,9 @@ How the addon works inside, for anyone reading or changing the code. The player-
 
 - `core/` – pure Lua 5.1, no WoW API: protocol, queue, matchmaking, election, proposals, engine
 - `wow/` – thin WoW layer: hidden channel, send queue, invites, `/fg` commands (`/dq` still works); `wow/ui/` window and proposal popup;
-  the main window is `wow/ui/window.lua` plus its parts in `wow/ui/window/` (shared, card, setup, quests, tabs)
+  the main window is `wow/ui/window.lua` plus its parts in `wow/ui/window/` (shared, card, setup, quests, tabs); the
+  card (status, "Looking now", the group) leads the window, except alone and choosing: then the roles come first and
+  the card, without a title, follows them (`W.cardBelowRoles`)
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
 - `probe/ForeverGroupsProbe/` – API probe addon for in-game checks (`/fgp help`)
 - `tests/` – busted specs; `tests/helpers/sim.lua` simulates engines on a shared channel,
