@@ -8,6 +8,11 @@ Tick the roles you can play, choose your dungeons or group quests and press **Fi
 When a group is found, everyone gets a short popup to accept, the invites go out by
 themselves and roles are set for you.
 
+<p align="center">
+  <img src="media/screenshots/main-window.png" width="420" alt="The Forever Groups window: roles, playstyle and dungeons, with the Find group button">
+  <img src="media/screenshots/who-is-looking.png" width="420" alt="Who is looking: players in the Forever Groups queue and solo players in WoW's Group Finder">
+</p>
+
 ## What it does
 
 - **Dungeons** — queue for one or more dungeons that fit your level, solo or with your party.
