@@ -243,7 +243,9 @@ zones) include the player's level (`LfgList.zonesForLevel`), with a
 Quests/Zone column; it searches those zones on input. An open window switches along with the main window's tab (`QueueWindow.follow`). The Quests tab shows
 the same counts per quest (`lookingCounts(wanted, "quests")`, `groupsNeedingMe(wanted, "quests")`). The main window
 counts, per dungeon and in "Looking now", the listed groups that need one of the player's ticked roles
-(`QueueWindow.groupsNeedingMe`, from the listings' `remaining`); the dungeon's tooltip names their leaders.
+(`QueueWindow.groupsNeedingMe`, from the listings' `remaining`); the dungeon's tooltip names their leaders. These
+counts are hidden when Forever Groups won't ask groups for you: with "I'd like to lead" on (per tab) or with asking
+groups switched off (`db.noApply`); "Who is looking" still lists the groups.
 
 ### During and after forming
 

@@ -580,6 +580,12 @@ describe("Queue window", function()
         client:click("CheckButton", "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t I'd like to lead")
         assert.is_nil(client:findText("^3 groups$"))
         assert.is_nil(client:findText("groups need you$"))
+        client:click("CheckButton", "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t I'd like to lead")
+        assert.is_not_nil(client:findText("^3 groups$"))
+        client.ns.db.noApply = true
+        client.ns.Window.refresh()
+        assert.is_nil(client:findText("^3 groups$"))
+        assert.is_nil(client:findText("groups need you$"))
     end)
 
     it("adds the Group Finder numbers to the counts in the main window", function()

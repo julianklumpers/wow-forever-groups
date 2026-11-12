@@ -178,7 +178,7 @@ function QueueWindow.groupsNeedingMe(wanted, subject)
     local roles = ns.charDb and ns.charDb.lastRoles
     local result = {}
     local leading = ns.charDb[(subject == "quests" or subject == "quest") and "wantsLeadQuests" or "wantsLead"]
-    if not roles or not ns.Features.groupFinder() or leading then
+    if not roles or not ns.Features.groupFinder() or not ns.Features.apply() or leading then
         return result
     end
     local style = ns.Playstyle.mine()
