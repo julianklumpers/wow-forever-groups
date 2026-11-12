@@ -28,6 +28,7 @@ local QUEUE_ROWS = W.QUEUE_ROWS
 local QUEUE_ROW_HEIGHT = W.QUEUE_ROW_HEIGHT
 local ERRORS = W.ERRORS
 local LEAD_BOX = 20
+local ARROW_BUTTON, ARROW_GAP = 20, 5
 local ui = W.ui
 local roleToggles = W.roleToggles
 local partyRows = W.partyRows
@@ -301,9 +302,9 @@ function W.layoutChoices(y, withPlaystyle)
         local mine = ns.Playstyle.mine()
         local button = ui.playstyleButton
         button.label:SetText(ns.Playstyle.word(mine))
-        local width = (button.label:GetStringWidth() or 0) + 17
+        local width = (button.label:GetStringWidth() or 0) + ARROW_GAP + ARROW_BUTTON
         button:SetWidth(width)
-        W.place(button, right - width, y + 3)
+        W.place(button, right - width, y + 4)
         ui.playstyleLabel:ClearAllPoints()
         ui.playstyleLabel:SetPoint("RIGHT", ui.playstyleButton, "LEFT", -6, 0)
     else
@@ -508,18 +509,40 @@ function W.buildPlaystyle()
             ns.PlaystyleMenu.toggle(self, pickPlaystyle)
         end)
     end
-    button:SetHeight(20)
+    button:SetHeight(ARROW_BUTTON)
     button.label = Widgets.text(button, "GameFontHighlightSmall")
     button.label:SetPoint("LEFT", 0, 0)
     button.arrow = button:CreateTexture(nil, "ARTWORK")
-    button.arrow:SetSize(16, 16)
-    button.arrow:SetPoint("LEFT", button.label, "RIGHT", 1, 0)
-    button.arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
+    button.arrow:SetSize(ARROW_BUTTON, ARROW_BUTTON)
+    button.arrow:SetPoint("LEFT", button.label, "RIGHT", ARROW_GAP, 0)
+    -- WoW's own dropdown button (the gold-edged square with the arrow); the
+    -- plain yellow arrow on a client without that atlas.
+    local atlas = Widgets.atlasExists("common-dropdown-a-button") and "common-dropdown-a-button"
+    local function paintArrow(state)
+        local name = atlas and (atlas .. state)
+        if name and state ~= "" and not Widgets.atlasExists(name) then
+            name = atlas
+        end
+        if name then
+            button.arrow:SetAtlas(name)
+        else
+            button.arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
+        end
+    end
+    paintArrow("")
     button:HookScript("OnEnter", function(self)
         self.label:SetTextColor(1, 0.82, 0)
+        paintArrow("-hover")
     end)
     button:HookScript("OnLeave", function(self)
         self.label:SetTextColor(1, 1, 1)
+        paintArrow("")
+    end)
+    button:HookScript("OnMouseDown", function()
+        paintArrow("-pressedhover")
+    end)
+    button:HookScript("OnMouseUp", function(self)
+        paintArrow(self:IsMouseOver() and "-hover" or "")
     end)
     if native then
         setupMenu(button)
