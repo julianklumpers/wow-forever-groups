@@ -60,12 +60,17 @@ function W.buildTabs()
     ui.tabs = {}
     for _, tab in ipairs({ { "dungeons", "Dungeons" }, { "quests", "Quests" } }) do
         ui.tabs[tab[1]] = Widgets.tab(W.frame, tab[2], TAB_WIDTH, function()
+            if ns.charDb.tab ~= tab[1] then
+                ns.QueueWindow.hide()
+            end
             ns.charDb.tab = tab[1]
             W.setHint("")
+            ns.QueueWindow.searchIfStale(10, tab[1])
             ns.Window.refresh()
         end)
     end
     ui.otherQueue = Widgets.link(W.frame, "", function(self)
+        ns.QueueWindow.hide()
         W.browsingOther = true
         ns.charDb.tab = self.target
         W.setHint("")

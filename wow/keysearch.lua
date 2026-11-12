@@ -28,10 +28,14 @@ local function onInput()
     if ns.QuestFinder.searchIfUseful(INTERVAL) or ns.Filler.searchIfUseful(INTERVAL) then
         return
     end
-    if ns.QueueWindow.isShown() or ns.Apply.isSeeker() then
+    if ns.QueueWindow.isShown() then
+        ns.QueueWindow.searchIfStale(INTERVAL)
+    elseif ns.Apply.isSeeker() then
         ns.LfgList.searchIfStale(INTERVAL)
-    elseif ns.Filler.isActive() or (ns.engine and ns.engine.myEntry) or ns.Window.isShown() then
+    elseif ns.Filler.isActive() or (ns.engine and ns.engine.myEntry) then
         ns.LfgList.searchIfStale(FRESH)
+    elseif ns.Window.isShown() then
+        ns.QueueWindow.searchIfStale(FRESH, ns.WindowParts.currentTab())
     end
 end
 

@@ -226,7 +226,11 @@ on a header sorts every table, a second click reverses (`db.queueSort`, `db.queu
 matches a solo player's roles and a party's or group's needs. Right-clicking a row opens `wow/ui/playermenu.lua`
 (WoW's `MenuUtil` context menu, else a small menu of our own): Whisper and Invite to group for a player; Request to
 join and Whisper leader for a group. Request to join whispers the leader the `applyAsk` message
-(`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised. The main window
+(`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised. Opened from the Quests tab the window
+shows group quests instead (`QueueWindow.subject()`): the questing queue, and the Group Finder's "Quests & Zones"
+listings (`LfgList.zoneListings`) in the zones of the wanted quests (the questing entry's, else the ticked ones), with a
+Quests/Zone column; it searches those zones on input. Switching the main window's tab closes it. The Quests tab shows
+the same counts per quest (`lookingCounts(wanted, "quests")`, `groupsNeedingMe(wanted, "quests")`). The main window
 counts, per dungeon and in "Looking now", the listed groups that need one of the player's ticked roles
 (`QueueWindow.groupsNeedingMe`, from the listings' `remaining`); the dungeon's tooltip names their leaders.
 

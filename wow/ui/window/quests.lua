@@ -48,9 +48,13 @@ function W.showQuestRow(row, key, quest, y, enabled)
     row.key = key
     row.label:SetText(quest and quest.title or ns.Quests.nameOf(key))
     row.range:SetText(string.format("%s · group of %d", quest and quest.label or "Group", size or 0))
-    row.zone:SetText(quest and quest.zone or "")
-    local waiting = ns.QuestQueue.waitingFor(key)
-    row.waiting:SetText(waiting > 0 and string.format("%d waiting", waiting) or "")
+    row.zoneName = quest and quest.zone
+    row.waitingCount = ns.QuestQueue.waitingFor(key)
+    local wanted = { [key] = true }
+    Widgets.setRoleCounts(row.counts, ns.QueueWindow.questCountsKnown()
+        and ns.QueueWindow.lookingCounts(wanted, "quests"))
+    local groups = #ns.QueueWindow.groupsNeedingMe(wanted, "quests")
+    row.groups:SetText(groups > 0 and string.format("%d group%s", groups, groups == 1 and "" or "s") or "")
     row:SetChecked(not W.questUnticked()[key])
     Widgets.setEnabled(row, enabled)
     W.place(row, PAD - CHECK_INSET, y)
@@ -178,11 +182,31 @@ function W.buildQuests()
         end)
         row.range = Widgets.text(row, "GameFontDisableSmall")
         row.range:SetPoint("LEFT", row, "LEFT", RANGE_X + 40, 0)
-        row.zone = Widgets.text(row, "GameFontDisableSmall")
-        row.zone:SetPoint("LEFT", row, "LEFT", RANGE_X + 170, 0)
-        row.waiting = Widgets.text(row, "GameFontNormalSmall", "RIGHT")
-        row.waiting:SetPoint("RIGHT", row, "LEFT", ROW_WIDTH, 0)
+        -- Like the dungeons: who is looking (Forever Groups and solo players
+        -- listed in the quest's zone) and the listed groups there that need you.
+        row.counts = Widgets.roleCounts(row, W.COUNT_SIZE)
+        row.counts:SetPoint("LEFT", row, "LEFT", W.COUNTS_X, 0)
+        row.groups = Widgets.text(row, "GameFontNormalSmall", "RIGHT")
+        row.groups:SetPoint("RIGHT", row.counts, "LEFT", -14, 0)
         row:SetHitRectInsets(0, -(ROW_WIDTH - 22), 0, 0)
+        row:HookScript("OnEnter", function(self)
+            if GameTooltip and self.key then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(self.label:GetText() or "")
+                if self.zoneName then
+                    GameTooltip:AddLine(self.zoneName, 1, 1, 1)
+                end
+                if (self.waitingCount or 0) > 0 then
+                    GameTooltip:AddLine(string.format("%d waiting with Forever Groups", self.waitingCount), 1, 0.82, 0)
+                end
+                GameTooltip:Show()
+            end
+        end)
+        row:HookScript("OnLeave", function()
+            if GameTooltip then
+                GameTooltip:Hide()
+            end
+        end)
         questRows[i] = row
     end
 end

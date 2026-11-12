@@ -29,8 +29,9 @@ in the group, with roles set for you.
   dungeon quests; share your quests in one click; a waypoint to the entrance.
 - **Status bar** — boss progress (e.g. 4/7 bosses) and everyone's quest progress, folded out
   under the bar.
-- **Who is looking** — a table of players and groups looking for your dungeons, sortable by
-  column; right-click to whisper, invite or request to join.
+- **Who is looking** — players and groups looking for your dungeons or group quests, from
+  Forever Groups and WoW's Group Finder (Quests & Zones for quests); right-click to whisper,
+  invite or request to join.
 - **Your own words** — every whisper and party message can be rewritten (any language) or
   turned off.
 

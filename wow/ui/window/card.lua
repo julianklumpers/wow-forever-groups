@@ -289,7 +289,7 @@ function W.refreshCard(state, full, tab)
         end
     end
     for _, widget in ipairs({ card.lookingLabel, card.looking, card.lookingGroups, card.whoLink }) do
-        widget:SetShown(not full and not questTab)
+        widget:SetShown(not full)
     end
     -- The group's actions, as one row of buttons.
     local actions = card.actions
@@ -315,15 +315,17 @@ function W.refreshCard(state, full, tab)
         end
         y = y - 30
     end
-    if not full and not questTab then
+    if not full then
         y = y - 4
         card.lookingLabel:ClearAllPoints()
         card.lookingLabel:SetPoint("TOPLEFT", card, "TOPLEFT", 12, y - 2)
         card.looking:ClearAllPoints()
         card.looking:SetPoint("LEFT", card.lookingLabel, "RIGHT", 10, 0)
-        Widgets.setRoleCounts(card.looking, ns.Features.countsKnown()
-            and ns.QueueWindow.lookingCounts(ns.QueueWindow.wantedDungeons()))
-        local needing = #ns.QueueWindow.groupsNeedingMe(ns.QueueWindow.wantedDungeons())
+        local subject = questTab and "quests" or "dungeons"
+        local wanted = questTab and ns.QueueWindow.wantedQuests() or ns.QueueWindow.wantedDungeons()
+        local known = questTab and ns.QueueWindow.questCountsKnown() or (not questTab and ns.Features.countsKnown())
+        Widgets.setRoleCounts(card.looking, known and ns.QueueWindow.lookingCounts(wanted, subject))
+        local needing = #ns.QueueWindow.groupsNeedingMe(wanted, subject)
         card.lookingGroups:ClearAllPoints()
         card.lookingGroups:SetPoint("LEFT", card.looking, "RIGHT", 6, 0)
         local plural = needing ~= 1
