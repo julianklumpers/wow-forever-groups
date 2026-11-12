@@ -1336,6 +1336,148 @@ local function tryAutoAccept(inviter)
     end)
 end
 
+-- Which dungeon background pictures (the dungeon finder's art) the client
+-- has: a window with each dungeon's candidates side by side, and what the
+-- LFG dungeon list calls their texture.
+local IMAGE_DUNGEONS = {
+    { "Ragefire Chasm", "RAGEFIRECHASM" }, { "Wailing Caverns", "WAILINGCAVERNS" },
+    { "The Deadmines", "DEADMINES" }, { "Shadowfang Keep", "SHADOWFANGKEEP" },
+    { "Blackfathom Deeps", "BLACKFATHOMDEEPS" }, { "The Stockade", "STORMWINDSTOCKADES", "STOCKADES" },
+    { "Gnomeregan", "GNOMEREGAN" }, { "Razorfen Kraul", "RAZORFENKRAUL" },
+    { "Scarlet Monastery: Graveyard", "SCARLETMONASTERY", "SCARLETMONASTERYGRAVEYARD" },
+    { "Scarlet Monastery: Library", "SCARLETMONASTERY", "SCARLETMONASTERYLIBRARY" },
+    { "Scarlet Monastery: Armory", "SCARLETMONASTERY", "SCARLETMONASTERYARMORY" },
+    { "Scarlet Monastery: Cathedral", "SCARLETMONASTERY", "SCARLETMONASTERYCATHEDRAL" },
+    { "Razorfen Downs", "RAZORFENDOWNS" }, { "Uldaman", "ULDAMAN" }, { "Zul'Farrak", "ZULFARAK", "ZULFARRAK" },
+    { "Maraudon", "MARAUDON" }, { "Sunken Temple", "SUNKENTEMPLE", "TEMPLEOFATALHAKKAR" },
+    { "Blackrock Depths", "BLACKROCKDEPTHS" },
+    { "Lower Blackrock Spire", "BLACKROCKSPIRE", "LOWERBLACKROCKSPIRE" },
+    { "Upper Blackrock Spire", "BLACKROCKSPIRE", "UPPERBLACKROCKSPIRE" },
+    { "Dire Maul: East", "DIREMAUL", "DIREMAULEAST" }, { "Dire Maul: North", "DIREMAUL", "DIREMAULNORTH" },
+    { "Dire Maul: West", "DIREMAUL", "DIREMAULWEST" }, { "Scholomance", "SCHOLOMANCE" },
+    { "Stratholme: Living", "STRATHOLME", "STRATHOLMELIVING" },
+    { "Stratholme: Undead", "STRATHOLME", "STRATHOLMEUNDEAD" },
+    { "Hall of Thanes", "HALLOFTHANES" }, { "Ruins of Lordaeron", "RUINSOFLORDAERON" },
+    { "Excavation Site: Wetlands", "EXCAVATIONSITE" }, { "City of Dalaran", "CITYOFDALARAN", "DALARAN" },
+    { "The Drowned City", "DROWNEDCITY" }, { "Krol'dok Stronghold", "KROLDOKSTRONGHOLD" },
+    { "Alcaz Prison", "ALCAZPRISON" }, { "Blackmaw Hold", "BLACKMAWHOLD" },
+    { "Shaper's Terrace", "SHAPERSTERRACE" },
+}
+local IMAGE_PREFIX = "Interface\\LFGFrame\\UI-LFG-BACKGROUND-"
+local IMAGES_PER_PAGE = 12
+local imageFrame
+local lfgTextures
+
+-- GetLFGDungeonInfo's name and texture name (11th value), by dungeon name.
+local function scanLfgTextures()
+    if lfgTextures then
+        return lfgTextures
+    end
+    lfgTextures = {}
+    local get = _G.GetLFGDungeonInfo
+    if type(get) ~= "function" then
+        log("INFO", "images: GetLFGDungeonInfo missing")
+        return lfgTextures
+    end
+    local found = 0
+    for id = 1, 3000 do
+        local ok, name, _, _, _, _, _, _, _, _, _, texture = pcall(get, id)
+        if ok and type(name) == "string" and name ~= "" then
+            found = found + 1
+            lfgTextures[name] = { id = id, texture = texture }
+        end
+    end
+    log("INFO", "images: GetLFGDungeonInfo knows %d dungeons", found)
+    for _, d in ipairs(IMAGE_DUNGEONS) do
+        local known = lfgTextures[d[1]] or lfgTextures[(d[1]:gsub("^The ", ""))]
+        if known then
+            store("RECV", "images: LFG %s id=%s texture=%s", d[1], show(known.id), show(known.texture))
+        end
+    end
+    return lfgTextures
+end
+
+local function candidates(d)
+    local paths = {}
+    local known = lfgTextures[d[1]] or lfgTextures[(d[1]:gsub("^The ", ""))]
+    if known and type(known.texture) == "string" and known.texture ~= "" then
+        paths[#paths + 1] = IMAGE_PREFIX .. known.texture
+    end
+    for i = 2, #d do
+        paths[#paths + 1] = IMAGE_PREFIX .. d[i]
+    end
+    return paths
+end
+
+local function buildImageFrame()
+    local ok, f = pcall(CreateFrame, "Frame", "ForeverGroupsProbeImages", UIParent, "BasicFrameTemplateWithInset")
+    if not ok then
+        f = CreateFrame("Frame", "ForeverGroupsProbeImages", UIParent)
+    end
+    f:SetSize(3 * 216 + 24, 4 * 132 + 40)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.title:SetPoint("TOP", 0, -5)
+    f.cells = {}
+    for i = 1, IMAGES_PER_PAGE do
+        local cell = CreateFrame("Frame", nil, f)
+        cell:SetSize(208, 124)
+        cell:SetPoint("TOPLEFT", 12 + ((i - 1) % 3) * 216, -30 - math.floor((i - 1) / 3) * 132)
+        local back = cell:CreateTexture(nil, "BACKGROUND")
+        back:SetPoint("TOPLEFT")
+        back:SetSize(208, 104)
+        back:SetColorTexture(0, 0.4, 0, 0.6)
+        cell.image = cell:CreateTexture(nil, "ARTWORK")
+        cell.image:SetPoint("TOPLEFT")
+        cell.image:SetSize(208, 104)
+        cell.label = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        cell.label:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, -106)
+        cell.label:SetWidth(208)
+        cell.label:SetJustifyH("LEFT")
+        cell.label:SetWordWrap(false)
+        f.cells[i] = cell
+    end
+    table.insert(UISpecialFrames, "ForeverGroupsProbeImages")
+    return f
+end
+
+local function cmdImages(rest)
+    scanLfgTextures()
+    imageFrame = imageFrame or buildImageFrame()
+    local pages = math.ceil(#IMAGE_DUNGEONS / IMAGES_PER_PAGE)
+    local page = math.max(1, math.min(pages, tonumber(rest:match("%d+")) or 1))
+    imageFrame.title:SetText(string.format("Dungeon backgrounds %d/%d  (/fgp images %d)", page, pages,
+        page % pages + 1))
+    for i, cell in ipairs(imageFrame.cells) do
+        local d = IMAGE_DUNGEONS[(page - 1) * IMAGES_PER_PAGE + i]
+        if d then
+            local shown, results = nil, {}
+            for _, path in ipairs(candidates(d)) do
+                local setOk, loaded = pcall(cell.image.SetTexture, cell.image, path)
+                results[#results + 1] = path:sub(#IMAGE_PREFIX + 1) .. "=" .. show(setOk and loaded)
+                if setOk and loaded ~= false and not shown then
+                    shown = path
+                end
+            end
+            cell.image:SetTexture(shown)
+            cell.label:SetText(d[1])
+            store("RECV", "images: %s -> %s", d[1], table.concat(results, " "))
+            cell:Show()
+        else
+            cell:Hide()
+        end
+    end
+    imageFrame:Show()
+    log("INFO", "images: page %d/%d shown; a green box means no picture. SetTexture results are in /fgp log",
+        page, pages)
+end
+
 local COMMANDS = {
     { "all", "run info, api, join, chan, whisper, big, ping and popup", cmdAll },
     { "info", "build, names, time, lockdown, group state", cmdInfo },
@@ -1358,6 +1500,7 @@ local COMMANDS = {
     { "talents", "dump the talent tree: nodes, points spent, positions", cmdTalents },
     { "inspect", "[unit] read another player's talents (default: target, else party1)", cmdInspect },
     { "clicksearch", "[off] test Group Finder searches from mouse clicks and scrolls in the world", cmdClickSearch },
+    { "images", "[page] show the dungeon background pictures the client has", cmdImages },
     { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },
     { "log", "[n] print the last n stored log lines", cmdLog },
     { "clear", "clear the stored log", cmdClear },
