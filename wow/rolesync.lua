@@ -12,9 +12,13 @@ local RoleSync = {}
 local WOW_ROLES = { T = "TANK", H = "HEALER", D = "DAMAGER" }
 local LETTERS = { TANK = "T", HEALER = "H", DAMAGER = "D" }
 local MAX_ATTEMPTS = 3
+-- Seconds between two tries: the server takes a moment to apply a role, and
+-- roster updates come in bursts.
+local RETRY_AFTER = 2
 
 local expected = {}
 local attempts = {}
+local attemptedAt = {}
 local settled = {}
 local listeners = {}
 
@@ -26,6 +30,7 @@ function RoleSync.expect(name, role)
     if name and WOW_ROLES[role] then
         expected[name] = role
         attempts[name] = 0
+        attemptedAt[name] = nil
         settled[name] = false
     end
 end
@@ -44,7 +49,7 @@ function RoleSync.all()
 end
 
 function RoleSync.forget(name)
-    expected[name], attempts[name], settled[name] = nil, nil, nil
+    expected[name], attempts[name], settled[name], attemptedAt[name] = nil, nil, nil, nil
 end
 
 function RoleSync.onChange(listener)
@@ -66,20 +71,25 @@ function RoleSync.apply()
     for i = 1, 4 do
         units[#units + 1] = "party" .. i
     end
+    local now = GetTime()
     for _, unit in ipairs(units) do
         local name = Party.unitName(unit)
         local role = name and expected[name]
         local current = UnitGroupRolesAssigned and LETTERS[UnitGroupRolesAssigned(unit)]
+        local waiting = attemptedAt[name] ~= nil and now - attemptedAt[name] < RETRY_AFTER
         if role and current == role then
             settled[name] = true
         elseif role and current and settled[name] then
             expected[name] = current
             changed(name, current)
-        elseif role and type(UnitSetRole) == "function" and canSet(unit) and attempts[name] < MAX_ATTEMPTS then
+        elseif not role or waiting then -- luacheck: ignore 542
+            -- Nothing to set, or the last try may still be on its way.
+        elseif type(UnitSetRole) == "function" and canSet(unit) and attempts[name] < MAX_ATTEMPTS then
             attempts[name] = attempts[name] + 1
+            attemptedAt[name] = now
             local ok, err = pcall(UnitSetRole, unit, WOW_ROLES[role])
             Log.debug("set role of %s to %s: %s", name, WOW_ROLES[role], ok and "ok" or tostring(err))
-        elseif role and current and attempts[name] >= MAX_ATTEMPTS then
+        elseif current and attempts[name] >= MAX_ATTEMPTS then
             settled[name] = true
             expected[name] = current
             changed(name, current)
@@ -89,7 +99,7 @@ end
 
 local function onRosterUpdate()
     if not IsInGroup() then
-        expected, attempts, settled = {}, {}, {}
+        expected, attempts, settled, attemptedAt = {}, {}, {}, {}
         return
     end
     RoleSync.apply()

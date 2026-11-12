@@ -653,8 +653,16 @@ local function buildEnv(world, client)
         if unit ~= "player" and not client.isLeader then
             error("only the leader can set other roles")
         end
-        client.roles[name] = role
         client.roleSets[#client.roleSets + 1] = name .. "=" .. role
+        if client.roleDelay then
+            -- The server applies the role a moment later.
+            world:schedule(client, client.roleDelay, function()
+                client.roles[name] = role
+                client:fire("PLAYER_ROLES_ASSIGNED")
+            end)
+        else
+            client.roles[name] = role
+        end
     end
     env.UnitInParty = function()
         return false

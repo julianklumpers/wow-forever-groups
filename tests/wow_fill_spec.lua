@@ -120,6 +120,29 @@ describe("Filling from WoW's Group Finder", function()
         assert.is_true(client:said("Stopped filling"))
     end)
 
+    it("waits for the server to apply a role instead of inviting a second healer", function()
+        local world = World.new()
+        local tank = world:addClient("Tanky Mctank", { level = 20 })
+        world:list("Listed Heal", "H", 799, 20, 300)
+        world:list("Spare Heal", "H", 799, 20, 200)
+        world:advance(CONNECT)
+        tank:slash("/dq join tank dm")
+        tank:slash("/dq fill")
+        world:advance(2)
+        invitedOnly(tank, { "Listed Heal" })
+        tank.roleDelay = 1.5
+        tank.roles["Listed Heal"] = "DAMAGER"
+        tank:joins("Listed Heal")
+        for _ = 1, 4 do
+            tank:fire("GROUP_ROSTER_UPDATE")
+        end
+        world:advance(6)
+        assert.are.equal("HEALER", tank.roles["Listed Heal"])
+        for _, name in ipairs(tank.invites) do
+            assert.are_not.equal("Spare Heal", name)
+        end
+    end)
+
     it("fills from the Group Finder while queued, reserving the invited roles", function()
         local world = World.new()
         local tank = world:addClient("Tanky Mctank", { level = 20 })
