@@ -1298,6 +1298,44 @@ local function onLfgFailed(event, reason)
     log("FAIL", "%s reason=%s", event, show(reason))
 end
 
+-- Accepting a party invite from the invite event itself (no click): what
+-- Forever Groups would do for the leader of a proposal the player accepted.
+local autoAccept = { on = false, until_ = 0 }
+
+local function cmdAutoAccept(rest)
+    autoAccept.on = rest:match("^%s*off") == nil
+    autoAccept.until_ = GetTime() + 600
+    log("INFO", "autoaccept: %s. AcceptGroup=%s StaticPopup_Hide=%s StaticPopup_Visible=%s", autoAccept.on and "on"
+        or "off", type(_G.AcceptGroup), type(_G.StaticPopup_Hide), type(_G.StaticPopup_Visible))
+    if autoAccept.on then
+        log("INFO", "autoaccept: leave your group and let someone invite you within 10 min; do NOT click the popup")
+    end
+end
+
+local function tryAutoAccept(inviter)
+    if not autoAccept.on or GetTime() > autoAccept.until_ then
+        return
+    end
+    autoAccept.on = false
+    local visible = type(_G.StaticPopup_Visible) == "function" and show(_G.StaticPopup_Visible("PARTY_INVITE")) or "?"
+    autoAccept.pending = true
+    local ok, err = pcall(_G.AcceptGroup)
+    log(ok and "INFO" or "FAIL", "autoaccept: AcceptGroup() for %s -> %s (popup was %s)", show(inviter),
+        ok and "called" or show(err), visible)
+    local hideOk, hideErr = pcall(_G.StaticPopup_Hide, "PARTY_INVITE")
+    log(hideOk and "INFO" or "FAIL", "autoaccept: StaticPopup_Hide(PARTY_INVITE) -> %s",
+        hideOk and "called" or show(hideErr))
+    C_Timer.After(3, function()
+        autoAccept.pending = false
+        local popup = type(_G.StaticPopup_Visible) == "function" and show(_G.StaticPopup_Visible("PARTY_INVITE")) or "?"
+        if IsInGroup() then
+            log("PASS", "autoaccept: in a group of %s after 3 s, invite popup %s", show(GetNumGroupMembers()), popup)
+        else
+            log("FAIL", "autoaccept: not in a group after 3 s, invite popup %s", popup)
+        end
+    end)
+end
+
 local COMMANDS = {
     { "all", "run info, api, join, chan, whisper, big, ping and popup", cmdAll },
     { "info", "build, names, time, lockdown, group state", cmdInfo },
@@ -1320,6 +1358,7 @@ local COMMANDS = {
     { "talents", "dump the talent tree: nodes, points spent, positions", cmdTalents },
     { "inspect", "[unit] read another player's talents (default: target, else party1)", cmdInspect },
     { "clicksearch", "[off] test Group Finder searches from mouse clicks and scrolls in the world", cmdClickSearch },
+    { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },
     { "log", "[n] print the last n stored log lines", cmdLog },
     { "clear", "clear the stored log", cmdClear },
 }
@@ -1413,6 +1452,9 @@ local function onChannelNotice(event, text, _, _, channelString, _, _, _, _, bas
 end
 
 local function onActionBlocked(event, addon, func)
+    if autoAccept.pending then
+        log("FAIL", "autoaccept: blocked (%s)", show(func))
+    end
     if keySearch and keySearch.pending then
         keySearch.pending = false
         keySearch.blocked = keySearch.blocked + 1
@@ -1427,6 +1469,7 @@ end
 
 local function onInviteRequest(event, inviter)
     log("RECV", "%s from %s", event, show(inviter))
+    tryAutoAccept(inviter)
 end
 
 local function onRoster()
