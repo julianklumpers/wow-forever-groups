@@ -79,6 +79,7 @@ local function refreshMain()
         and (W.currentTab() == "quests" and not questsQueued or W.currentTab() ~= "quests" and not queued)
     if choosing then
         W.cardBelowRoles = placeCard
+        y = y - 10
     else
         W.cardBelowRoles = nil
         y = placeCard(y)
