@@ -39,7 +39,7 @@ describe("Find group uses every source at once", function()
         assert.are.same({}, dps.invites)
         assert.is_true(tank:proposalShown())
         assert.is_true(dps:proposalShown())
-        assert.is_not_nil(tank:findText("From the Group Finder: Healer, DPS, DPS"))
+        assert.are.equal("HDD", tank:openPlaces())
 
         tank:acceptPopup()
         dps:acceptPopup()

@@ -44,6 +44,8 @@
   Forever's own (Hall of Thanes, Ruins of Lordaeron, Excavation Site, City of Dalaran, Krol'dok
   Stronghold, Blackmaw Hold, Shaper's Terrace), all from the game itself. The Drowned City and
   Alcaz Prison keep the plain look for now.
+- A place the leader fills from WoW's Group Finder shows as its own row in the "Group found!"
+  popup ("Open · from the Group Finder"), so it always shows five places.
 - The "Group found!" popup lists tank, healer, then DPS, with names in class colours, a crown
   on the leader, your own row lit up, spec (or "fake") under each name and "3/5 accepted" next
   to the timer. After you accept, the buttons make way for "Waiting for the others".

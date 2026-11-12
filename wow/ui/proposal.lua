@@ -59,6 +59,9 @@ local function ordered(members)
         if ra ~= rb then
             return ra < rb
         end
+        if (a.member.open or false) ~= (b.member.open or false) then
+            return not a.member.open
+        end
         return a.index < b.index
     end)
     for i, item in ipairs(list) do
@@ -75,9 +78,26 @@ local function classOf(member)
     return (ns.Specs.decode(member.spec))
 end
 
+-- A place the leader fills from WoW's Group Finder after everyone accepted.
+local function paintOpenRow(row, role)
+    row.openRole = role
+    Widgets.setRoleIcon(row.icon, role)
+    row.icon:SetAlpha(0.4)
+    row.name:SetText("Open")
+    row.name:SetTextColor(0.6, 0.6, 0.6)
+    row.detail:SetText("from the Group Finder")
+    row.name:ClearAllPoints()
+    row.name:SetPoint("TOPLEFT", NAME_X, -2)
+    row.crown:Hide()
+    row.highlight:Hide()
+    row.status:SetTexture(nil)
+end
+
 local function paintRow(row, member, leader)
     local mine = member.name == ns.selfName
+    row.openRole = nil
     Widgets.setRoleIcon(row.icon, member.role)
+    row.icon:SetAlpha(1)
     row.name:SetText(member.name .. (mine and " (you)" or ""))
     row.name:SetTextColor(Widgets.classColor(classOf(member)))
     local spec = ns.Spec.label(member.spec) or (mine and ns.Spec.myLabel()) or nil
@@ -154,10 +174,23 @@ local function render(view)
     local rowsTop = layoutTop(art, crop, {
         styles = styles, role = role, levels = dungeon and dungeon.min and ns.Dungeons.rangeText(dungeon),
     })
+    local players = #members
+    local places = {}
+    for i, member in ipairs(members) do
+        places[i] = member
+    end
+    for letter in string.gmatch(view.missing or "", ".") do
+        places[#places + 1] = { role = letter, open = true }
+    end
+    places = ordered(places)
     for i, row in ipairs(rows) do
-        local member = members[i]
+        local member = places[i]
         if member then
-            paintRow(row, member, view.leader)
+            if member.open then
+                paintOpenRow(row, member.role)
+            else
+                paintRow(row, member, view.leader)
+            end
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", BANNER_INSET, -rowsTop - (i - 1) * ROW_HEIGHT)
             row:Show()
@@ -165,22 +198,8 @@ local function render(view)
             row:Hide()
         end
     end
-    local y = rowsTop + #members * ROW_HEIGHT + 4
-    if view.missing and view.missing ~= "" then
-        local names = {}
-        for letter in string.gmatch(view.missing, ".") do
-            names[#names + 1] = Widgets.ROLE_NAMES[letter]
-        end
-        ui.missing:SetText("From the Group Finder: " .. table.concat(names, ", "))
-        ui.missing:ClearAllPoints()
-        ui.missing:SetPoint("TOP", 0, -y)
-        ui.missing:Show()
-        y = y + 20
-    else
-        ui.missing:SetText("")
-        ui.missing:Hide()
-    end
-    ui.count:SetText(string.format("%d/%d accepted", accepted, #members))
+    local y = rowsTop + math.min(#places, #rows) * ROW_HEIGHT + 4
+    ui.count:SetText(string.format("%d/%d accepted", accepted, players))
     local answered = myAnswer(view) == "Y"
     ui.accept:SetShown(not answered)
     ui.decline:SetShown(not answered)
@@ -280,7 +299,6 @@ local function build()
     for i = 1, 5 do
         rows[i] = buildRow()
     end
-    ui.missing = Widgets.text(frame, "GameFontNormalSmall", "CENTER")
     ui.count = Widgets.text(frame, "GameFontHighlightSmall")
     ui.count:SetPoint("BOTTOMLEFT", CONTENT_LEFT, 48)
     local barLeft = CONTENT_LEFT + 92

@@ -254,6 +254,24 @@ function Client:findRow(name)
     error(self.name .. ": no party row for " .. name)
 end
 
+-- The roles of the open places in the proposal popup, top to bottom ("HDD").
+function Client:openPlaces()
+    local places = {}
+    for _, widget in ipairs(self.widgets) do
+        if widget.openRole and isVisible(widget) then
+            places[#places + 1] = { role = widget.openRole, y = widget.point and widget.point[3] or 0 }
+        end
+    end
+    table.sort(places, function(a, b)
+        return a.y > b.y
+    end)
+    local letters = ""
+    for _, place in ipairs(places) do
+        letters = letters .. place.role
+    end
+    return letters
+end
+
 function Client:findText(pattern)
     for _, widget in ipairs(self.widgets) do
         if widget.kind == "FontString" and isVisible(widget) and widget.text and widget.text:find(pattern) then

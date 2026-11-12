@@ -31,7 +31,7 @@ describe("Filling from WoW's Group Finder", function()
         world:advance(Config.PARTIAL_AFTER + 10)
 
         assert.is_true(tank:proposalShown())
-        assert.is_not_nil(tank:findText("From the Group Finder: Healer, DPS"))
+        assert.are.equal("HD", tank:openPlaces())
         local searches = tank.searches
         tank:acceptPopup()
         assert.are.equal(searches + 1, tank.searches)
@@ -230,7 +230,7 @@ describe("Filling from WoW's Group Finder", function()
         world:advance(Config.MATCH_INTERVAL + 2)
 
         assert.is_true(tank:proposalShown())
-        assert.is_not_nil(tank:findText("From the Group Finder: Healer"))
+        assert.are.equal("H", tank:openPlaces())
         for _, client in ipairs({ tank, dps[1], dps[2], dps[3] }) do
             client:acceptPopup()
         end
