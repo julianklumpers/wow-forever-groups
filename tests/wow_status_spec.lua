@@ -459,6 +459,11 @@ describe("Queue window", function()
         local groupRow = client:findText("^Needs Dps %+2$").parent
         assert.are_not.equal(soloRow.parent, groupRow.parent)
         assert.is_true(groupRow.needs[1].shown)
+        assert.are.equal("2", groupRow.needs[1].count.text)
+        assert.are.equal("", groupRow.icons[3].count.text)
+        local healRow = client:findText("^Needs Heal %+3$").parent
+        assert.are.equal("3", healRow.icons[2].count.text)
+        assert.are.equal("", healRow.needs[1].count.text)
         local needsHeaders = 0
         for _, widget in ipairs(client.widgets) do
             if widget.kind == "Button" and widget.label and widget.label.text == "Needs" and widget.shown then

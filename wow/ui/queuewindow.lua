@@ -286,6 +286,11 @@ local function buildSection(title, rows)
             row.icons[j]:SetPoint("LEFT", (j - 1) * 15, 0)
             row.needs[j] = Widgets.roleIcon(row, role, 14)
             row.needs[j]:SetPoint("LEFT", COLUMNS[2].x + (j - 1) * 15, 0)
+            -- How many of that role, on the icon's top right corner, from 2 up.
+            for _, icon in ipairs({ row.icons[j], row.needs[j] }) do
+                icon.count = Widgets.text(row, "GameFontHighlightSmall")
+                icon.count:SetPoint("CENTER", icon, "TOPRIGHT", 0, -1)
+            end
         end
         -- Right-click: whisper or invite the player.
         row:EnableMouse(true)
@@ -332,25 +337,30 @@ local function buildSection(title, rows)
     return section
 end
 
-local function paintIcons(icons, roles)
+-- counts (optional): { T = n, H = n, D = n }; a number shows from 2 up.
+local function paintIcons(icons, roles, counts)
     local shown = 0
     for _, role in ipairs(Widgets.ROLES) do
         if string.find(roles, role, 1, true) then
             shown = shown + 1
             Widgets.setRoleIcon(icons[shown], role)
             icons[shown]:Show()
+            local count = counts and counts[role] or 0
+            icons[shown].count:SetText(count >= 2 and tostring(count) or "")
+            icons[shown].count:Show()
         end
     end
     for j = shown + 1, 3 do
         icons[j]:Hide()
+        icons[j].count:Hide()
     end
 end
 
 local function paintRow(row, item)
     row.item = item
     local name, color = item.name, item.color
-    paintIcons(row.icons, item.roles)
-    paintIcons(row.needs, item.needs or "")
+    paintIcons(row.icons, item.roles, item.roleCounts)
+    paintIcons(row.needs, item.needs or "", item.needCounts)
     row.name:SetText(name)
     row.name:SetTextColor(color[1], color[2], color[3])
     row.level:SetText(item.levelText or (item.level and tostring(item.level)) or "")
@@ -521,6 +531,14 @@ local function sorted(items)
     return items
 end
 
+local function letterCounts(letters)
+    local counts = { T = 0, H = 0, D = 0 }
+    for letter in string.gmatch(letters or "", ".") do
+        counts[letter] = (counts[letter] or 0) + 1
+    end
+    return counts
+end
+
 local function queueItems()
     local items = {}
     local engine = ns.engine
@@ -551,11 +569,18 @@ local function queueItems()
         local dungeonText = (#tags > 0 and ("[" .. table.concat(tags, ", ") .. "]  ") or "")
             .. shortNames(entry.dungeons)
         local menu = entry.id ~= ns.selfName and not snap.fakes[entry.id]
-        local needs = ""
+        local needs, roleCounts = "", nil
         if #entry.members > 1 then
             needs = ns.Filler.missingFor(ns.Roles.withReserved(entry.members, entry.reserved)) or ""
+            roleCounts = { T = 0, H = 0, D = 0 }
+            for _, member in ipairs(entry.members) do
+                for letter in string.gmatch(member.roles, ".") do
+                    roleCounts[letter] = roleCounts[letter] + 1
+                end
+            end
         end
-        items[#items + 1] = { roles = roles, needs = needs, name = name, dungeonText = dungeonText,
+        items[#items + 1] = { roles = roles, needs = needs, roleCounts = roleCounts, needCounts = letterCounts(needs),
+            name = name, dungeonText = dungeonText,
             player = menu and entry.id or nil, party = #entry.members > 1 and entry or nil,
             time = Widgets.formatTime(now - entry.joinedAt), waited = now - entry.joinedAt,
             level = entry.members[1].level,
@@ -575,11 +600,15 @@ local function queueLists()
     return sorted(solo), sorted(parties), #parties > 0
 end
 
--- A listed group's roles already in it and its open places, e.g. "HD", "T".
+-- A listed group's roles already in it and its open places, e.g. "HD" and
+-- "T", with how many of each.
 local function groupRoles(listing)
     local present, needs = "", ""
+    local presentCounts, needCounts = {}, {}
     for _, role in ipairs(Widgets.ROLES) do
         local left = listing.remaining and listing.remaining[role] or 0
+        needCounts[role] = left
+        presentCounts[role] = math.max(0, EXPECTED[role] - left)
         if left > 0 then
             needs = needs .. role
         end
@@ -587,8 +616,9 @@ local function groupRoles(listing)
             present = present .. role
         end
     end
-    return present, needs
+    return present, needs, presentCounts, needCounts
 end
+
 
 local function groupFinderItems()
     local items = {}
@@ -605,8 +635,8 @@ end
 local function groupFinderGroupItems()
     local items = {}
     for _, listing in ipairs(QueueWindow.groupFinderGroups()) do
-        local present, needs = groupRoles(listing)
-        items[#items + 1] = { roles = present, needs = needs,
+        local present, needs, presentCounts, needCounts = groupRoles(listing)
+        items[#items + 1] = { roles = present, needs = needs, roleCounts = presentCounts, needCounts = needCounts,
             name = string.format("%s +%d", listing.leader, (listing.members or 1) - 1),
             dungeonText = shortNames(listing.dungeons), player = listing.leader, group = listing,
             time = Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
@@ -616,10 +646,12 @@ local function groupFinderGroupItems()
     return sorted(items)
 end
 
-local function describe(letters)
+-- "Healer, 2 DPS" from the letters and, when given, how many of each.
+local function describe(letters, counts)
     local names = {}
     for letter in string.gmatch(letters or "", ".") do
-        names[#names + 1] = Widgets.ROLE_NAMES[letter]
+        local count = counts and counts[letter] or 1
+        names[#names + 1] = (count >= 2 and (count .. " ") or "") .. Widgets.ROLE_NAMES[letter]
     end
     return table.concat(names, ", ")
 end
@@ -631,7 +663,7 @@ function QueueWindow.showRowTooltip(row, item)
         return
     end
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
-    local needs = (item.needs or "") ~= "" and ("needs " .. describe(item.needs)) or "full"
+    local needs = (item.needs or "") ~= "" and ("needs " .. describe(item.needs, item.needCounts)) or "full"
     if item.party then
         local entry = item.party
         GameTooltip:SetText(string.format("Party of %d  ·  %s", #entry.members, needs), 1, 0.82, 0)
@@ -650,7 +682,7 @@ function QueueWindow.showRowTooltip(row, item)
         local r, g, b = Widgets.classColor(listing.classToken)
         GameTooltip:AddLine(listing.leader .. " (leader)", r, g, b)
         if item.roles ~= "" then
-            GameTooltip:AddLine("Has: " .. describe(item.roles), 0.85, 0.85, 0.85)
+            GameTooltip:AddLine("Has: " .. describe(item.roles, item.roleCounts), 0.85, 0.85, 0.85)
         end
         local names = {}
         for _, id in ipairs(listing.dungeons or {}) do
