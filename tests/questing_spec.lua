@@ -77,7 +77,7 @@ describe("the questing queue", function()
         for _, client in ipairs(clients) do
             client:acceptPopup()
         end
-        world:advance(5)
+        world:advance(1)
         local leader
         for _, client in ipairs(clients) do
             if #client.invites > 0 then
@@ -90,6 +90,9 @@ describe("the questing queue", function()
         assert.is_true(leader:said("Group formed for Hogger"))
         for _, client in ipairs(clients) do
             assert.is_nil(client.ns.questEngine.myEntry)
+            if client ~= leader then
+                assert.are.equal(leader.name, client.acceptedFrom, client.name)
+            end
         end
     end)
 
