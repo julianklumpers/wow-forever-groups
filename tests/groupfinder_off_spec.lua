@@ -4,6 +4,13 @@ local function withoutGroupFinder(client)
     client.ns.db.noGroupFinder = true
 end
 
+-- Opens every table of Who is looking (by default only the half that fits
+-- what the player does is open).
+local function unfold(client)
+    local open = { addonPlayers = false, addonParties = false, finderPlayers = false, finderGroups = false }
+    client.ns.db.queueFold = { join = open, lead = open }
+end
+
 describe("with WoW's Group Finder turned off", function()
     it("matches two Forever Groups players and invites, without touching the Group Finder", function()
         local world = World.new()
@@ -83,6 +90,7 @@ describe("the Who is looking window with WoW's Group Finder turned off", functio
         local world = World.new()
         world:list("Listed Heal", "H", 799, 20, 300)
         local client = world:addClient("Solo Player", { level = 20 })
+        unfold(client)
         world:advance(30)
         client:slash("/dq queue")
         world:advance(1)
@@ -102,6 +110,7 @@ describe("turning WoW's Group Finder off and on in the settings", function()
         local world = World.new()
         world:list("Listed Heal", "H", 799, 20, 300)
         local client = world:addClient("Solo Player", { level = 20 })
+        unfold(client)
         world:advance(30)
         client:slash("/dq")
         client:slash("/dq queue")

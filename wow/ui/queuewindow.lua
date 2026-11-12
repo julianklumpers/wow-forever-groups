@@ -249,13 +249,51 @@ local function buildHeaders(section)
     section.line:SetColorTexture(1, 1, 1, 0.15)
 end
 
-local function buildSection(title, rows)
-    local section = { rows = {}, offset = 0, items = {}, maxRows = rows }
-    -- The list's caption, then its column headers, then its rows.
-    section.header = Widgets.text(frame, "GameFontNormalSmall")
+-- Tables fold to their caption and a summary. By default the half that
+-- fits what you do is open: players when you'd like to lead (you build a
+-- group), groups when you don't (you look for a place in one). A table you
+-- fold or open yourself stays so, separately for leading and not leading.
+local function foldMode()
+    return ns.charDb and ns.charDb.wantsLead and "lead" or "join"
+end
+
+local function isFolded(section)
+    local mode = foldMode()
+    local chosen = ns.db.queueFold and ns.db.queueFold[mode] and ns.db.queueFold[mode][section.key]
+    if chosen ~= nil then
+        return chosen
+    end
+    return (mode == "lead") == (section.kind == "groups")
+end
+
+local function toggleFold(section)
+    local mode = foldMode()
+    ns.db.queueFold = ns.db.queueFold or {}
+    ns.db.queueFold[mode] = ns.db.queueFold[mode] or {}
+    ns.db.queueFold[mode][section.key] = not isFolded(section)
+    QueueWindow.refresh()
+end
+
+local function buildSection(title, rows, key, kind)
+    local section = { rows = {}, offset = 0, items = {}, maxRows = rows, key = key, kind = kind }
+    -- The list's caption (a fold button), then its column headers, then its rows.
+    section.caption = CreateFrame("Button", nil, frame)
+    section.caption:SetSize(WIDTH - 60, 16)
+    section.caption.icon = section.caption:CreateTexture(nil, "ARTWORK")
+    section.caption.icon:SetSize(12, 12)
+    section.caption.icon:SetPoint("LEFT", 0, 0)
+    section.caption:SetScript("OnClick", function()
+        if #section.items > 0 then
+            toggleFold(section)
+        end
+    end)
+    section.header = Widgets.text(section.caption, "GameFontNormalSmall")
     section.header:SetText(title)
-    section.header:SetWidth(WIDTH - 44)
+    section.header:SetPoint("LEFT", section.caption.icon, "RIGHT", 5, 0)
     section.header:SetWordWrap(false)
+    section.summary = Widgets.text(section.caption, "GameFontDisableSmall")
+    section.summary:SetPoint("LEFT", section.header, "RIGHT", 6, 0)
+    section.summary:SetWordWrap(false)
     buildHeaders(section)
     section.area = CreateFrame("Frame", nil, frame)
     section.area:SetSize(WIDTH - 36, rows * ROW_HEIGHT)
@@ -376,12 +414,52 @@ end
 
 -- Shows a window of the section's rows starting at its scroll offset;
 -- the mouse wheel scrolls. Returns the new y.
+-- "5 tanks, 2 healers, 16 DPS" for players; "2 need a tank, 12 need DPS"
+-- for groups: what a folded table holds.
+local function summarize(section, items)
+    local counts = { T = 0, H = 0, D = 0 }
+    for _, item in ipairs(items) do
+        local letters = section.kind == "groups" and (item.needs or "") or item.roles
+        for _, role in ipairs(Widgets.ROLES) do
+            if string.find(letters, role, 1, true) then
+                counts[role] = counts[role] + 1
+            end
+        end
+    end
+    local words = { T = { "tank", "tanks" }, H = { "healer", "healers" }, D = { "DPS", "DPS" } }
+    if section.kind == "groups" then
+        words = { T = { "need a tank", "need a tank" }, H = { "need a healer", "need a healer" },
+            D = { "need DPS", "need DPS" } }
+    end
+    local parts = {}
+    for _, role in ipairs(Widgets.ROLES) do
+        if counts[role] > 0 then
+            parts[#parts + 1] = string.format("%d %s", counts[role], words[role][counts[role] == 1 and 1 or 2])
+        end
+    end
+    return #parts > 0 and ("·  " .. table.concat(parts, ", ")) or ""
+end
+
 local function fillSection(section, y, items, empty)
     section.items = items
     local ROWS = section.maxRows
     section.offset = math.min(section.offset, math.max(0, #items - ROWS))
-    section.header:ClearAllPoints()
-    section.header:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT, y - 2)
+    section.caption:ClearAllPoints()
+    section.caption:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT, y - 2)
+    local folded = #items > 0 and isFolded(section)
+    section.caption.icon:SetShown(#items > 0)
+    section.caption.icon:SetTexture(folded and "Interface\\Buttons\\UI-PlusButton-Up"
+        or "Interface\\Buttons\\UI-MinusButton-Up")
+    section.summary:SetText(folded and summarize(section, items) or "")
+    if folded then
+        section.line:Hide()
+        section.area:Hide()
+        section.more:Hide()
+        for _, header in ipairs(section.columns) do
+            header:Hide()
+        end
+        return y - 26
+    end
     y = y - 20
     -- "Needs" only heads a table that holds a party or group; its space
     -- stays, so the columns of all tables line up.
@@ -754,7 +832,7 @@ local function refreshSortBar()
 end
 
 local function showSection(section, shown)
-    for _, widget in ipairs({ section.header, section.area, section.more, section.line }) do
+    for _, widget in ipairs({ section.caption, section.area, section.more, section.line }) do
         widget:SetShown(shown)
     end
     for _, header in ipairs(section.columns) do
@@ -916,10 +994,10 @@ local function build()
     end)
     blocks.addon = buildBlock("Forever Groups", Widgets.ICON)
     blocks.finder = buildBlock("WoW Group Finder", "Interface\\LFGFrame\\LFG-Eye", { 0, 0.125, 0, 0.25 })
-    sections.queue = buildSection("Forever Groups players", 6)
-    sections.parties = buildSection("Forever Groups parties", 4)
-    sections.finder = buildSection("WoW Group Finder", 8)
-    sections.groups = buildSection("Groups in WoW's Group Finder", 8)
+    sections.queue = buildSection("Players", 6, "addonPlayers", "players")
+    sections.parties = buildSection("Parties", 4, "addonParties", "groups")
+    sections.finder = buildSection("Players", 8, "finderPlayers", "players")
+    sections.groups = buildSection("Groups", 8, "finderGroups", "groups")
 end
 
 local docked = false

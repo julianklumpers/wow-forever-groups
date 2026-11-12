@@ -218,7 +218,10 @@ with Players (solo players listed for your dungeons) and Groups. Every table has
 players can play; a party or group: the roles already in it), Needs (the places a party or group still has open,
 empty for a solo player; a party's from `Filler.missingFor`, a listed group's from its `remaining`), Name ("+N" for
 the other members), Lvl, Dungeons and Time. Hovering a party or group lists who is in it and what it needs. An empty table shows only its caption and a line of
-text, without column headers. A click
+text, without column headers. Each table folds (its caption is a +/- button) to one line with a summary ("5 tanks,
+16 DPS", "12 need DPS"). By default the half that fits what the player does is open: players with "I'd like to
+lead" on (they build a group), groups otherwise (they look for a place); a fold the player sets is kept in
+`db.queueFold`, separately for leading and not leading. A click
 on a header sorts every table, a second click reverses (`db.queueSort`, `db.queueSortReverse`); the Show filter
 matches a solo player's roles and a party's or group's needs. Right-clicking a row opens `wow/ui/playermenu.lua`
 (WoW's `MenuUtil` context menu, else a small menu of our own): Whisper and Invite to group for a player; Request to
