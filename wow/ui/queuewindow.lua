@@ -217,7 +217,7 @@ local function paintRow(row, item)
     end
     row.name:SetText(name)
     row.name:SetTextColor(color[1], color[2], color[3])
-    row.level:SetText(item.level and ("level " .. item.level) or "")
+    row.level:SetText(item.level and tostring(item.level) or "")
     row.dungeons:SetText(item.dungeonText)
     row.time:SetText(item.time)
     row:Show()
@@ -275,8 +275,16 @@ local function fillSection(section, y, items, empty)
 end
 
 local ROLE_ORDER = { T = 1, H = 2, D = 3 }
-local SORTS = { "role", "waiting", "name", "level" }
-local SORT_LABELS = { role = "Role", waiting = "Waiting", name = "Name", level = "Level" }
+-- The table's columns, x within a row (rows start 22 px in from the frame).
+-- A column with a sort key sorts the list when its header is clicked.
+local ROW_LEFT = 22
+local COLUMNS = {
+    { label = "Role", x = 0, width = 46, sort = "role" },
+    { label = "Name", x = 50, width = 150, sort = "name" },
+    { label = "Level", x = 204, width = 54, sort = "level" },
+    { label = "Dungeons", x = 260, width = 150 },
+    { label = "Time", right = true, width = 92, sort = "waiting" },
+}
 
 local function roleRank(item)
     return ROLE_ORDER[string.sub(item.roles, 1, 1)] or 4
@@ -381,7 +389,7 @@ local function queueItems()
         local dungeonText = (#tags > 0 and ("[" .. table.concat(tags, ", ") .. "]  ") or "")
             .. shortNames(entry.dungeons)
         items[#items + 1] = { roles = roles, name = name, dungeonText = dungeonText,
-            time = "waiting " .. Widgets.formatTime(now - entry.joinedAt), waited = now - entry.joinedAt,
+            time = Widgets.formatTime(now - entry.joinedAt), waited = now - entry.joinedAt,
             level = entry.members[1].level,
             color = entry.id == ns.selfName and { 1, 0.82, 0 } or { 1, 1, 1 } }
     end
@@ -392,7 +400,7 @@ local function groupFinderItems()
     local items = {}
     for _, listing in ipairs(QueueWindow.groupFinderPlayers()) do
         items[#items + 1] = { roles = listing.roles, name = listing.name, dungeonText = shortNames(listing.dungeons),
-            time = "listed " .. Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
+            time = Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
             level = listing.level,
             color = { Widgets.classColor(listing.classToken) } }
     end
@@ -401,15 +409,16 @@ end
 
 local function refreshSortBar()
     local key = ns.db.queueSort or "role"
-    for _, sort in ipairs(SORTS) do
-        local button = sections.sortButtons[sort]
-        if sort == key then
-            button:LockHighlight()
+    for _, header in ipairs(sections.headers) do
+        if header.sort ~= nil and header.sort == key then
+            header.label:SetTextColor(1, 0.82, 0)
+        elseif header.sort then
+            header.label:SetTextColor(0.85, 0.85, 0.85)
         else
-            button:UnlockHighlight()
+            header.label:SetTextColor(0.6, 0.6, 0.6)
         end
     end
-    sections.sortNote:SetText(ns.db.queueSortReverse and "(reversed)" or "")
+    sections.sortNote:SetText(ns.db.queueSortReverse and "reversed order" or "")
     local roles = shownRoles() or "THD"
     for role, toggle in pairs(sections.roleToggles) do
         Widgets.paintToggle(toggle, string.find(roles, role, 1, true) ~= nil, true)
@@ -459,33 +468,47 @@ end
 local function build()
     frame = Widgets.window("ForeverGroupsQueueFrame", "Who is looking", WIDTH, 300)
     frame:SetScript("OnShow", QueueWindow.refresh)
-    local label = Widgets.text(frame, "GameFontNormalSmall")
-    label:SetPoint("TOPLEFT", 18, -36)
-    label:SetText("Sort by:")
-    sections.sortButtons = {}
-    local x = 74
-    for _, sort in ipairs(SORTS) do
-        local button = Widgets.button(frame, SORT_LABELS[sort], 76)
-        button:SetHeight(20)
-        button:SetPoint("TOPLEFT", x, -32)
-        button:SetScript("OnClick", function()
-            if (ns.db.queueSort or "role") == sort then
-                ns.db.queueSortReverse = not ns.db.queueSortReverse or nil
-            else
-                ns.db.queueSort = sort
-                ns.db.queueSortReverse = nil
-            end
-            onInput(10)
-            QueueWindow.refresh()
-        end)
-        sections.sortButtons[sort] = button
-        x = x + 80
-    end
-    sections.sortNote = Widgets.text(frame, "GameFontDisableSmall")
-    sections.sortNote:SetPoint("TOPLEFT", x + 4, -36)
     local show = Widgets.text(frame, "GameFontNormalSmall")
-    show:SetPoint("TOPLEFT", 18, -64)
+    show:SetPoint("TOPLEFT", 18, -38)
     show:SetText("Show:")
+    sections.sortNote = Widgets.text(frame, "GameFontDisableSmall", "RIGHT")
+    sections.sortNote:SetPoint("TOPRIGHT", -108, -38)
+    -- The column headers; clicking one sorts by it, clicking it again
+    -- reverses the order.
+    sections.headers = {}
+    for _, column in ipairs(COLUMNS) do
+        local header = CreateFrame("Button", nil, frame)
+        header:SetSize(column.width, 18)
+        if column.right then
+            header:SetPoint("TOPRIGHT", frame, "TOPLEFT", WIDTH - 28, -62)
+        else
+            header:SetPoint("TOPLEFT", ROW_LEFT + column.x, -62)
+        end
+        header.label = Widgets.text(header, "GameFontNormalSmall", column.right and "RIGHT" or "LEFT")
+        header.label:SetAllPoints()
+        header.label:SetText(column.label)
+        header.sort = column.sort
+        if column.sort then
+            header:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+            header:SetScript("OnClick", function()
+                if (ns.db.queueSort or "role") == column.sort then
+                    ns.db.queueSortReverse = not ns.db.queueSortReverse or nil
+                else
+                    ns.db.queueSort = column.sort
+                    ns.db.queueSortReverse = nil
+                end
+                onInput(10)
+                QueueWindow.refresh()
+            end)
+            Widgets.tooltip(header, "Sort by " .. string.lower(column.label), "Click again to reverse the order.")
+        end
+        sections.headers[#sections.headers + 1] = header
+    end
+    local headerLine = frame:CreateTexture(nil, "ARTWORK")
+    headerLine:SetHeight(1)
+    headerLine:SetColorTexture(1, 1, 1, 0.15)
+    headerLine:SetPoint("TOPLEFT", ROW_LEFT, -81)
+    headerLine:SetPoint("TOPRIGHT", -24, -81)
     sections.roleToggles = {}
     for i, role in ipairs(Widgets.ROLES) do
         local toggle = Widgets.roleToggle(frame, role, 18, "GameFontHighlightSmall", function(self)
@@ -498,7 +521,7 @@ local function build()
             onInput(10)
             QueueWindow.refresh()
         end)
-        toggle:SetPoint("TOPLEFT", 74 + (i - 1) * 96, -58)
+        toggle:SetPoint("TOPLEFT", 74 + (i - 1) * 96, -32)
         sections.roleToggles[role] = toggle
     end
     sections.refresh = Widgets.button(frame, "Refresh", 80)
