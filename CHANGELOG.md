@@ -5,7 +5,8 @@
 - "I'd like to lead" on the roles header: when a group forms with you, you become its leader (a
   party that queues together keeps its own leader). Forever Groups then doesn't ask listed
   groups to invite you; it builds the group for you, with you as leader. The button then reads
-  "Find players" ("Find questing players" on the Quests tab).
+  "Find players" ("Find questing players" on the Quests tab). It's set separately for
+  dungeons and for group quests.
 - "Who is looking" tables fold to one line with a summary ("Groups (18) · 12 need DPS"). By
   default the groups are open and the players folded; with "I'd like to lead" on it's the other
   way round. Fold or open one yourself and it stays that way.

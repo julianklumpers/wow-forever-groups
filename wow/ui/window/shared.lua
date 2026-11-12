@@ -75,21 +75,35 @@ function W.setHint(text)
     end
 end
 
--- The wish to lead goes into both queues' entries at once.
+-- The wish to lead, separately for dungeons (charDb.wantsLead) and group
+-- quests (charDb.wantsLeadQuests); tab: "dungeons" or "quests".
+function W.wantsLead(tab)
+    if tab == "quests" then
+        return ns.charDb.wantsLeadQuests == true
+    end
+    return ns.charDb.wantsLead == true
+end
+
+-- Sets the wish for the tab shown, and that queue's entry with it.
 function W.setWantsLead(wants)
-    ns.charDb.wantsLead = wants and true or nil
-    for _, engine in ipairs({ ns.engine, ns.questEngine }) do
-        if engine then
-            engine:setLead(ns.charDb.wantsLead)
-        end
+    local quests = W.currentTab() == "quests"
+    local value = wants and true or nil
+    if quests then
+        ns.charDb.wantsLeadQuests = value
+    else
+        ns.charDb.wantsLead = value
+    end
+    local engine = quests and ns.questEngine or ns.engine
+    if engine then
+        engine:setLead(value)
     end
     W.setHint("")
     ns.Window.refresh()
 end
 
 -- "lead" for the Find group summary when a solo player wants to lead.
-function W.leadWord()
-    return ns.charDb.wantsLead and ns.Party.state() == "solo" and "lead" or nil
+function W.leadWord(tab)
+    return W.wantsLead(tab or W.currentTab()) and ns.Party.state() == "solo" and "lead" or nil
 end
 
 function W.place(widget, x, y)

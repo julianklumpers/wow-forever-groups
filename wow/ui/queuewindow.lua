@@ -165,7 +165,8 @@ end
 function QueueWindow.groupsNeedingMe(wanted, subject)
     local roles = ns.charDb and ns.charDb.lastRoles
     local result = {}
-    if not roles or not ns.Features.groupFinder() or ns.charDb.wantsLead then
+    local leading = ns.charDb[subject == "quests" and "wantsLeadQuests" or "wantsLead"]
+    if not roles or not ns.Features.groupFinder() or leading then
         return result
     end
     local style = ns.Playstyle.mine()
@@ -353,7 +354,8 @@ end
 -- group), groups when you don't (you look for a place in one). A table you
 -- fold or open yourself stays so, separately for leading and not leading.
 local function foldMode()
-    return ns.charDb and ns.charDb.wantsLead and "lead" or "join"
+    local leading = ns.charDb and ns.charDb[mode == "quests" and "wantsLeadQuests" or "wantsLead"]
+    return leading and "lead" or "join"
 end
 
 local function isFolded(section)

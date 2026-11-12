@@ -288,7 +288,7 @@ function W.layoutChoices(y, withPlaystyle)
     local solo = Party.state() == "solo"
     ui.leadCheck:SetShown(solo)
     if solo then
-        ui.leadCheck:SetChecked(ns.charDb.wantsLead == true)
+        ui.leadCheck:SetChecked(W.wantsLead(withPlaystyle and "dungeons" or "quests"))
         local labelWidth = ui.leadCheck.label:GetStringWidth() or 0
         W.place(ui.leadCheck, WIDTH - PAD - labelWidth - LEAD_BOX - 1, y + 4)
     end

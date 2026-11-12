@@ -125,11 +125,11 @@ function W.refreshQuestsTab(y, state)
     local queued = ns.QuestQueue.isQueued()
     local setup = not queued and (state == "solo" or state == "leader")
     local ready = queued or (W.selectedRoles() ~= nil and #W.tickedQuestKeys() > 0)
-    ui.join:SetText(queued and "Stop" or (W.leadWord() and "Find questing players" or "Find questing group"))
+    ui.join:SetText(queued and "Stop" or (W.leadWord("quests") and "Find questing players" or "Find questing group"))
     ui.join:SetShown(queued or setup)
     ui.joinSummary:SetShown(setup and ready)
     if setup and ready then
-        local parts = { Widgets.describeRoles(W.selectedRoles()), W.leadWord() }
+        local parts = { Widgets.describeRoles(W.selectedRoles()), W.leadWord("quests") }
         local count = #W.tickedQuestKeys()
         parts[#parts + 1] = string.format("%d quest%s", count, count == 1 and "" or "s")
         ui.joinSummary:SetText(table.concat(parts, "  ·  "))

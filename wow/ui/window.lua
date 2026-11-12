@@ -103,7 +103,7 @@ function Window.refresh()
     y = W.placeOtherQueueLink(y, state)
 
     local searching = queued or ns.Filler.isActive()
-    ui.join:SetText(searching and "Stop" or (W.leadWord() and "Find players" or "Find group"))
+    ui.join:SetText(searching and "Stop" or (W.leadWord("dungeons") and "Find players" or "Find group"))
     ui.join:SetShown(searching or setup)
     local ready = searching or (W.selectedRoles() ~= nil and #W.selectedVisibleIds() > 0)
     ui.joinSummary:SetShown(setup and not searching and ready)
@@ -111,7 +111,7 @@ function Window.refresh()
         local dungeonCount = #W.selectedVisibleIds()
         local parts = { Widgets.describeRoles(W.selectedRoles()) }
         parts[#parts + 1] = ns.Playstyle.word(ns.Playstyle.mine())
-        parts[#parts + 1] = W.leadWord()
+        parts[#parts + 1] = W.leadWord("dungeons")
         parts[#parts + 1] = string.format("%d dungeon%s", dungeonCount, dungeonCount == 1 and "" or "s")
         ui.joinSummary:SetText(table.concat(parts, "  ·  "))
     end
