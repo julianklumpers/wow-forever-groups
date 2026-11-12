@@ -21,8 +21,9 @@ in the group, with roles set for you.
 - **Group quests** — a Quests tab with the group and elite quests in your quest log.
 - **Lead if you like** — tick "I'd like to lead" and you become the leader of the group that
   forms; Forever Groups builds it for you.
-- **Playstyle** — Learning, Relaxed, Competitive or Carry Offered; you're grouped with
-  like-minded players.
+- **Playstyle** — "Any" by default, so you're grouped with everyone; pick Learning, Relaxed,
+  Competitive or Carry Offered in the dropdown on the roles header to be grouped with
+  like-minded players only.
 - **Uses WoW's Group Finder too** — invites solo players listed for your dungeon, asks listed
   groups to invite you, lists your own group, and invites players who whisper a needed role.
 - **In the group** — a card with every member's role, spec, distance to the entrance and

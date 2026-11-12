@@ -2,6 +2,11 @@
 
 ## 0.25.0 (2026-11-12)
 
+- Playstyle is no longer required: "Any" is the new default and groups you with everyone, so
+  more players fit together. The playstyle moved from its own section to a dropdown on the
+  "Your roles" header; pick one there (or `/fg style relaxed`, `/fg style any`) to be grouped
+  with like-minded players only. A playstyle you picked before is kept. Your own WoW Group
+  Finder listing still says Relaxed when you have no preference, since WoW requires one.
 - "I'd like to lead" on the roles header: when a group forms with you, you become its leader (a
   party that queues together keeps its own leader). Forever Groups then doesn't ask listed
   groups to invite you; it builds the group for you, with you as leader. The button then reads

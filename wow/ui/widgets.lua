@@ -518,35 +518,6 @@ function Widgets.paintTile(tile, checked, enabled)
     tile.box:SetAlpha(enabled and 1 or 0.35)
 end
 
--- One option of a row where exactly one is chosen, drawn like a small tile.
-function Widgets.choice(parent, label, width, onClick)
-    local choice = backdropFrame("CheckButton", parent)
-    choice:SetSize(width, 28)
-    addOutline(choice)
-    local hover = choice:CreateTexture(nil, "HIGHLIGHT")
-    hover:SetPoint("TOPLEFT", 4, -4)
-    hover:SetPoint("BOTTOMRIGHT", -4, 4)
-    hover:SetColorTexture(1, 1, 1, 0.07)
-    choice.label = Widgets.text(choice, "GameFontHighlightSmall", "CENTER")
-    choice.label:SetPoint("LEFT", 4, 0)
-    choice.label:SetPoint("RIGHT", -4, 0)
-    choice.label:SetWordWrap(false)
-    choice.label:SetText(label)
-    choice:SetScript("OnClick", onClick)
-    return choice
-end
-
-function Widgets.paintChoice(choice, chosen)
-    choice:SetChecked(chosen and true or false)
-    if chosen then
-        paintOutline(choice, { 1, 0.82, 0, 0.16 }, { 1, 0.82, 0, 1 })
-        choice.label:SetTextColor(1, 1, 1)
-    else
-        paintOutline(choice, { 1, 1, 1, 0.04 }, { 1, 1, 1, 0.35 })
-        choice.label:SetTextColor(0.75, 0.75, 0.75)
-    end
-end
-
 -- A small round status dot: WoW's white circle mask, coloured per state.
 function Widgets.dot(parent, size)
     local dot = parent:CreateTexture(nil, "ARTWORK")

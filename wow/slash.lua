@@ -389,7 +389,7 @@ local COMMANDS = {
     { "progress", "show or hide the quest progress of your questing group", function()
         ns.ProgressWindow.toggle()
     end },
-    { "style", "[relaxed | learning | serious | expert]  your playstyle", function(rest)
+    { "style", "[any | relaxed | learning | serious | expert]  your playstyle", function(rest)
         ns.Playstyle.command(rest)
     end },
     { "accept", "accept the group proposal", function() cmdRespond(true) end },

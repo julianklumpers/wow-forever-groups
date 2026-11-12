@@ -74,6 +74,7 @@ wow\ui\window\tabs.lua
 wow\ui\window.lua
 wow\ui\progresswindow.lua
 wow\ui\playermenu.lua
+wow\ui\playstylemenu.lua
 wow\ui\queuewindow.lua
 wow\ui\minimap.lua
 wow\ui\settings.lua

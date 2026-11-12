@@ -9,12 +9,13 @@ local Playstyle = {}
 
 local ANY = Playstyles.ANY
 
--- Relaxed is everyone's playstyle until they pick another, and comes first
--- in the window; then the rest in WoW's order.
-Playstyle.DEFAULT = 2
-Playstyle.ORDER = { 2, 1, 3, 4 }
+-- Any (no preference: grouped with everyone) until the player picks one,
+-- and first in the list; then Relaxed and the rest in WoW's order.
+Playstyle.DEFAULT = ANY
+Playstyle.ORDER = { ANY, 2, 1, 3, 4 }
 
 Playstyle.DESCRIPTIONS = {
+    [ANY] = "No preference: grouped with every playstyle.",
     [1] = "New to the dungeon; explanations are welcome.",
     [2] = "No rush, time for quests.",
     [3] = "Focused and efficient.",
@@ -54,7 +55,7 @@ end
 -- WoW's own word for it, so it reads like the Group Finder.
 function Playstyle.word(id)
     if id == ANY then
-        return "No preference"
+        return "Any"
     end
     local style = Playstyles.LIST[id]
     if not style then
@@ -83,6 +84,9 @@ end
 
 -- The line under the choice: who the player is grouped with.
 function Playstyle.partnersText(id)
+    if id == ANY then
+        return "Grouped with everyone."
+    end
     local words = { Playstyle.word(id) }
     for _, other in ipairs(Playstyles.partners(id)) do
         words[#words + 1] = Playstyle.word(other)
@@ -92,11 +96,11 @@ end
 
 function Playstyle.mine()
     local id = ns.charDb and ns.charDb.playstyle
-    return (id ~= ANY and Playstyles.isValid(id)) and id or Playstyle.DEFAULT
+    return Playstyles.isValid(id) and id or Playstyle.DEFAULT
 end
 
 function Playstyle.set(id)
-    if id == ANY or not Playstyles.isValid(id) then
+    if not Playstyles.isValid(id) then
         return false
     end
     ns.charDb.playstyle = id
@@ -135,12 +139,15 @@ end
 -- The Enum value our own Group Finder listing gets: WoW requires one.
 function Playstyle.listingValue()
     local style = Playstyle.forGroup()
-    return Playstyle.wowValue(style ~= ANY and style or Playstyle.DEFAULT)
+    return Playstyle.wowValue(style ~= ANY and style or 2)
 end
 
 -- "relaxed", "expert" etc., for typed commands.
 function Playstyle.parse(text)
     text = string.lower(text or "")
+    if text == "any" then
+        return ANY
+    end
     for _, style in ipairs(Playstyles.LIST) do
         if text == string.lower(style.word) or text == string.lower(style.key)
             or text == string.lower(Playstyle.word(style.id)) then
@@ -153,7 +160,7 @@ end
 function Playstyle.command(rest)
     local id = Playstyle.parse(rest)
     if id == nil then
-        Log.info("Your playstyle: %s. Change it with /fg style relaxed | learning | serious | expert.",
+        Log.info("Your playstyle: %s. Change it with /fg style any | relaxed | learning | serious | expert.",
             Playstyle.word(Playstyle.mine()))
         return
     end

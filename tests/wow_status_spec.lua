@@ -95,7 +95,7 @@ describe("Status bar", function()
         tank:joins(clients[5].name)
         world:advance(1)
         assert.are.equal("The Deadmines  ·  group complete", statusText(tank))
-        assert.are.same({ "Group complete! The Deadmines (Relaxed)" }, tank.notices)
+        assert.are.same({ "Group complete! The Deadmines" }, tank.notices)
         local partyMessages = 0
         for _, w in ipairs(tank.whispers) do
             if w.chatType == "PARTY" then

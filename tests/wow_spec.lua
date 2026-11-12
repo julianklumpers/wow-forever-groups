@@ -246,7 +246,7 @@ describe("WoW UI", function()
         assert.are.equal("D", entry.members[1].roles)
         assert.are.same({ "1", "2", "3", "5" }, entry.dungeons)
         assert.is_nil(client:find("CheckButton", "Tank"))
-        assert.is_not_nil(client:findText("^Searching 4 dungeons  ·  Relaxed or Learning$"))
+        assert.is_not_nil(client:findText("^Searching 4 dungeons$"))
         assert.is_not_nil(client:findText("^" .. client.ns.Dungeons.get("5").name .. "$"))
         local open = 0
         for _, widget in ipairs(client.widgets) do
@@ -817,7 +817,7 @@ describe("Main window layout", function()
 
         client:click("CheckButton", "DPS")
         assert.is_true(dps.mark.shown)
-        assert.is_not_nil(client:findText("^DPS  ·  Relaxed  ·  5 dungeons$"))
+        assert.is_not_nil(client:findText("^DPS  ·  5 dungeons$"))
     end)
 end)
 
@@ -881,7 +881,7 @@ describe("Main window while queued", function()
         client:click("Button", "Find group")
         local count = #client.ns.engine.myEntry.dungeons
         assert.is_true(count > 8)
-        assert.is_not_nil(client:findText(string.format("^Searching %d dungeons  ·  Relaxed or Learning$", count)))
+        assert.is_not_nil(client:findText(string.format("^Searching %d dungeons$", count)))
         assert.is_not_nil(client:findText(string.format("^and %d more: ", count - 7)))
     end)
 end)

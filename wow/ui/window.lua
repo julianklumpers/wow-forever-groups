@@ -16,7 +16,6 @@ local QUEUE_ROW_HEIGHT = W.QUEUE_ROW_HEIGHT
 local ui = W.ui
 local roleToggles = W.roleToggles
 local queueRows = W.queueRows
-local playstyleChoices = W.playstyleChoices
 
 -- The main window: the connection and two tabs (Dungeons, Quests) on top, a
 -- status card per tab, and below it only what fits the moment: choosing
@@ -110,7 +109,9 @@ function Window.refresh()
     if setup and ready then
         local dungeonCount = #W.selectedVisibleIds()
         local parts = { Widgets.describeRoles(W.selectedRoles()) }
-        parts[#parts + 1] = ns.Playstyle.word(ns.Playstyle.mine())
+        if ns.Playstyle.mine() ~= ns.Playstyles.ANY then
+            parts[#parts + 1] = ns.Playstyle.word(ns.Playstyle.mine())
+        end
         parts[#parts + 1] = W.leadWord("dungeons")
         parts[#parts + 1] = string.format("%d dungeon%s", dungeonCount, dungeonCount == 1 and "" or "s")
         ui.joinSummary:SetText(table.concat(parts, "  ·  "))
@@ -223,10 +224,7 @@ function W.build()
     W.buildQuests()
     W.buildParty()
     W.buildDungeons()
-    ui.setupWidgets = { ui.rolesHeader, ui.dungeonHeader, ui.otherToggle, ui.playstyleHeader }
-    for _, choice in ipairs(playstyleChoices) do
-        ui.setupWidgets[#ui.setupWidgets + 1] = choice
-    end
+    ui.setupWidgets = { ui.rolesHeader, ui.dungeonHeader, ui.otherToggle }
     for _, role in ipairs(Widgets.ROLES) do
         ui.setupWidgets[#ui.setupWidgets + 1] = roleToggles[role]
     end

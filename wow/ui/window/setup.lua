@@ -24,18 +24,16 @@ local ROLE_WORDS = W.ROLE_WORDS
 local TILE_GAP = W.TILE_GAP
 local TILE_WIDTH = W.TILE_WIDTH
 local PARTY_ROW_HEIGHT = W.PARTY_ROW_HEIGHT
-local CHOICE_GAP = W.CHOICE_GAP
-local CHOICE_WIDTH = W.CHOICE_WIDTH
 local QUEUE_ROWS = W.QUEUE_ROWS
 local QUEUE_ROW_HEIGHT = W.QUEUE_ROW_HEIGHT
 local ERRORS = W.ERRORS
+local PLAYSTYLE_WIDTH = 120
 local LEAD_BOX = 20
 local ui = W.ui
 local roleToggles = W.roleToggles
 local partyRows = W.partyRows
 local dungeonCells = W.dungeonCells
 local queueRows = W.queueRows
-local playstyleChoices = W.playstyleChoices
 
 -- Choosing roles, playstyle, party roles and dungeons, and the queued
 -- dungeons summary.
@@ -246,7 +244,9 @@ function W.setSetupShown(shown)
     if not shown then
         ui.roleHint:Hide()
         ui.leadCheck:Hide()
-        ui.playstyleHint:Hide()
+        ui.playstyleButton:Hide()
+        ui.playstyleLabel:Hide()
+        ns.PlaystyleMenu.hide()
     end
     if not shown then
         ui.partyHeader:Hide()
@@ -284,13 +284,28 @@ function W.layoutChoices(y, withPlaystyle)
     end
     W.place(ui.rolesHeader, PAD, y)
     -- Alone, the wish to lead sits on the right of the header line, like the
-    -- links of the dungeon list; a party already has its leader.
+    -- links of the dungeon list; a party already has its leader. The
+    -- playstyle (dungeons only) is a dropdown left of it.
     local solo = Party.state() == "solo"
     ui.leadCheck:SetShown(solo)
+    local right = WIDTH - PAD
     if solo then
         ui.leadCheck:SetChecked(W.wantsLead(withPlaystyle and "dungeons" or "quests"))
         local labelWidth = ui.leadCheck.label:GetStringWidth() or 0
-        W.place(ui.leadCheck, WIDTH - PAD - labelWidth - LEAD_BOX - 1, y + 4)
+        right = right - labelWidth - LEAD_BOX - 1
+        W.place(ui.leadCheck, right, y + 4)
+        right = right - 16
+    end
+    ui.playstyleButton:SetShown(withPlaystyle)
+    ui.playstyleLabel:SetShown(withPlaystyle)
+    if withPlaystyle then
+        local mine = ns.Playstyle.mine()
+        ui.playstyleButton.label:SetText(ns.Playstyle.word(mine))
+        W.place(ui.playstyleButton, right - PLAYSTYLE_WIDTH, y + 3)
+        ui.playstyleLabel:ClearAllPoints()
+        ui.playstyleLabel:SetPoint("RIGHT", ui.playstyleButton, "LEFT", -6, 0)
+    else
+        ns.PlaystyleMenu.hide()
     end
     y = y - 26
     for i, role in ipairs(Widgets.ROLES) do
@@ -306,25 +321,6 @@ function W.layoutChoices(y, withPlaystyle)
     end
     ui.roleHint:Show()
     W.place(ui.roleHint, PAD, y)
-    y = y - 26
-    if not withPlaystyle then
-        return y
-    end
-    ui.playstyleHeader:Show()
-    W.place(ui.playstyleHeader, PAD, y)
-    y = y - 26
-    local mine = ns.Playstyle.mine()
-    for i, choice in ipairs(playstyleChoices) do
-        Widgets.paintChoice(choice, choice.playstyle == mine)
-        W.place(choice, PAD + (i - 1) * (CHOICE_WIDTH + CHOICE_GAP), y)
-    end
-    y = y - 28 - 8
-    ui.playstyleHint:SetText(ns.Playstyle.partnersText(mine))
-    ui.playstyleHint:Show()
-    W.place(ui.playstyleHint, PAD, y)
-    for _, choice in ipairs(playstyleChoices) do
-        choice:Show()
-    end
     return y - 26
 end
 
@@ -465,22 +461,38 @@ function W.buildRoles()
     end
 end
 
+-- The playstyle as a dropdown on the roles header: a button with the
+-- current choice that opens the list (wow/ui/playstylemenu.lua).
 function W.buildPlaystyle()
-    ui.playstyleHeader = Widgets.header(W.frame, "Playstyle", PAD)
-    ui.playstyleHint = Widgets.text(W.frame, "GameFontHighlightSmall")
-    ui.playstyleHint:SetWidth(WIDTH - 2 * PAD)
-    ui.playstyleHint:SetTextColor(0.85, 0.85, 0.85)
-    for i, id in ipairs(ns.Playstyle.ORDER) do
-        local choice = Widgets.choice(W.frame, ns.Playstyle.word(id), CHOICE_WIDTH, function()
+    ui.playstyleLabel = Widgets.text(W.frame, "GameFontNormalSmall")
+    ui.playstyleLabel:SetText("Playstyle:")
+    local button = CreateFrame("Button", nil, W.frame)
+    button:SetSize(PLAYSTYLE_WIDTH, 20)
+    button.bg = button:CreateTexture(nil, "BACKGROUND")
+    button.bg:SetAllPoints()
+    button.bg:SetColorTexture(0, 0, 0, 0.5)
+    button.edge = button:CreateTexture(nil, "BORDER")
+    button.edge:SetPoint("TOPLEFT", -1, 1)
+    button.edge:SetPoint("BOTTOMRIGHT", 1, -1)
+    button.edge:SetColorTexture(1, 0.82, 0, 0.35)
+    button.label = Widgets.text(button, "GameFontHighlightSmall")
+    button.label:SetPoint("LEFT", 6, 0)
+    button.arrow = button:CreateTexture(nil, "ARTWORK")
+    button.arrow:SetSize(14, 14)
+    button.arrow:SetPoint("RIGHT", -3, 0)
+    button.arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
+    button.arrow:SetRotation(-math.pi / 2)
+    button:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    button:SetScript("OnClick", function(self)
+        ns.PlaystyleMenu.toggle(self, function(id)
             ns.Playstyle.set(id)
             W.setHint("")
             ns.Window.refresh()
         end)
-        choice.playstyle = id
-        Widgets.tooltip(choice, ns.Playstyle.word(id), ns.Playstyle.DESCRIPTIONS[id] .. " "
-            .. ns.Playstyle.partnersText(id))
-        playstyleChoices[i] = choice
-    end
+    end)
+    Widgets.tooltip(button, "Playstyle", "Who you are grouped with. Any: everyone. Relaxed and Learning go "
+        .. "together, and so do Competitive and Carry Offered.")
+    ui.playstyleButton = button
 end
 
 function W.buildParty()
