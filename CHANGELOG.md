@@ -4,7 +4,8 @@
 
 - "Lead the group" button under the roles: when a group forms with you, you become its leader (a
   party that queues together keeps its own leader). Forever Groups then doesn't ask listed
-  groups to invite you; it builds the group for you, with you as leader.
+  groups to invite you; it builds the group for you, with you as leader. The button then reads
+  "Find players" ("Find questing players" on the Quests tab).
 
 ## 0.24.0 (2026-11-12)
 

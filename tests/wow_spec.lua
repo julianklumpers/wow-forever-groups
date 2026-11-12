@@ -489,6 +489,8 @@ describe("WoW UI", function()
         dps:click("CheckButton", lead)
         dps:click("CheckButton", "DPS")
         assert.is_not_nil(dps:findText("lead  ·"))
+        assert.is_not_nil(dps:find("Button", "Find players"))
+        assert.is_nil(dps:find("Button", "Find group"))
         for i, p in ipairs(PLAYERS) do
             clients[i]:slash("/dq join " .. p[2] .. " auto")
         end

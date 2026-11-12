@@ -121,7 +121,7 @@ function W.refreshQuestsTab(y, state)
     local queued = ns.QuestQueue.isQueued()
     local setup = not queued and (state == "solo" or state == "leader")
     local ready = queued or (W.selectedRoles() ~= nil and #W.tickedQuestKeys() > 0)
-    ui.join:SetText(queued and "Stop" or "Find questing group")
+    ui.join:SetText(queued and "Stop" or (W.leadWord() and "Find questing players" or "Find questing group"))
     ui.join:SetShown(queued or setup)
     ui.joinSummary:SetShown(setup and ready)
     if setup and ready then
