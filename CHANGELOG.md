@@ -4,6 +4,9 @@
 
 - Fake players for testing (`/fg fake`) get made-up names instead of "Fake 1", "Fake 2"…
 - Fake players only queue for the dungeons of your level.
+- Fake players get a class and spec that fit their roles (a tank fake is a Protection Warrior or
+  Paladin), shown in class colours in the popup and in "Who is looking".
+- "Who is looking" shows Forever Groups players in their class colour.
 - After a test group with fake players the window no longer shows an empty group card under
   "Not in the queue".
 - Fake players are always grouped with you: with many fakes, or fakes added before you joined,

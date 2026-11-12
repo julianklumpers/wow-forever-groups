@@ -249,7 +249,8 @@ the tabs Groups, Messages and Display.
   proposal. `/fg fake decline` / `/fg fake afk` makes the first fake in the next proposal decline / stay silent;
   `/fg fake clear` removes them.
 - `/fg queuelist` lists the queue in chat with tags (you, fake, in a proposal).
-- Fake players get made-up names (`Slash.fakeName`) and queue for the dungeons of your level.
+- Fake players get made-up names (`Slash.fakeName`), a class and spec that can play their roles
+  (`Slash.fakeSpec`, a different class in turn) and queue for the dungeons of your level.
 - `/fg debug` logs every sent/received message and, when it changes, why the matchmaker did or did not form a group.
 
 ## Releasing

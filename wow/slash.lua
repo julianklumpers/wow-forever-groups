@@ -9,6 +9,7 @@ local Slash = {}
 
 local Widgets = ns.Widgets
 local Classes = ns.Classes
+local Specs = ns.Specs
 local Party = ns.Party
 
 local ROLES = { t = "T", tank = "T", h = "H", heal = "H", healer = "H", d = "D", dps = "D" }
@@ -212,6 +213,34 @@ local LAST_NAMES = {
     "Silverbough", "Blackbriar", "Mistral",
 }
 
+-- A class and talent tree that can play every role of a fake player, a
+-- different class in turn: "WARRIOR3" for a tank, "DRUID2" for Tank/DPS.
+function Slash.fakeSpec(roles, n)
+    local fitting = {}
+    for _, token in ipairs({ "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK",
+        "DRUID" }) do
+        local playable = ""
+        for _, tree in ipairs(Specs.TREES[token]) do
+            playable = playable .. tree[2]
+        end
+        local all = true
+        for role in string.gmatch(roles, ".") do
+            all = all and string.find(playable, role, 1, true) ~= nil
+        end
+        if all then
+            fitting[#fitting + 1] = token
+        end
+    end
+    local token = fitting[(n - 1) % #fitting + 1]
+    local first = string.sub(roles, 1, 1)
+    for index, tree in ipairs(Specs.TREES[token]) do
+        if string.find(tree[2], first, 1, true) then
+            return Specs.encode(token, index)
+        end
+    end
+    return Specs.encode(token)
+end
+
 -- The name of the n-th fake player: the lists have coprime lengths, so the
 -- first 930 names are all different.
 function Slash.fakeName(n)
@@ -263,7 +292,8 @@ local function cmdFake(rest)
         ns.fakeCounter = (ns.fakeCounter or 0) + 1
         local fakeRoles = roles or FAKE_ROLES[(ns.fakeCounter - 1) % #FAKE_ROLES + 1]
         local name = Slash.fakeName(ns.fakeCounter)
-        local ok = engine:addFake({ { name = name, roles = fakeRoles, level = UnitLevel("player") } }, dungeons)
+        local ok = engine:addFake({ { name = name, roles = fakeRoles, level = UnitLevel("player") } }, dungeons,
+            Slash.fakeSpec(fakeRoles, ns.fakeCounter))
         if ok then
             added[#added + 1] = name .. " (" .. Widgets.describeRoles(fakeRoles) .. ")"
         end

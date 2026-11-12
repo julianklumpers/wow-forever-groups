@@ -71,13 +71,9 @@ local function paintRow(row, member, leader)
     local mine = member.name == ns.selfName
     Widgets.setRoleIcon(row.icon, member.role)
     row.name:SetText(member.name .. (mine and " (you)" or ""))
-    if member.fake then
-        row.name:SetTextColor(0.85, 0.85, 0.85)
-    else
-        row.name:SetTextColor(Widgets.classColor(classOf(member)))
-    end
-    local detail = member.fake and "fake" or ns.Spec.label(member.spec)
-        or (mine and ns.Spec.myLabel()) or ""
+    row.name:SetTextColor(Widgets.classColor(classOf(member)))
+    local spec = ns.Spec.label(member.spec) or (mine and ns.Spec.myLabel()) or nil
+    local detail = member.fake and (spec and (spec .. "  ·  fake") or "fake") or spec or ""
     row.detail:SetText(detail)
     row.name:ClearAllPoints()
     if detail ~= "" then

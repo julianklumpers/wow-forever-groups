@@ -808,9 +808,10 @@ function Engine:groupIncludesMe(group)
     return false
 end
 
-function Engine:addFake(members, dungeons)
+function Engine:addFake(members, dungeons, spec)
     local entry = {
         id = members[1].name, joinedAt = math.floor(self:now()), dungeons = dungeons, members = copyMembers(members),
+        spec = spec,
     }
     if self.queue:get(entry.id) then
         return false, "name already in the queue"

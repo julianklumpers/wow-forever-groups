@@ -484,7 +484,7 @@ local function queueItems()
             player = menu and entry.id or nil,
             time = Widgets.formatTime(now - entry.joinedAt), waited = now - entry.joinedAt,
             level = entry.members[1].level,
-            color = entry.id == ns.selfName and { 1, 0.82, 0 } or { 1, 1, 1 } }
+            color = entry.id == ns.selfName and { 1, 0.82, 0 } or { Widgets.classColor(ns.Specs.decode(entry.spec)) } }
     end
     return sorted(items)
 end

@@ -505,7 +505,7 @@ describe("WoW test tools", function()
         client:slash("/dq fake 4")
         world:advance(MATCH)
         assert.is_true(client:proposalShown())
-        assert.are.equal("fake", client:find("FontString", client.ns.Slash.fakeName(5)).parent.detail.text)
+        assert.is_not_nil(client:find("FontString", client.ns.Slash.fakeName(5)).parent.detail.text:find("  ·  fake$"))
         assert.is_not_nil(client:find("FontString", "Solo Player (you)"))
         world:advance(4)
         local row = client:find("FontString", client.ns.Slash.fakeName(6)).parent
@@ -564,6 +564,27 @@ describe("WoW test tools", function()
         client:slash("/dq queuelist")
         assert.is_true(client:said("Solo Player DPS.*%[you%]"))
         assert.is_true(client:said(client.ns.Slash.fakeName(1) .. " Healer.*%[fake%]"))
+    end)
+
+    it("gives fake players a class and spec that can play their roles", function()
+        local client = World.new():addClient("Solo Player", { level = 20 })
+        local Specs, fakeSpec = client.ns.Specs, client.ns.Slash.fakeSpec
+        for n = 1, 9 do
+            for _, roles in ipairs({ "T", "H", "D", "TD", "HD", "THD" }) do
+                local token, index = Specs.decode(fakeSpec(roles, n))
+                local tree = Specs.tree(token, index)
+                assert.is_not_nil(tree, roles)
+                assert.is_not_nil(tree.roles:find(roles:sub(1, 1), 1, true), roles .. " " .. token)
+                local playable = ""
+                for _, t in ipairs(Specs.TREES[token]) do
+                    playable = playable .. t[2]
+                end
+                for role in roles:gmatch(".") do
+                    assert.is_not_nil(playable:find(role, 1, true), roles .. " " .. token)
+                end
+            end
+        end
+        assert.are_not.equal(fakeSpec("D", 1), fakeSpec("D", 2))
     end)
 
     it("gives fake players made-up names, all different", function()
