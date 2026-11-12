@@ -28,7 +28,16 @@ describe("Choosing groups to apply to", function()
         local picks = LfgPick.groupsToApply(groups, { roles = "D", dungeons = wanted, exclude = { [2] = true },
             max = 1 })
         assert.are.equal(1, #picks)
-        assert.are.equal(3, picks[1].id)
+        assert.are.equal(4, picks[1].id)
+    end)
+
+    it("asks listings up for half an hour or more last, and the most recent first", function()
+        local groups = { group(1, "4", 0, 0, 1, 2400), group(2, "4", 0, 1, 1, 600), group(3, "4", 0, 1, 1, 60) }
+        local ids = {}
+        for _, pick in ipairs(LfgPick.groupsToApply(groups, { roles = "D", dungeons = wanted })) do
+            ids[#ids + 1] = pick.id
+        end
+        assert.are.same({ 3, 2, 1 }, ids)
     end)
 
     it("offers only the roles a group still needs", function()

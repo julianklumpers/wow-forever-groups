@@ -31,7 +31,9 @@ local SEARCH_SLACK = 2
 local REQUEST_KEPT = 300
 
 local asks = {}
-local askedLeaders = {}
+-- A leader asked automatically is not asked again for a while, also in a
+-- later queue or after a reload: they said no, or did not answer.
+local ASKED_COOLDOWN = 15 * 60
 local seekingSince
 local seekingStartedAt
 local lastAskAt = -math.huge
@@ -194,7 +196,7 @@ end
 function ask(pick)
     lastAskAt = GetTime()
     if ns.db.dryRun then
-        askedLeaders[pick.leader] = true
+        Apply.rememberAsk(pick.leader)
         Log.info("[dry run] Would ask %s to invite you for %s.", pick.leader, Dungeons.name(pick.dungeon))
         return
     end
@@ -211,7 +213,9 @@ function ask(pick)
         Log.debug("asking %s failed: %s", pick.leader, tostring(err))
         return
     end
-    askedLeaders[pick.leader] = true
+    if not pick.request then
+        Apply.rememberAsk(pick.leader)
+    end
     asks[pick.leader] = { dungeon = pick.dungeon, at = GetServerTime(), askedAt = GetTime(), request = pick.request }
     Log.info("Asked %s to invite you for %s.", pick.leader, Dungeons.name(pick.dungeon))
 end
@@ -264,7 +268,7 @@ function Apply.tick()
     end
     local groups = ns.Playstyle.filter(ns.LfgList.groups(), entry.playstyle)
     for _, group in ipairs(groups) do
-        if askedLeaders[group.leader] then
+        if Apply.recentlyAsked(group.leader) or asks[group.leader] then
             exclude[group.id] = true
         end
     end
@@ -276,15 +280,37 @@ function Apply.tick()
     end
 end
 
+-- An invite from a leader we asked is joined at once, while still looking
+-- (or for a request the player clicked), unless switched off.
 local function onInviteRequest(inviter)
     local a = asks[inviter]
     if not a then
         return
     end
     a.invitedAt = GetServerTime()
+    if not ns.db.noAutoAcceptAsked and (a.request or Apply.isSeeker()) and ns.Group.acceptInvite() then
+        Log.info("Joined %s's group for %s.", inviter, Dungeons.name(a.dungeon))
+        return
+    end
     Log.info("%s invited you for %s. Accept the invite!", inviter, Dungeons.name(a.dungeon))
     ns.Notify.attention()
     ns.Status.refresh()
+end
+
+function Apply.rememberAsk(leader)
+    ns.charDb.askedLeaders = ns.charDb.askedLeaders or {}
+    local now = GetServerTime()
+    for name, at in pairs(ns.charDb.askedLeaders) do
+        if now - at >= ASKED_COOLDOWN then
+            ns.charDb.askedLeaders[name] = nil
+        end
+    end
+    ns.charDb.askedLeaders[leader] = now
+end
+
+function Apply.recentlyAsked(leader)
+    local at = ns.charDb.askedLeaders and ns.charDb.askedLeaders[leader]
+    return at ~= nil and GetServerTime() - at < ASKED_COOLDOWN
 end
 
 -- For the status bar: { invitedBy = leader, dungeon } or { asked = n, left =

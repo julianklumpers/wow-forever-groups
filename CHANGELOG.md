@@ -11,6 +11,13 @@
   or when the leader whispers a clear no ("sorry, full", "nope"). A leader who whispers yes
   ("sure, sec") gets up to 30 seconds more for the invite, even past the moment Forever Groups
   would start building your own group. Their whisper still shows in your chat as usual.
+- When a leader you asked invites you, you join right away instead of having to click the
+  invite in time (also after "Request to join" in "Who is looking"). Settings → Joining: "Join
+  a group I asked to invite me by itself". Invites from leaders you didn't ask are never
+  accepted for you.
+- Recently listed groups are asked first; a listing that has been up for half an hour or more
+  and still isn't full (often an away leader) comes last.
+- A leader who was asked isn't asked again for 15 minutes, also when you queue again or reload.
 
 ## 0.25.0 (2026-11-12)
 

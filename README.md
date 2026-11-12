@@ -75,7 +75,9 @@ A short whisper before inviting someone from the Group Finder, a question to a g
 when asking to be invited, and (as leader) a line in party chat when the group is complete.
 It only contacts players listed for the same dungeon or quest, asks one group leader at a
 time (the next after 20 seconds without an invite, or at once when the leader says no or the
-group fills up) and never the same player twice. You can change or turn off every message.
+group fills up), recently listed groups first, and doesn't ask the same leader again for 15
+minutes. When a leader you asked invites you, you join right away (a setting). You can change
+or turn off every message.
 
 **Can I use it without WoW's Group Finder?**
 Yes: turn off "Use WoW's Group Finder" in the settings. Forever Groups then only works with

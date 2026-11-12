@@ -197,7 +197,7 @@ end
 -- is accepted without a second click (verified in Forever: AcceptGroup from
 -- this event joins, StaticPopup_Hide removes WoW's invite popup).
 local function acceptInvite()
-    if ns.db.noAutoAccept or IsInGroup() or type(AcceptGroup) ~= "function" then
+    if IsInGroup() or type(AcceptGroup) ~= "function" then
         return false
     end
     local ok = pcall(AcceptGroup)
@@ -237,7 +237,7 @@ end
 local function onInviteRequest(inviter)
     if expects(inviter) then
         expected = nil
-        if acceptInvite() then
+        if not ns.db.noAutoAccept and acceptInvite() then
             Log.info("Joined %s's group.", inviter)
             return
         end
@@ -254,6 +254,8 @@ local function onSystemMessage(text)
         Log.info("%s did not accept the group invite.", name)
     end
 end
+
+Group.acceptInvite = acceptInvite
 
 function Group.init()
     ns.on("CHAT_MSG_SYSTEM", onSystemMessage)

@@ -195,9 +195,12 @@ only the other roles go to the Group Finder, and that role too if the matchmaker
 
 Forever's Group Finder is the board-style one (Blizzard_GroupFinder_VanillaStyle): no applications, players and
 groups are listed and people whisper or invite each other. So a solo player first asks listed groups that need one of
-their roles to invite them, by whisper to the leader (one at a time, nearest to full first, the next after 20 s
-without an invite, so two invites never arrive at once; never the same leader twice; the questing queue the same),
-and waits 60 s in all. An ask ends early when results that came in after it no longer list the group or show no
+their roles to invite them, by whisper to the leader (one at a time; listings up for 30 min or more last (`LfgPick.OLD_LISTING`, often an
+away leader), then nearest to full, then the most recently listed; the next after 20 s without an invite, so two
+invites never arrive at once; a leader asked automatically is not asked again for 15 min, also in a later queue or
+after a reload (`charDb.askedLeaders`); the questing queue the same), and waits 60 s in all. An asked leader's invite
+is accepted at once while still looking, or for a "Request to join" click (`Group.acceptInvite`; off with
+`noAutoAcceptAsked`). An ask ends early when results that came in after it no longer list the group or show no
 place for the player's roles, or when the leader whispers a clear no; a clear yes gives the leader 30 s more, also
 past the 60 s (`core/replies.lua` reads the answer: refusal and yes words and phrases, "no problem" taken out first;
 both or neither is left open). An invite from an asked leader holds off building; joining that group leaves the

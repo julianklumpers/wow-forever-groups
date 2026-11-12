@@ -7,6 +7,14 @@ local Roles = ns.Roles or require("core.roles")
 -- A group: { id, leader, dungeons = { ... }, remaining = { T, H, D }, age }.
 local LfgPick = {}
 
+-- A listing up this long and still not full is often left by an away
+-- leader: those are asked last.
+LfgPick.OLD_LISTING = 30 * 60
+
+function LfgPick.isOld(group)
+    return (group.age or 0) >= LfgPick.OLD_LISTING
+end
+
 local function openSlots(group)
     return group.remaining.T + group.remaining.H + group.remaining.D
 end
@@ -23,8 +31,9 @@ end
 
 -- opts: roles ("D", "TD"), dungeons (set of ids), exclude (set of group ids),
 -- max. Returns up to max { id, tank, healer, dps }: the groups that need one
--- of the roles, the nearest to full first (they start soonest), then the
--- longest listed. The flags offer only roles the group still needs.
+-- of the roles; listings up for half an hour or more last; then the nearest
+-- to full first (they start soonest), then the most recently listed. The
+-- flags offer only roles the group still needs.
 function LfgPick.groupsToApply(groups, opts)
     local exclude = opts.exclude or {}
     local candidates = {}
@@ -41,12 +50,16 @@ function LfgPick.groupsToApply(groups, opts)
         end
     end
     table.sort(candidates, function(a, b)
+        local oldA, oldB = LfgPick.isOld(a.group), LfgPick.isOld(b.group)
+        if oldA ~= oldB then
+            return oldB
+        end
         local sa, sb = openSlots(a.group), openSlots(b.group)
         if sa ~= sb then
             return sa < sb
         end
         if (a.group.age or 0) ~= (b.group.age or 0) then
-            return (a.group.age or 0) > (b.group.age or 0)
+            return (a.group.age or 0) < (b.group.age or 0)
         end
         return a.group.id < b.group.id
     end)

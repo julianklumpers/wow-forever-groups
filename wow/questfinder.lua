@@ -154,6 +154,7 @@ end
 
 local function ask(listing, quest)
     asked[listing.leader] = GetTime()
+    ns.Apply.rememberAsk(listing.leader)
     if ns.db.dryRun then
         Log.info("Dry run: would ask %s, who leads a group in %s, to invite you.", listing.leader, quest.zone)
         return
@@ -230,12 +231,27 @@ function QuestFinder.onResults()
             end
             if ns.Features.apply() and not ns.charDb.wantsLeadQuests and #current.members == 1 and next(invited) == nil
                 and askCount() < MAX_ASKS then
+                local groups = {}
                 for _, listing in ipairs(listings) do
                     if not listing.solo and hasZone(listing, quest.zone) and not asked[listing.leader]
-                        and (listing.members or 1) < size then
-                        ask(listing, quest)
-                        return
+                        and not ns.Apply.recentlyAsked(listing.leader) and (listing.members or 1) < size then
+                        groups[#groups + 1] = listing
                     end
+                end
+                -- Recent listings first, then the fullest, then the newest.
+                table.sort(groups, function(a, b)
+                    local oldA, oldB = ns.LfgPick.isOld(a), ns.LfgPick.isOld(b)
+                    if oldA ~= oldB then
+                        return oldB
+                    end
+                    if (a.members or 1) ~= (b.members or 1) then
+                        return (a.members or 1) > (b.members or 1)
+                    end
+                    return (a.age or 0) < (b.age or 0)
+                end)
+                if groups[1] then
+                    ask(groups[1], quest)
+                    return
                 end
             end
         end
@@ -432,9 +448,22 @@ function QuestFinder.tick()
     end
 end
 
+-- An invite from a leader we asked while still looking alone is joined at
+-- once, unless switched off.
+function QuestFinder.onInvite(inviter)
+    local current = entry()
+    if not asked[inviter] or not current or #current.members ~= 1 or ns.db.noAutoAcceptAsked then
+        return
+    end
+    if ns.Group.acceptInvite() then
+        Log.info("Joined %s's group.", inviter)
+    end
+end
+
 function QuestFinder.init()
     ns.LfgList.onUpdate(QuestFinder.onResults)
     ns.on("CHAT_MSG_WHISPER", QuestFinder.onWhisper)
+    ns.on("PARTY_INVITE_REQUEST", QuestFinder.onInvite)
 end
 
 ns.QuestFinder = QuestFinder

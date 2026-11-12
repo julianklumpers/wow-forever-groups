@@ -7,6 +7,7 @@ describe("getting the player's attention", function()
         world:advance(30)
         world:listGroup("Group Lead", 799, { T = 0, H = 0, D = 2 })
         world:listGroup("Other Lead", 799, { T = 0, H = 0, D = 2 })
+        solo.ns.db.noAutoAcceptAsked = true
         solo:slash("/dq join dps dm")
         world:advance(4)
         local before = solo.flashes or 0

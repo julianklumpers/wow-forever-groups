@@ -498,6 +498,7 @@ describe("Queue window", function()
         world:advance(2)
         client:click("Button", "Stop")
         world:advance(20)
+        client.ns.db.noAutoAcceptAsked = true
         client:fire("PARTY_INVITE_REQUEST", "Needs Dps")
         world:advance(1)
         assert.is_true(client:said("Needs Dps invited you for The Deadmines%. Accept the invite!"))

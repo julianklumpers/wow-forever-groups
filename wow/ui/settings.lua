@@ -31,8 +31,9 @@ local TABS = {
                             .. "combat." },
                     { key = "noApply", inverted = true, parent = "noGroupFinder",
                         label = "Ask groups in WoW's Group Finder to invite me",
-                        tip = "When you search alone, first whisper the leaders of listed groups that need your "
-                            .. "role (at most 3). Without an invite within a minute you build your own group." },
+                        tip = "When you search alone, first whisper the leader of a listed group that needs your "
+                            .. "role, one at a time (the next after 20 seconds, or at once on a no). Without an "
+                            .. "invite within a minute you build your own group." },
                     { key = "noFill", inverted = true, parent = "noGroupFinder",
                         label = "Invite players listed in WoW's Group Finder",
                         tip = "When no other Forever Groups player fits, build your group from players listed in "
@@ -65,6 +66,11 @@ local TABS = {
                         tip = "After you accepted a group proposal, the invite from that group's leader is "
                             .. "accepted for you, so you are in the group right away. Invites from anyone else "
                             .. "are never accepted for you." },
+                    { key = "noAutoAcceptAsked", inverted = true,
+                        label = "Join a group I asked to invite me by itself",
+                        tip = "When the leader of a group you (or Forever Groups for you) whispered to ask for an "
+                            .. "invite sends it, you join at once while you're still looking. Invites from leaders "
+                            .. "you didn't ask are never accepted for you." },
                 },
             },
         },
