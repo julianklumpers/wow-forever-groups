@@ -212,7 +212,9 @@ group: inviting …".
 
 `wow/ui/queuewindow.lua` (the "Who is looking" link on the card, or `/fg queue`) is a separate window docked to the
 right of the main window (left when there is no room on the screen); it moves with the main window and hides with
-it. Tables, no tabs: **Forever Groups players** (queued solo players), **Forever Groups parties**, **WoW Group Finder** (solo players listed for your dungeons) and **Groups in WoW's Group Finder**. Every table has the same columns: Roles (what the
+it. No tabs: two framed blocks, one per source, each with a header band (icon and name; the Group Finder's also says
+when it last searched): **Forever Groups** with Players (queued solo players) and Parties, and **WoW Group Finder**
+with Players (solo players listed for your dungeons) and Groups. Every table has the same columns: Roles (what the
 players can play; a party or group: the roles already in it), Needs (the places a party or group still has open,
 empty for a solo player; a party's from `Filler.missingFor`, a listed group's from its `remaining`), Name ("+N" for
 the other members), Lvl, Dungeons and Time. Hovering a party or group lists who is in it and what it needs. An empty table shows only its caption and a line of
