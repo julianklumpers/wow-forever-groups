@@ -373,10 +373,11 @@ local function fillSection(section, y, items, empty)
     for _, item in ipairs(items) do
         anyNeeds = anyNeeds or (item.needs or "") ~= ""
     end
+    -- An empty table is just its caption and a line of text.
+    local listed = #items > 0 and section.area:IsShown()
+    section.line:SetShown(listed)
     for _, header in ipairs(section.columns) do
-        if header.column.sort == "needs" then
-            header:SetShown(anyNeeds and section.area:IsShown())
-        end
+        header:SetShown(listed and (header.column.sort ~= "needs" or anyNeeds))
         header:ClearAllPoints()
         if header.column.right then
             header:SetPoint("TOPRIGHT", frame, "TOPLEFT", WIDTH - 28, y)
@@ -387,7 +388,9 @@ local function fillSection(section, y, items, empty)
     section.line:ClearAllPoints()
     section.line:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT, y - 17)
     section.line:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -24, y - 17)
-    y = y - 21
+    if listed then
+        y = y - 21
+    end
     local visible = math.min(#items, ROWS)
     section.area:ClearAllPoints()
     section.area:SetPoint("TOPLEFT", frame, "TOPLEFT", 22, y)
@@ -726,19 +729,17 @@ function QueueWindow.refresh()
         return
     end
     refreshSortBar()
-    local y = -60 - TOP
+    local y = -70 - TOP
     showSection(sections.queue, true)
     local suffix = shownRoles() and " (filtered)" or ""
     local solo, parties, anyParty = queueLists()
     sections.queue.header:SetText("Forever Groups players" .. suffix)
     y = fillSection(sections.queue, y, solo, shownRoles() and "Nobody with these roles in the queue."
         or "Nobody is in the Forever Groups queue right now.")
-    -- Parties get their own table, only while one is queued.
-    showSection(sections.parties, anyParty)
-    if anyParty then
-        sections.parties.header:SetText("Forever Groups parties" .. suffix)
-        y = fillSection(sections.parties, y, parties, "No party needs these roles.")
-    end
+    showSection(sections.parties, true)
+    sections.parties.header:SetText("Forever Groups parties" .. suffix)
+    y = fillSection(sections.parties, y, parties, anyParty and "No party needs these roles."
+        or "No Forever Groups party is queued right now.")
     -- With WoW's Group Finder turned off only Forever Groups players are shown.
     local useFinder = ns.Features.groupFinder()
     sections.refresh:SetShown(useFinder)

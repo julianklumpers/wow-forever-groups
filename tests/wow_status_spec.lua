@@ -496,7 +496,7 @@ describe("Queue window", function()
         world:advance(CONNECT)
         local engine = client.ns.engine
         client:slash("/dq queue")
-        assert.is_nil(client:findText("^Forever Groups parties"))
+        assert.is_not_nil(client:findText("^No Forever Groups party is queued right now%.$"))
         engine.queue:upsert({ id = "Party Lead", joinedAt = 1, dungeons = { "5" }, reserved = "", members = {
             { name = "Party Lead", roles = "H", level = 20 }, { name = "Friend One", roles = "T", level = 20 },
         } }, engine:now())
