@@ -169,9 +169,11 @@ end
 
 -- The roles of `needed` that solo Forever Groups players waiting in the
 -- queue for this dungeon can play: those go to them, through the matchmaker.
+-- Only while our own group is in the queue (else the matchmaker cannot pair
+-- us), and only players who are not building a group of their own.
 local function addonRoles(needed)
     local engine = ns.engine
-    if not engine or needed == "" then
+    if not engine or not engine.myEntry or needed == "" then
         return ""
     end
     local dungeons = state.dungeon and { state.dungeon } or state.dungeons or {}
@@ -180,7 +182,8 @@ local function addonRoles(needed)
     for _, other in ipairs(engine.queue:list()) do
         local recent = now - (other.lastSeen or now) <= engine.config.HEARTBEAT_INTERVAL + 15
         if other.id ~= engine.name and recent and not engine.fakes[other.id] and not engine:isReserved(other.id)
-            and #other.members == 1 and not state.exclude[other.id] and wantsDungeon(other, dungeons)
+            and #other.members == 1 and (other.reserved or "") == "" and not state.exclude[other.id]
+            and wantsDungeon(other, dungeons)
             and ns.Playstyles.compatible(style, other.playstyle) then
             for _, role in ipairs({ "T", "H", "D" }) do
                 if string.find(other.members[1].roles, role, 1, true) and string.find(left, role, 1, true) then
@@ -214,6 +217,7 @@ function Filler.step()
     end
     -- Forever Groups players first: their roles wait for the matchmaker.
     local forAddon = addonRoles(needed)
+    local leaving
     if forAddon == "" then
         state.addonSince = nil
     else
@@ -222,7 +226,8 @@ function Filler.step()
             for letter in string.gmatch(forAddon, ".") do
                 needed = removeLetter(needed, letter)
             end
-            state.message = "Leaving " .. describeLetters(forAddon) .. " to Forever Groups players in the queue."
+            leaving = "Leaving " .. describeLetters(forAddon) .. " to Forever Groups players in the queue."
+            state.message = leaving
             if needed == "" then
                 render()
                 return
@@ -273,7 +278,8 @@ function Filler.step()
     if #picks > 0 then
         changed()
     end
-    state.message = open ~= "" and ("Nobody listed for: " .. describeLetters(open) .. ". Searching again soon.") or nil
+    state.message = open ~= "" and ("Nobody listed for: " .. describeLetters(open) .. ". Searching again soon.")
+        or leaving
     state.needSearch = open ~= ""
     if state.open == "" and next(state.pending) == nil then
         Filler.step()

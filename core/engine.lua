@@ -94,7 +94,7 @@ local function heartbeatMessage(entry)
     return {
         kind = "queue", joinedAt = entry.joinedAt, dungeons = entry.dungeons, members = entry.members,
         reserved = entry.reserved, since = entry.since, playstyle = entry.playstyle, spec = entry.spec,
-        lead = entry.lead,
+        lead = #entry.members == 1 and entry.lead or nil,
     }
 end
 
@@ -206,7 +206,12 @@ function Engine:setLead(lead)
     self.lead = lead
     local entry = self.myEntry
     if entry and entry.lead ~= lead then
+        local before = entry.lead
         entry.lead = lead
+        if not Protocol.encode(heartbeatMessage(entry), self.space) then
+            entry.lead = before
+            return
+        end
         self:publish()
     end
 end
@@ -639,7 +644,7 @@ function Engine:receive(sender, text)
     local msg = Protocol.decode(text, self.space)
     -- A newcomer's sync request only exists in the dungeon protocol; the
     -- questing queue answers it too.
-    if not msg and self.space then
+    if not msg and self.space and type(text) == "string" and string.find(text, "^v%d+|S") then
         local request = Protocol.decode(text)
         msg = request and request.kind == "sync" and request or nil
     end

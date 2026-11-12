@@ -6,6 +6,9 @@
   party that queues together keeps its own leader). Forever Groups then doesn't ask listed
   groups to invite you; it builds the group for you, with you as leader. The button then reads
   "Find players" ("Find questing players" on the Quests tab).
+- Filling from WoW's Group Finder no longer holds a role for a Forever Groups player who is
+  building a group of their own, or when your own group isn't in the queue (e.g. "Fill from
+  Group Finder" for your party); the fill window keeps saying which role it leaves to them.
 
 ## 0.24.0 (2026-11-12)
 

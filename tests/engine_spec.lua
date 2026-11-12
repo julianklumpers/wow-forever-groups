@@ -26,6 +26,45 @@ local function queuedIds(sim, name)
     return sim:engine(name).queue:ids()
 end
 
+describe("Engine: the wish to lead", function()
+    it("is only sent for a solo entry", function()
+        local sim = Sim.new()
+        sim:add("Lead-R")
+        sim:engine("Lead-R"):setLead(true)
+        sim:join("Lead-R", "D", { "DM" }, { { "Friend-R", "D" } })
+        local last
+        for _, msg in ipairs(sim.sent) do
+            if msg.text:find("^v2|Q|") then
+                last = msg.text
+            end
+        end
+        assert.is_nil(last:find("|1$"))
+    end)
+
+    it("is not set when it would no longer fit in the queue message", function()
+        local Protocol = require("core.protocol")
+        local sim = Sim.new()
+        sim:add("Lead-R")
+        local engine = sim:engine("Lead-R")
+        local dungeons = { "1" }
+        sim:join("Lead-R", "D", dungeons)
+        local members = engine.myEntry.members
+        for i = 2, 200 do
+            local more = { unpack(dungeons) }
+            more[#more + 1] = tostring(i)
+            if not engine:updateEntry(members, "", more) then
+                break
+            end
+            dungeons = more
+        end
+        engine:setLead(true)
+        assert.is_nil(engine.myEntry.lead)
+        local entry = engine.myEntry
+        assert.is_not_nil(Protocol.encode({ kind = "queue", joinedAt = entry.joinedAt, dungeons = entry.dungeons,
+            members = entry.members, since = entry.since }))
+    end)
+end)
+
 describe("Engine", function()
     describe("happy path", function()
         it("forms a group, makes the tank leader and empties the queue", function()

@@ -150,7 +150,7 @@ end
 
 local function render(view)
     ui.dungeon:SetText(ns.Quests.nameOf(view.dungeon))
-    local members = ordered(view.members)
+    local members = view.members
     local styles = ns.Playstyle.describe(view.playstyles)
     local role
     local accepted = 0
