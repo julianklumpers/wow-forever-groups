@@ -32,6 +32,11 @@ in the group, with roles set for you.
 - **Your own words** — every whisper and party message can be rewritten (any language) or
   turned off.
 
+<p align="center">
+  <img src="media/screenshots/group-card.png" width="420" alt="The group card: every member with role, spec, distance to the entrance and dungeon quests, with buttons for a waypoint, sharing quests and quest progress">
+  <img src="media/screenshots/status-bar.png" width="420" alt="The status bar with the quest progress folded out under it">
+</p>
+
 Forever Groups players share one queue through a hidden addon channel. There are no
 servers or websites involved; everything happens in game.
 
