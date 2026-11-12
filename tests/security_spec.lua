@@ -2,7 +2,7 @@ local World = require("tests.helpers.wowmock")
 
 local function sendRaw(client, text, chatType)
     local target = chatType == "PARTY" and nil or tostring(client.ns.Comm.channelId())
-    client.env.C_ChatInfo.SendAddonMessage("DungeonQueue", text, chatType or "CHANNEL", target)
+    client.env.C_ChatInfo.SendAddonMessage("ForeverGroups", text, chatType or "CHANNEL", target)
 end
 
 local function heartbeat(client, owner)

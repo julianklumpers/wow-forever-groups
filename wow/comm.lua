@@ -6,8 +6,8 @@ local Log = ns.Log
 
 local Comm = {}
 
-Comm.PREFIX = "DungeonQueue"
-Comm.CHANNEL = "DungeonQueueNet"
+Comm.PREFIX = "ForeverGroups"
+Comm.CHANNEL = "ForeverGroupsNet"
 
 local JOIN_DELAY = 5
 local JOIN_POLL_ATTEMPTS = 15
@@ -152,12 +152,19 @@ local function pollJoined(attempt)
     end)
 end
 
+-- The channel's name before the rename to Forever Groups; a character that
+-- was in it stays in it, so it is left once.
+local OLD_CHANNEL = "DungeonQueueNet"
+
 function Comm.join()
     if joining then
         return
     end
     joining = true
     failure = nil
+    if type(LeaveChannelByName) == "function" and (tonumber(GetChannelName(OLD_CHANNEL)) or 0) > 0 then
+        pcall(LeaveChannelByName, OLD_CHANNEL)
+    end
     local ok, err = pcall(JoinTemporaryChannel, Comm.CHANNEL)
     if not ok then
         joining = false

@@ -227,7 +227,7 @@ describe("Channel connection", function()
         assert.is_not_nil(client:findText("^Connecting%.%.%.$"))
         world:advance(CONNECT)
         assert.are.equal("Connected", connection(client).text)
-        assert.are.equal("Channel /6 (DungeonQueueNet)", connection(client).detail)
+        assert.are.equal("Channel /6 (ForeverGroupsNet)", connection(client).detail)
         assert.is_not_nil(client:findText("^Connected$"))
     end)
 

@@ -70,10 +70,10 @@ describe("chat-messaging lockdown", function()
         local world = World.new()
         local client = world:addClient("Solo Player", { level = 20 })
         world:advance(12)
-        client:fire("CHAT_MSG_ADDON", "DungeonQueue", World.SECRET, "CHANNEL", "Some One", "", 0, 6,
-            "DungeonQueueNet")
-        client:fire("CHAT_MSG_ADDON", "DungeonQueue", "v2|L", "CHANNEL", World.SECRET, "", 0, 6, "DungeonQueueNet")
-        client:fire("CHAT_MSG_ADDON", "DungeonQueue", World.SECRET, "PARTY", "Some One")
+        client:fire("CHAT_MSG_ADDON", "ForeverGroups", World.SECRET, "CHANNEL", "Some One", "", 0, 6,
+            "ForeverGroupsNet")
+        client:fire("CHAT_MSG_ADDON", "ForeverGroups", "v2|L", "CHANNEL", World.SECRET, "", 0, 6, "ForeverGroupsNet")
+        client:fire("CHAT_MSG_ADDON", "ForeverGroups", World.SECRET, "PARTY", "Some One")
     end)
 
     it("ignores chat text and names it cannot read during a boss fight", function()

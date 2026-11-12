@@ -1046,6 +1046,9 @@ local function buildEnv(world, client)
     env.GetChannelName = function(name)
         return client.channels[name] or 0
     end
+    env.LeaveChannelByName = function(name)
+        client.channels[name] = nil
+    end
     env.NUM_CHAT_WINDOWS = 1
     env.ChatFrame1 = {}
     env.ChatFrame_RemoveChannel = function() end

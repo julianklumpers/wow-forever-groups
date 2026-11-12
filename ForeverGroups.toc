@@ -4,7 +4,7 @@
 ## Author: julianklumpers
 ## X-License: MIT
 ## X-Website: https://github.com/julianklumpers/wow-forever-groups
-## Version: 0.22.0
+## Version: 0.23.0
 ## IconTexture: Interface\AddOns\ForeverGroups\media\icon
 ## AddonCompartmentFunc: ForeverGroups_OnAddonCompartmentClick
 ## SavedVariables: ForeverGroupsDB

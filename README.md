@@ -14,7 +14,7 @@ Automatic groups for dungeons and group quests on WoW Forever, peer-to-peer over
 
 ## How the network behaves
 
-All clients join the hidden channel `DungeonQueueNet` (the old name, kept so older versions still meet) (realm-wide). Queued players re-send their entry every 45 s.
+All clients join the hidden channel `ForeverGroupsNet` (realm-wide). Queued players re-send their entry every 45 s.
 The matchmaker is the queued player whose client has been online longest (ties by name), so the role stays with a
 stable client. The three likeliest matchmakers also send a keep-alive (`v2|K`) every 10 s; one that is silent for 25 s
 is skipped and the next takes over. Any message of a player counts as alive in both queues (dungeons and questing),
