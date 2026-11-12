@@ -162,13 +162,66 @@ function QueueWindow.lookingCounts(wanted)
     return countCache[key]
 end
 
+-- The table's columns, x within a row (rows start 22 px in from the frame).
+-- A column with a sort key sorts the list when its header is clicked.
+local ROW_LEFT = 22
+-- groupLabel: the header on the Groups tab, where the same columns show a
+-- group's needed roles, leader, size, dungeons and time listed.
+local COLUMNS = {
+    { label = "Role", groupLabel = "Needs", x = 0, width = 46, sort = "role" },
+    { label = "Name", groupLabel = "Leader", x = 50, width = 170, sort = "name" },
+    { label = "Level", groupLabel = "Size", x = 226, width = 42, sort = "level" },
+    { label = "Dungeons", groupLabel = "Dungeons", x = 272, width = 150 },
+    { label = "Time", groupLabel = "Time", right = true, width = 92, sort = "waiting" },
+}
+local TABS = { { key = "players", label = "Players" }, { key = "groups", label = "Groups" } }
+local TOP = 34
+
+local function currentTab()
+    return ns.db.queueTab == "groups" and "groups" or "players"
+end
+
+-- A row of column headers right above a list's cells; clicking one sorts
+-- (every list) by it, clicking it again reverses the order.
+local function buildHeaders(section)
+    section.columns = {}
+    for _, column in ipairs(COLUMNS) do
+        local header = CreateFrame("Button", nil, frame)
+        header:SetSize(column.width, 16)
+        header.column = column
+        header.label = Widgets.text(header, "GameFontNormalSmall", column.right and "RIGHT" or "LEFT")
+        header.label:SetAllPoints()
+        header.label:SetText(column.label)
+        header.sort = column.sort
+        if column.sort then
+            header:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+            header:SetScript("OnClick", function()
+                if (ns.db.queueSort or "role") == column.sort then
+                    ns.db.queueSortReverse = not ns.db.queueSortReverse or nil
+                else
+                    ns.db.queueSort = column.sort
+                    ns.db.queueSortReverse = nil
+                end
+                onInput(10)
+                QueueWindow.refresh()
+            end)
+            Widgets.tooltip(header, "Sort by " .. string.lower(column.label), "Click again to reverse the order.")
+        end
+        section.columns[#section.columns + 1] = header
+    end
+    section.line = frame:CreateTexture(nil, "ARTWORK")
+    section.line:SetHeight(1)
+    section.line:SetColorTexture(1, 1, 1, 0.15)
+end
+
 local function buildSection(title)
     local section = { rows = {}, offset = 0, items = {} }
-    -- A small caption inside the table, under the one row of column headers.
+    -- The list's caption, then its column headers, then its rows.
     section.header = Widgets.text(frame, "GameFontNormalSmall")
     section.header:SetText(title)
     section.header:SetWidth(WIDTH - 44)
     section.header:SetWordWrap(false)
+    buildHeaders(section)
     section.area = CreateFrame("Frame", nil, frame)
     section.area:SetSize(WIDTH - 36, ROWS * ROW_HEIGHT)
     section.area:EnableMouseWheel(true)
@@ -266,8 +319,20 @@ local function fillSection(section, y, items, empty)
     section.items = items
     section.offset = math.min(section.offset, math.max(0, #items - ROWS))
     section.header:ClearAllPoints()
-    section.header:SetPoint("TOPLEFT", frame, "TOPLEFT", 22, y - 2)
+    section.header:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT, y - 2)
     y = y - 20
+    for _, header in ipairs(section.columns) do
+        header:ClearAllPoints()
+        if header.column.right then
+            header:SetPoint("TOPRIGHT", frame, "TOPLEFT", WIDTH - 28, y)
+        else
+            header:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT + header.column.x, y)
+        end
+    end
+    section.line:ClearAllPoints()
+    section.line:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT, y - 17)
+    section.line:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -24, y - 17)
+    y = y - 21
     local visible = math.min(#items, ROWS)
     section.area:ClearAllPoints()
     section.area:SetPoint("TOPLEFT", frame, "TOPLEFT", 22, y)
@@ -312,25 +377,6 @@ local function fillSection(section, y, items, empty)
 end
 
 local ROLE_ORDER = { T = 1, H = 2, D = 3 }
--- The table's columns, x within a row (rows start 22 px in from the frame).
--- A column with a sort key sorts the list when its header is clicked.
-local ROW_LEFT = 22
--- groupLabel: the header on the Groups tab, where the same columns show a
--- group's needed roles, leader, size, dungeons and time listed.
-local COLUMNS = {
-    { label = "Role", groupLabel = "Needs", x = 0, width = 46, sort = "role" },
-    { label = "Name", groupLabel = "Leader", x = 50, width = 170, sort = "name" },
-    { label = "Level", groupLabel = "Size", x = 226, width = 42, sort = "level" },
-    { label = "Dungeons", groupLabel = "Dungeons", x = 272, width = 150 },
-    { label = "Time", groupLabel = "Time", right = true, width = 92, sort = "waiting" },
-}
-local TABS = { { key = "players", label = "Players" }, { key = "groups", label = "Groups" } }
-local TOP = 34
-
-local function currentTab()
-    return ns.db.queueTab == "groups" and "groups" or "players"
-end
-
 local function roleRank(item)
     return ROLE_ORDER[string.sub(item.roles, 1, 1)] or 4
 end
@@ -512,14 +558,14 @@ local function refreshSortBar()
     for i, tab in ipairs(TABS) do
         Widgets.paintTab(sections.tabs[i], tab.key == currentTab())
     end
-    for i, header in ipairs(sections.headers) do
-        header.label:SetText(groups and COLUMNS[i].groupLabel or COLUMNS[i].label)
-        if header.sort ~= nil and header.sort == key then
-            header.label:SetTextColor(1, 0.82, 0)
-        elseif header.sort then
-            header.label:SetTextColor(0.85, 0.85, 0.85)
-        else
-            header.label:SetTextColor(0.85, 0.85, 0.85)
+    for _, section in ipairs({ sections.queue, sections.finder, sections.groups }) do
+        for _, header in ipairs(section.columns) do
+            header.label:SetText(groups and header.column.groupLabel or header.column.label)
+            if header.sort ~= nil and header.sort == key then
+                header.label:SetTextColor(1, 0.82, 0)
+            else
+                header.label:SetTextColor(0.85, 0.85, 0.85)
+            end
         end
     end
     sections.sortNote:SetText(ns.db.queueSortReverse and "reversed order" or "")
@@ -530,10 +576,11 @@ local function refreshSortBar()
 end
 
 local function showSection(section, shown)
-    for _, widget in ipairs({ section.header, section.area, section.more }) do
-        if widget then
-            widget:SetShown(shown)
-        end
+    for _, widget in ipairs({ section.header, section.area, section.more, section.line }) do
+        widget:SetShown(shown)
+    end
+    for _, header in ipairs(section.columns) do
+        header:SetShown(shown)
     end
 end
 
@@ -567,7 +614,7 @@ function QueueWindow.refresh()
         return
     end
     refreshSortBar()
-    local y = -88 - TOP
+    local y = -60 - TOP
     if currentTab() == "groups" then
         refreshGroups(y)
         return
@@ -581,12 +628,7 @@ function QueueWindow.refresh()
     -- With WoW's Group Finder turned off only Forever Groups players are shown.
     local useFinder = ns.Features.groupFinder()
     sections.refresh:SetShown(useFinder)
-    for _, widget in ipairs({ sections.finder.header, sections.finder.area,
-        sections.finder.more }) do
-        if widget then
-            widget:SetShown(useFinder)
-        end
-    end
+    showSection(sections.finder, useFinder)
     if not useFinder then
         frame:SetHeight(-y + 12)
         return
@@ -631,42 +673,6 @@ local function build()
     show:SetText("Show:")
     sections.sortNote = Widgets.text(frame, "GameFontDisableSmall", "RIGHT")
     sections.sortNote:SetPoint("TOPRIGHT", -108, -38 - TOP)
-    -- The column headers; clicking one sorts by it, clicking it again
-    -- reverses the order.
-    sections.headers = {}
-    for _, column in ipairs(COLUMNS) do
-        local header = CreateFrame("Button", nil, frame)
-        header:SetSize(column.width, 18)
-        if column.right then
-            header:SetPoint("TOPRIGHT", frame, "TOPLEFT", WIDTH - 28, -62 - TOP)
-        else
-            header:SetPoint("TOPLEFT", ROW_LEFT + column.x, -62 - TOP)
-        end
-        header.label = Widgets.text(header, "GameFontNormalSmall", column.right and "RIGHT" or "LEFT")
-        header.label:SetAllPoints()
-        header.label:SetText(column.label)
-        header.sort = column.sort
-        if column.sort then
-            header:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-            header:SetScript("OnClick", function()
-                if (ns.db.queueSort or "role") == column.sort then
-                    ns.db.queueSortReverse = not ns.db.queueSortReverse or nil
-                else
-                    ns.db.queueSort = column.sort
-                    ns.db.queueSortReverse = nil
-                end
-                onInput(10)
-                QueueWindow.refresh()
-            end)
-            Widgets.tooltip(header, "Sort by " .. string.lower(column.label), "Click again to reverse the order.")
-        end
-        sections.headers[#sections.headers + 1] = header
-    end
-    local headerLine = frame:CreateTexture(nil, "ARTWORK")
-    headerLine:SetHeight(1)
-    headerLine:SetColorTexture(1, 1, 1, 0.15)
-    headerLine:SetPoint("TOPLEFT", ROW_LEFT, -81 - TOP)
-    headerLine:SetPoint("TOPRIGHT", -24, -81 - TOP)
     sections.roleToggles = {}
     for i, role in ipairs(Widgets.ROLES) do
         local toggle = Widgets.roleToggle(frame, role, 18, "GameFontHighlightSmall", function(self)
