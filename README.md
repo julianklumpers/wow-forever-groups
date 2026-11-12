@@ -11,6 +11,7 @@ in the group, with roles set for you.
 <p align="center">
   <img src="media/screenshots/main-window.png" width="420" alt="The Forever Groups window: roles, playstyle and dungeons, with the Find group button">
   <img src="media/screenshots/in-queue.png" width="420" alt="In the queue: your slot in the group, the open roles, how many players are looking now and the dungeon being searched">
+  <img src="media/screenshots/group-found.png" width="320" alt="Group found: the five players as tank, healer and DPS with their specs, who accepted, and a timer">
   <img src="media/screenshots/who-is-looking.png" width="420" alt="Who is looking: a table of players in the Forever Groups queue and solo players in WoW's Group Finder, with Players and Groups tabs">
 </p>
 
