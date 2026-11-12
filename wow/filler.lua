@@ -18,7 +18,9 @@ local INVITE_TIMEOUT = 30
 -- Group Finder fills it after all (the matchmaker may not group them, e.g.
 -- when their level does not fit the dungeon).
 local ADDON_GRACE = 20
-local STALE_RESULTS = 120
+-- Results stay usable this long: delisted players drop out of them as WoW
+-- reports it, only new listings need a search (which needs player input).
+local STALE_RESULTS = 300
 local DECLINE_MESSAGES = { "ERR_DECLINE_GROUP_S", "ERR_ALREADY_IN_GROUP_S", "ERR_BAD_PLAYER_NAME_S" }
 
 local state

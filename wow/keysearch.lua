@@ -10,6 +10,9 @@ local Log = ns.Log
 local KeySearch = {}
 
 local INTERVAL = 10
+-- While queued or filling, results are kept at most this old, so a decliner
+-- is replaced at once and new listings are seen.
+local FRESH = 30
 
 local frame
 local ready = false
@@ -27,8 +30,8 @@ local function onInput()
     end
     if ns.QueueWindow.isShown() or ns.Apply.isSeeker() then
         ns.LfgList.searchIfStale(INTERVAL)
-    elseif ns.Window.isShown() then
-        ns.LfgList.searchIfStale(30)
+    elseif ns.Filler.isActive() or (ns.engine and ns.engine.myEntry) or ns.Window.isShown() then
+        ns.LfgList.searchIfStale(FRESH)
     end
 end
 

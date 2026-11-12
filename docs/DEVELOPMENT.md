@@ -156,7 +156,9 @@ partial group); a player with no partner in sight fills from the Group Finder ri
 An incomplete group stays in the queue (same place) so later Forever Groups players can still join it. Group Finder
 searches need player input: the Find group click, Accept, and, while roles are still open, the player's own key
 presses and clicks in the game world (a keyboard frame that passes every key through, and a hook on the world
-frame's mouse-down; `wow/keysearch.lua`), at most every 10 s and never in combat (`/fg autosearch` turns it off). A click on the status bar or minimap button also searches.
+frame's mouse-down; `wow/keysearch.lua`), at most every 10 s and never in combat (`/fg autosearch` turns it off). A click on the status bar or minimap button also searches. While queued or filling, input refreshes results older than 30 s even when no role is open
+right now, so a decliner is replaced from fresh results; the filler keeps using results up to 5 minutes old (players
+who delist drop out of them as WoW reports it) before it waits for input.
 
 ### WoW's Group Finder
 
