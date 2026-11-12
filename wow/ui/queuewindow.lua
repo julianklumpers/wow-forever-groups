@@ -708,15 +708,46 @@ local function build()
     sections.groups = buildSection("Groups in WoW's Group Finder")
 end
 
--- Called from clicks and typed commands, so opening refreshes the Group Finder.
+local docked = false
+
+-- Sticks to the main window's right edge (its left edge when the screen has
+-- no room on the right), so the two move as one; it closes with it.
+local function dock()
+    local main = ns.WindowParts.frame
+    if not main then
+        return
+    end
+    if not docked then
+        docked = true
+        main:HookScript("OnHide", function()
+            if frame then
+                frame:Hide()
+            end
+        end)
+    end
+    local right, screen = main:GetRight(), UIParent:GetRight()
+    frame:ClearAllPoints()
+    if type(right) == "number" and type(screen) == "number" and right + WIDTH + 2 > screen then
+        frame:SetPoint("TOPRIGHT", main, "TOPLEFT", -2, 0)
+    else
+        frame:SetPoint("TOPLEFT", main, "TOPRIGHT", 2, 0)
+    end
+end
+
+-- Called from clicks and typed commands, so opening refreshes the Group
+-- Finder. Opens the main window too, with this one docked to it.
 function QueueWindow.toggle()
     if not frame then
         build()
     end
-    frame:SetShown(not frame:IsShown())
     if frame:IsShown() then
-        ns.LfgList.searchIfStale(10)
+        frame:Hide()
+        return
     end
+    ns.Window.show()
+    dock()
+    frame:Show()
+    ns.LfgList.searchIfStale(10)
 end
 
 function QueueWindow.isShown()

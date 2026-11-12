@@ -676,7 +676,13 @@ local function buildEnv(world, client)
         end
     end
     function methods.Hide(widget)
+        local wasShown = widget.shown
         widget.shown = false
+        if wasShown then
+            for _, fn in ipairs(widget.hooks and widget.hooks.OnHide or {}) do
+                fn(widget)
+            end
+        end
     end
     function methods.SetShown(widget, shown)
         if shown then
