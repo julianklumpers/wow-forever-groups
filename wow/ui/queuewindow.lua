@@ -14,6 +14,12 @@ local ROW_HEIGHT = 18
 
 local frame
 local sections = {}
+local contentHeight = 0
+
+local function setHeight(height)
+    contentHeight = height
+    frame:SetHeight(height)
+end
 local wheelSearching = false
 local wheelBlocked = false
 
@@ -606,7 +612,7 @@ local function refreshGroups(y)
     local empty = not useFinder and "WoW's Group Finder is turned off in the settings."
         or (shownRoles() and "No group needs these roles." or "No groups listed for your dungeons.")
     y = fillSection(sections.groups, y, items, empty)
-    frame:SetHeight(-y + 12)
+    setHeight(-y + 12)
 end
 
 function QueueWindow.refresh()
@@ -630,7 +636,7 @@ function QueueWindow.refresh()
     sections.refresh:SetShown(useFinder)
     showSection(sections.finder, useFinder)
     if not useFinder then
-        frame:SetHeight(-y + 12)
+        setHeight(-y + 12)
         return
     end
     local _, updatedAt = ns.LfgList.listings()
@@ -647,11 +653,14 @@ function QueueWindow.refresh()
     end
     y = fillSection(sections.finder, y, finder, shownRoles() and "Nobody with these roles listed."
         or "Nobody listed for your dungeons.")
-    frame:SetHeight(-y + 12)
+    setHeight(-y + 12)
 end
 
-local function build()
-    frame = Widgets.window("ForeverGroupsQueueFrame", "Who is looking", WIDTH, 300)
+-- The table lives in the main window, under Dungeons › Who is looking. Its
+-- layout keeps the old window's coordinates: the top 28 px are empty.
+local function build(host)
+    frame = CreateFrame("Frame", "ForeverGroupsQueueFrame", host)
+    frame:SetSize(WIDTH, 300)
     frame:SetScript("OnShow", QueueWindow.refresh)
     -- Players | Groups, with a base line under all but the chosen tab.
     sections.tabs = {}
@@ -708,19 +717,32 @@ local function build()
     sections.groups = buildSection("Groups in WoW's Group Finder")
 end
 
--- Called from clicks and typed commands, so opening refreshes the Group Finder.
-function QueueWindow.toggle()
+-- Shows the table in the main window with its top at y; returns the y
+-- under it.
+function QueueWindow.showIn(host, y)
     if not frame then
-        build()
+        build(host)
     end
-    frame:SetShown(not frame:IsShown())
-    if frame:IsShown() then
-        ns.LfgList.searchIfStale(10)
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", host, "TOPLEFT", 10, y + 28)
+    frame:Show()
+    QueueWindow.refresh()
+    return y + 28 - contentHeight
+end
+
+function QueueWindow.hide()
+    if frame then
+        frame:Hide()
     end
 end
 
+-- Called from clicks and typed commands, so opening refreshes the Group Finder.
+function QueueWindow.toggle()
+    ns.Window.toggleWho()
+end
+
 function QueueWindow.isShown()
-    return frame ~= nil and frame:IsShown()
+    return frame ~= nil and frame:IsShown() and ns.Window.isShown()
 end
 
 ns.QueueWindow = QueueWindow
