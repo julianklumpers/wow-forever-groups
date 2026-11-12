@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.25.1 (2026-11-12)
+
+- Asking groups in WoW's Group Finder to invite you now asks one leader at a time, and the
+  next only after 20 seconds without an invite (it used to whisper three leaders within a few
+  seconds). Two invites can no longer arrive at once, leaving one leader waiting for nothing.
+  The same for group quests.
+
 ## 0.25.0 (2026-11-12)
 
 - Fixes: "Request to join" on a questing group in "Who is looking" no longer causes an error

@@ -14,7 +14,9 @@ local Widgets = ns.Widgets
 -- when no group fits or no invite came in time.
 local Apply = {}
 
-local MAX_ASKS = 3
+-- One leader at a time: two invites at once would leave one leader
+-- waiting for nothing. The next is asked when this one sent no invite.
+local ASK_TIMEOUT = 20
 local WAIT_FOR_INVITE = 60
 local ASK_SPACING = 2
 local INVITE_VALID = 60
@@ -54,6 +56,16 @@ local function askCount()
         end
     end
     return count
+end
+
+-- An automatic ask still waiting for its invite.
+local function waitingForInvite()
+    for _, a in pairs(asks) do
+        if not a.request and GetServerTime() - a.at < ASK_TIMEOUT then
+            return true
+        end
+    end
+    return false
 end
 
 local function invitedBy()
@@ -201,7 +213,7 @@ function Apply.tick()
         dropAutomaticAsks()
         return
     end
-    if askCount() >= MAX_ASKS or GetTime() - lastAskAt < ASK_SPACING or proposalOpen() or not freshResults() then
+    if waitingForInvite() or GetTime() - lastAskAt < ASK_SPACING or proposalOpen() or not freshResults() then
         return
     end
     local entry = ns.engine.myEntry

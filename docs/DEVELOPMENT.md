@@ -195,8 +195,9 @@ only the other roles go to the Group Finder, and that role too if the matchmaker
 
 Forever's Group Finder is the board-style one (Blizzard_GroupFinder_VanillaStyle): no applications, players and
 groups are listed and people whisper or invite each other. So a solo player first asks listed groups that need one of
-their roles to invite them, by whisper to the leader (at most 3, nearest to full first, 2 s apart, never the same
-leader twice), and waits 60 s. An invite from an asked leader holds off building; joining that group leaves the
+their roles to invite them, by whisper to the leader (one at a time, nearest to full first, the next after 20 s
+without an invite, so two invites never arrive at once; never the same leader twice; the questing queue the same),
+and waits 60 s in all. An invite from an asked leader holds off building; joining that group leaves the
 Forever Groups queue. With no fitting group, or no invite in time, the player builds a group instead (inviting a player
 makes you a party leader, after which another group's invite cannot be accepted, hence this order). A solo player who
 ticked "I'd like to lead" (on the right of the roles header; `charDb.wantsLead` for dungeons,

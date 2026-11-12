@@ -73,8 +73,8 @@ groups form.
 **What does it send on my behalf?**
 A short whisper before inviting someone from the Group Finder, a question to a group leader
 when asking to be invited, and (as leader) a line in party chat when the group is complete.
-It only contacts players listed for the same dungeon or quest, asks at most three leaders at a
-time and never the same player twice. You can change or turn off every message.
+It only contacts players listed for the same dungeon or quest, asks one group leader at a
+time (the next only after 20 seconds without an invite) and never the same player twice. You can change or turn off every message.
 
 **Can I use it without WoW's Group Finder?**
 Yes: turn off "Use WoW's Group Finder" in the settings. Forever Groups then only works with

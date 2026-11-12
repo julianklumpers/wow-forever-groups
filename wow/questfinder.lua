@@ -13,8 +13,9 @@ local QuestFinder = {}
 
 local STALE = 20
 local INVITE_TIMEOUT = 30
-local MAX_ASKS = 2
-local ASK_WAIT = 60
+-- One leader at a time, the next after this long without an invite.
+local MAX_ASKS = 1
+local ASK_WAIT = 20
 
 local invited = {}
 local asked = {}
