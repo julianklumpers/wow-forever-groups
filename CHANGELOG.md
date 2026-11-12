@@ -38,6 +38,8 @@
   60 (70 for questing groups).
 - The leader sends all invites at once instead of half a second apart, so the group is together
   right after the last Accept.
+- The "Group found!" popup shows the dungeon's picture as a banner (WoW's own dungeon finder art,
+  for every classic dungeon; Forever's own dungeons keep the plain look).
 - The "Group found!" popup lists tank, healer, then DPS, with names in class colours, a crown
   on the leader, your own row lit up, spec (or "fake") under each name and "3/5 accepted" next
   to the timer. After you accept, the buttons make way for "Waiting for the others".

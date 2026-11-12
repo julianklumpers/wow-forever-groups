@@ -38,6 +38,10 @@ local WIDTH = 320
 local ROW_WIDTH = 268
 local ROW_HEIGHT = 30
 local ROWS_TOP = 80
+-- The dungeon's picture as a banner under the title bar; the texture is a
+-- 2:1 picture with dark edges, cropped to the banner's shape.
+local BANNER_TOP, BANNER_HEIGHT, BANNER_INSET = 24, 112, 8
+local BANNER_CROP = { 0.02, 0.98, 0.12, 0.84 }
 local ROLE_ORDER = { T = 1, H = 2, D = 3 }
 
 -- Tank, healer, then DPS; within a role the order of the proposal.
@@ -88,8 +92,30 @@ local function paintRow(row, member, leader)
     row.status:SetTexture(STATUS_TEXTURES[statusOf(member.answer)])
 end
 
+-- With a picture the name sits on the banner's lower part; without one the
+-- popup looks as before. Returns where the member rows start.
+local function layoutTop(art)
+    ui.banner:SetShown(art ~= nil)
+    ui.bannerShade:SetShown(art ~= nil)
+    ui.bannerFade:SetShown(art ~= nil)
+    ui.line:SetShown(art == nil)
+    ui.dungeon:ClearAllPoints()
+    ui.subtitle:ClearAllPoints()
+    if not art then
+        ui.dungeon:SetPoint("TOP", 0, -32)
+        ui.subtitle:SetPoint("TOP", 0, -54)
+        return ROWS_TOP
+    end
+    ui.banner:SetTexture(art)
+    local bottom = BANNER_TOP + BANNER_HEIGHT
+    ui.dungeon:SetPoint("TOP", 0, -(bottom - 50))
+    ui.subtitle:SetPoint("TOP", 0, -(bottom - 28))
+    return bottom + 8
+end
+
 local function render(view)
     ui.dungeon:SetText(ns.Quests.nameOf(view.dungeon))
+    local rowsTop = layoutTop(view.queue ~= "quests" and ns.Dungeons.art(view.dungeon) or nil)
     local members = ordered(view.members)
     local parts = {}
     local styles = ns.Playstyle.describe(view.playstyles)
@@ -110,12 +136,14 @@ local function render(view)
         local member = members[i]
         if member then
             paintRow(row, member, view.leader)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", (WIDTH - ROW_WIDTH) / 2, -rowsTop - (i - 1) * ROW_HEIGHT)
             row:Show()
         else
             row:Hide()
         end
     end
-    local y = ROWS_TOP + #members * ROW_HEIGHT + 6
+    local y = rowsTop + #members * ROW_HEIGHT + 6
     if view.missing and view.missing ~= "" then
         local names = {}
         for letter in string.gmatch(view.missing, ".") do
@@ -147,10 +175,31 @@ local function onUpdate()
     ui.bar.text:SetText(string.format("%d s", math.ceil(left)))
 end
 
-local function buildRow(i)
+local function buildBanner()
+    ui.banner = frame:CreateTexture(nil, "BORDER")
+    ui.banner:SetPoint("TOPLEFT", BANNER_INSET, -BANNER_TOP)
+    ui.banner:SetPoint("TOPRIGHT", -BANNER_INSET, -BANNER_TOP)
+    ui.banner:SetHeight(BANNER_HEIGHT)
+    ui.banner:SetTexCoord(unpack(BANNER_CROP))
+    ui.bannerShade = frame:CreateTexture(nil, "BORDER", nil, 1)
+    ui.bannerShade:SetAllPoints(ui.banner)
+    ui.bannerShade:SetColorTexture(0, 0, 0, 0.25)
+    -- The banner's lower part fades into the dark panel, under the name.
+    ui.bannerFade = frame:CreateTexture(nil, "BORDER", nil, 2)
+    ui.bannerFade:SetPoint("BOTTOMLEFT", ui.banner, "BOTTOMLEFT")
+    ui.bannerFade:SetPoint("BOTTOMRIGHT", ui.banner, "BOTTOMRIGHT")
+    ui.bannerFade:SetHeight(BANNER_HEIGHT * 0.6)
+    ui.bannerFade:SetColorTexture(1, 1, 1, 1)
+    local faded = type(CreateColor) == "function" and pcall(ui.bannerFade.SetGradient, ui.bannerFade,
+        "VERTICAL", CreateColor(0, 0, 0, 0.9), CreateColor(0, 0, 0, 0))
+    if not faded then
+        ui.bannerFade:SetColorTexture(0, 0, 0, 0.45)
+    end
+end
+
+local function buildRow()
     local row = CreateFrame("Frame", nil, frame)
     row:SetSize(ROW_WIDTH, ROW_HEIGHT - 2)
-    row:SetPoint("TOPLEFT", (WIDTH - ROW_WIDTH) / 2, -ROWS_TOP - (i - 1) * ROW_HEIGHT)
     row.highlight = row:CreateTexture(nil, "BACKGROUND")
     row.highlight:SetAllPoints()
     row.highlight:SetColorTexture(1, 0.82, 0, 0.12)
@@ -177,17 +226,16 @@ local function build()
     frame:ClearAllPoints()
     frame:SetPoint("TOP", 0, -140)
     ui.dungeon = Widgets.text(frame, "GameFontNormalLarge", "CENTER")
-    ui.dungeon:SetPoint("TOP", 0, -32)
     ui.dungeon:SetWidth(WIDTH - 20)
     ui.subtitle = Widgets.text(frame, "GameFontDisableSmall", "CENTER")
-    ui.subtitle:SetPoint("TOP", 0, -54)
     ui.subtitle:SetWidth(WIDTH - 20)
-    local line = frame:CreateTexture(nil, "ARTWORK")
-    line:SetSize(ROW_WIDTH, 1)
-    line:SetPoint("TOP", 0, -72)
-    line:SetColorTexture(1, 0.82, 0, 0.35)
+    ui.line = frame:CreateTexture(nil, "ARTWORK")
+    ui.line:SetSize(ROW_WIDTH, 1)
+    ui.line:SetPoint("TOP", 0, -72)
+    ui.line:SetColorTexture(1, 0.82, 0, 0.35)
+    buildBanner()
     for i = 1, 5 do
-        rows[i] = buildRow(i)
+        rows[i] = buildRow()
     end
     ui.missing = Widgets.text(frame, "GameFontNormalSmall", "CENTER")
     ui.count = Widgets.text(frame, "GameFontHighlightSmall")

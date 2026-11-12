@@ -603,6 +603,35 @@ describe("WoW test tools", function()
         assert.is_true(client:proposalShown())
     end)
 
+    it("shows the dungeon's picture in the proposal popup when the client has one", function()
+        local function shownPicture(client)
+            for _, widget in ipairs(client.widgets) do
+                local visible = widget.kind == "Texture" and type(widget.texture) == "string"
+                    and widget.texture:find("UI-LFG-BACKGROUND", 1, true) ~= nil
+                local w = widget
+                while visible and w do
+                    visible = w.shown ~= false
+                    w = w.parent
+                end
+                if visible then
+                    return widget.texture
+                end
+            end
+        end
+        for _, case in ipairs({ { "Ragefire Chasm", "Interface\\LFGFrame\\UI-LFG-BACKGROUND-RAGEFIRECHASM" },
+            { "Hall of Thanes", nil } }) do
+            local world = World.new()
+            local client = world:addClient("Solo Player", { level = 13 })
+            world:advance(CONNECT)
+            client:slash("/dq join dps " .. case[1])
+            client:slash("/dq fake 4")
+            world:advance(MATCH)
+            assert.is_true(client:proposalShown(), case[1])
+            assert.are.equal(case[2], shownPicture(client), case[1])
+            assert.is_not_nil(client:findText("^" .. case[1] .. "$"), case[1])
+        end
+    end)
+
     it("lists the proposal as tank, healer, then DPS", function()
         local world = World.new()
         local client = world:addClient("Solo Player", { level = 20 })
