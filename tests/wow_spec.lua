@@ -604,31 +604,40 @@ describe("WoW test tools", function()
     end)
 
     it("shows the dungeon's picture in the proposal popup when the client has one", function()
-        local function shownPicture(client)
+        local function shownPicture(client, expected)
             for _, widget in ipairs(client.widgets) do
-                local visible = widget.kind == "Texture" and type(widget.texture) == "string"
-                    and widget.texture:find("UI-LFG-BACKGROUND", 1, true) ~= nil
+                local visible = widget.kind == "Texture" and widget.texture == expected
                 local w = widget
                 while visible and w do
                     visible = w.shown ~= false
                     w = w.parent
                 end
                 if visible then
-                    return widget.texture
+                    return true
                 end
             end
+            return false
         end
-        for _, case in ipairs({ { "Ragefire Chasm", "Interface\\LFGFrame\\UI-LFG-BACKGROUND-RAGEFIRECHASM" },
-            { "Hall of Thanes", nil } }) do
+        local pictures = {
+            ["Ragefire Chasm"] = "Interface\\Glues\\LoadingScreens\\LoadScreenRagefireChasm",
+            ["Hall of Thanes"] = 7963781,
+            ["The Drowned City"] = false,
+        }
+        for dungeon, picture in pairs(pictures) do
             local world = World.new()
             local client = world:addClient("Solo Player", { level = 13 })
             world:advance(CONNECT)
-            client:slash("/dq join dps " .. case[1])
+            client:slash("/dq join dps " .. dungeon)
             client:slash("/dq fake 4")
             world:advance(MATCH)
-            assert.is_true(client:proposalShown(), case[1])
-            assert.are.equal(case[2], shownPicture(client), case[1])
-            assert.is_not_nil(client:findText("^" .. case[1] .. "$"), case[1])
+            assert.is_true(client:proposalShown(), dungeon)
+            assert.is_not_nil(client:findText("^" .. dungeon .. "$"), dungeon)
+            local any = shownPicture(client, "Interface\\Glues\\LoadingScreens\\LoadScreenRagefireChasm")
+                or shownPicture(client, 7963781)
+            assert.are.equal(picture ~= false, any, dungeon)
+            if picture then
+                assert.is_true(shownPicture(client, picture), dungeon)
+            end
         end
     end)
 

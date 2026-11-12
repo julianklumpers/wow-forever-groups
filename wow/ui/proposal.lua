@@ -38,10 +38,9 @@ local WIDTH = 320
 local ROW_WIDTH = 268
 local ROW_HEIGHT = 30
 local ROWS_TOP = 80
--- The dungeon's picture as a banner under the title bar; the texture is a
--- 2:1 picture with dark edges, cropped to the banner's shape.
+-- The dungeon's picture as a banner under the title bar (Dungeons.art gives
+-- the texture and its crop).
 local BANNER_TOP, BANNER_HEIGHT, BANNER_INSET = 24, 112, 8
-local BANNER_CROP = { 0.02, 0.98, 0.12, 0.84 }
 local ROLE_ORDER = { T = 1, H = 2, D = 3 }
 
 -- Tank, healer, then DPS; within a role the order of the proposal.
@@ -94,7 +93,7 @@ end
 
 -- With a picture the name sits on the banner's lower part; without one the
 -- popup looks as before. Returns where the member rows start.
-local function layoutTop(art)
+local function layoutTop(art, crop)
     ui.banner:SetShown(art ~= nil)
     ui.bannerFade:SetShown(art ~= nil)
     ui.line:SetShown(art == nil)
@@ -106,6 +105,7 @@ local function layoutTop(art)
         return ROWS_TOP
     end
     ui.banner:SetTexture(art)
+    ui.banner:SetTexCoord(unpack(crop))
     local bottom = BANNER_TOP + BANNER_HEIGHT
     ui.dungeon:SetPoint("TOP", 0, -(bottom - 50))
     ui.subtitle:SetPoint("TOP", 0, -(bottom - 28))
@@ -114,7 +114,11 @@ end
 
 local function render(view)
     ui.dungeon:SetText(ns.Quests.nameOf(view.dungeon))
-    local rowsTop = layoutTop(view.queue ~= "quests" and ns.Dungeons.art(view.dungeon) or nil)
+    local art, crop
+    if view.queue ~= "quests" then
+        art, crop = ns.Dungeons.art(view.dungeon)
+    end
+    local rowsTop = layoutTop(art, crop)
     local members = ordered(view.members)
     local parts = {}
     local styles = ns.Playstyle.describe(view.playstyles)
@@ -179,7 +183,6 @@ local function buildBanner()
     ui.banner:SetPoint("TOPLEFT", BANNER_INSET, -BANNER_TOP)
     ui.banner:SetPoint("TOPRIGHT", -BANNER_INSET, -BANNER_TOP)
     ui.banner:SetHeight(BANNER_HEIGHT)
-    ui.banner:SetTexCoord(unpack(BANNER_CROP))
     -- The banner's lower part fades into the dark panel, under the name.
     ui.bannerFade = frame:CreateTexture(nil, "BORDER", nil, 2)
     ui.bannerFade:SetPoint("BOTTOMLEFT", ui.banner, "BOTTOMLEFT")

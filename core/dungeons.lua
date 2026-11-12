@@ -7,49 +7,48 @@ ns = ns or {}
 -- built in: WoW's Group Finder gives them when the addon loads
 -- (Dungeons.setRange, from wow/lfglist.lua). bosses: how many bosses the
 -- dungeon has without rare spawns, copied from ForeverDungeonJournal's data
--- (2026-11-11); the Adventure Guide's count wins when WoW gives one. art: the
--- dungeon finder's background picture (Interface\LFGFrame\UI-LFG-BACKGROUND-
--- <art>), seen in Forever's client for every classic dungeon (2026-11-12).
+-- (2026-11-11); the Adventure Guide's count wins when WoW gives one. screen:
+-- the dungeon's loading screen in Forever's client, a classic one by name
+-- (Interface\Glues\LoadingScreens\LoadScreen<screen>) or Forever's own by
+-- file id; lfgArt: the dungeon finder's picture where the client has no
+-- loading screen. Both seen in-game on 2026-11-12.
 local LIST = {
-    { id = "1", name = "Ragefire Chasm", short = "RFC", lfg = 798, bosses = 4, art = "RAGEFIRECHASM" },
-    { id = "2", name = "Hall of Thanes", short = "HoT", lfg = 1984, bosses = 4 },
-    { id = "3", name = "Ruins of Lordaeron", short = "RoL", lfg = 1982, bosses = 6 },
-    { id = "4", name = "Wailing Caverns", short = "WC", lfg = 796, bosses = 8, art = "WAILINGCAVERNS" },
-    { id = "5", name = "The Deadmines", short = "DM", lfg = 799, bosses = 8, art = "DEADMINES" },
-    { id = "6", name = "Shadowfang Keep", short = "SFK", lfg = 800, bosses = 10, art = "SHADOWFANGKEEP" },
-    { id = "7", name = "Blackfathom Deeps", short = "BFD", lfg = 801, bosses = 7, art = "BLACKFATHOMDEEPS" },
-    { id = "8", name = "The Stockade", short = "Stocks", bosses = 5, art = "STORMWINDSTOCKADES" },
-    { id = "9", name = "Excavation Site: Wetlands", short = "Excav", lfg = 1981, bosses = 3 },
-    { id = "10", name = "City of Dalaran", short = "Dal", lfg = 1983, bosses = 7 },
-    { id = "11", name = "Gnomeregan", short = "Gnomer", lfg = 803, bosses = 5, art = "GNOMEREGAN" },
-    { id = "12", name = "Razorfen Kraul", short = "RFK", lfg = 804, bosses = 6, art = "RAZORFENKRAUL" },
-    { id = "13", name = "Scarlet Monastery: Graveyard", short = "SM GY", lfg = 805, bosses = 2,
-        art = "SCARLETMONASTERY" },
-    { id = "14", name = "Scarlet Monastery: Library", short = "SM Lib", lfg = 829, bosses = 2,
-        art = "SCARLETMONASTERY" },
-    { id = "15", name = "Scarlet Monastery: Armory", short = "SM Arm", lfg = 827, bosses = 1,
-        art = "SCARLETMONASTERY" },
+    { id = "1", name = "Ragefire Chasm", short = "RFC", lfg = 798, bosses = 4, screen = "RagefireChasm" },
+    { id = "2", name = "Hall of Thanes", short = "HoT", lfg = 1984, bosses = 4, screen = 7963781 },
+    { id = "3", name = "Ruins of Lordaeron", short = "RoL", lfg = 1982, bosses = 6, screen = 7963782 },
+    { id = "4", name = "Wailing Caverns", short = "WC", lfg = 796, bosses = 8, screen = "WailingCaverns" },
+    { id = "5", name = "The Deadmines", short = "DM", lfg = 799, bosses = 8, screen = "Deadmines" },
+    { id = "6", name = "Shadowfang Keep", short = "SFK", lfg = 800, bosses = 10, screen = "ShadowFangKeep" },
+    { id = "7", name = "Blackfathom Deeps", short = "BFD", lfg = 801, bosses = 7, screen = "BlackFathomDeeps" },
+    { id = "8", name = "The Stockade", short = "Stocks", bosses = 5, screen = "StormwindStockade" },
+    { id = "9", name = "Excavation Site: Wetlands", short = "Excav", lfg = 1981, bosses = 3, screen = 7963777 },
+    { id = "10", name = "City of Dalaran", short = "Dal", lfg = 1983, bosses = 7, screen = 7963775 },
+    { id = "11", name = "Gnomeregan", short = "Gnomer", lfg = 803, bosses = 5, screen = "Gnomeregan" },
+    { id = "12", name = "Razorfen Kraul", short = "RFK", lfg = 804, bosses = 6, screen = "RazorfenKraul" },
+    { id = "13", name = "Scarlet Monastery: Graveyard", short = "SM GY", lfg = 805, bosses = 2, screen = "Monastery" },
+    { id = "14", name = "Scarlet Monastery: Library", short = "SM Lib", lfg = 829, bosses = 2, screen = "Monastery" },
+    { id = "15", name = "Scarlet Monastery: Armory", short = "SM Arm", lfg = 827, bosses = 1, screen = "Monastery" },
     { id = "16", name = "The Drowned City", short = "Drowned", lfg = 1985, bosses = 5 },
     { id = "17", name = "Scarlet Monastery: Cathedral", short = "SM Cath", lfg = 828, bosses = 3,
-        art = "SCARLETMONASTERY" },
-    { id = "18", name = "Razorfen Downs", short = "RFD", lfg = 806, bosses = 5, art = "RAZORFENDOWNS" },
-    { id = "19", name = "Uldaman", short = "Ulda", lfg = 807, bosses = 8, art = "ULDAMAN" },
-    { id = "20", name = "Krol'dok Stronghold", short = "Krol'dok", lfg = 1986, bosses = 6 },
-    { id = "21", name = "Zul'Farrak", short = "ZF", lfg = 808, bosses = 9, art = "ZULFARAK" },
-    { id = "22", name = "Maraudon", short = "Mara", lfg = 809, bosses = 8, art = "MARAUDON" },
+        screen = "Monastery" },
+    { id = "18", name = "Razorfen Downs", short = "RFD", lfg = 806, bosses = 5, screen = "RazorfenDowns" },
+    { id = "19", name = "Uldaman", short = "Ulda", lfg = 807, bosses = 8, screen = "Uldaman" },
+    { id = "20", name = "Krol'dok Stronghold", short = "Krol'dok", lfg = 1986, bosses = 6, screen = 7963780 },
+    { id = "21", name = "Zul'Farrak", short = "ZF", lfg = 808, bosses = 9, screen = "ZulFarrak" },
+    { id = "22", name = "Maraudon", short = "Mara", lfg = 809, bosses = 8, screen = "Maraudon" },
     { id = "23", name = "Alcaz Prison", short = "Alcaz", lfg = 1980, bosses = 5 },
-    { id = "24", name = "Sunken Temple", short = "ST", lfg = 810, bosses = 7, art = "SUNKENTEMPLE" },
-    { id = "25", name = "Blackrock Depths", short = "BRD", lfg = 811, bosses = 25, art = "BLACKROCKDEPTHS" },
-    { id = "26", name = "Blackmaw Hold", short = "Blackmaw", lfg = 1979, bosses = 7 },
-    { id = "27", name = "Dire Maul: East", short = "DM East", lfg = 813, bosses = 5, art = "DIREMAUL" },
-    { id = "28", name = "Lower Blackrock Spire", short = "LBRS", lfg = 812, bosses = 9, art = "BLACKROCKSPIRE" },
-    { id = "29", name = "Upper Blackrock Spire", short = "UBRS", lfg = 837, bosses = 7, art = "BLACKROCKSPIRE" },
-    { id = "30", name = "Dire Maul: North", short = "DM North", lfg = 815, bosses = 7, art = "DIREMAUL" },
-    { id = "31", name = "Dire Maul: West", short = "DM West", lfg = 814, bosses = 6, art = "DIREMAUL" },
-    { id = "32", name = "Scholomance", short = "Scholo", lfg = 797, bosses = 13, art = "SCHOLOMANCE" },
-    { id = "33", name = "Shaper's Terrace", short = "Shaper's", lfg = 1978, bosses = 10 },
-    { id = "34", name = "Stratholme: Living", short = "Strat Live", lfg = 816, bosses = 6, art = "STRATHOLME" },
-    { id = "35", name = "Stratholme: Undead", short = "Strat UD", lfg = 1603, bosses = 6, art = "STRATHOLME" },
+    { id = "24", name = "Sunken Temple", short = "ST", lfg = 810, bosses = 7, screen = "SunkenTemple" },
+    { id = "25", name = "Blackrock Depths", short = "BRD", lfg = 811, bosses = 25, screen = "BlackrockDepths" },
+    { id = "26", name = "Blackmaw Hold", short = "Blackmaw", lfg = 1979, bosses = 7, screen = 7963784 },
+    { id = "27", name = "Dire Maul: East", short = "DM East", lfg = 813, bosses = 5, screen = "DireMaul" },
+    { id = "28", name = "Lower Blackrock Spire", short = "LBRS", lfg = 812, bosses = 9, screen = "BlackrockSpire" },
+    { id = "29", name = "Upper Blackrock Spire", short = "UBRS", lfg = 837, bosses = 7, screen = "BlackrockSpire" },
+    { id = "30", name = "Dire Maul: North", short = "DM North", lfg = 815, bosses = 7, screen = "DireMaul" },
+    { id = "31", name = "Dire Maul: West", short = "DM West", lfg = 814, bosses = 6, screen = "DireMaul" },
+    { id = "32", name = "Scholomance", short = "Scholo", lfg = 797, bosses = 13, screen = "Scholomance" },
+    { id = "33", name = "Shaper's Terrace", short = "Shaper's", lfg = 1978, bosses = 10, screen = 7963783 },
+    { id = "34", name = "Stratholme: Living", short = "Strat Live", lfg = 816, bosses = 6, lfgArt = "STRATHOLME" },
+    { id = "35", name = "Stratholme: Undead", short = "Strat UD", lfg = 1603, bosses = 6, lfgArt = "STRATHOLME" },
 }
 
 -- Dungeon entrances ({ map = uiMapID, x, y } in 0-1 map coordinates, and how
@@ -150,10 +149,30 @@ function Dungeons.get(id)
     return Dungeons.byId[id]
 end
 
--- The dungeon's background picture, or nil (Forever's own dungeons).
+-- Where the picture sits in each kind of texture: classic loading screens
+-- carry the WoW logo and a gold frame, Forever's own are letterboxed, the
+-- dungeon finder's fill the texture. Cropped to a banner of about 2.7:1.
+local ART_CROP = {
+    classic = { 0.115, 0.885, 0.25, 0.82 },
+    forever = { 0.055, 0.945, 0.17, 0.83 },
+    lfg = { 0.02, 0.98, 0.12, 0.84 },
+}
+
+-- The dungeon's picture (a texture path or file id) and its crop
+-- { left, right, top, bottom }, or nil (no picture in the client).
 function Dungeons.art(id)
     local dungeon = Dungeons.byId[id]
-    return dungeon and dungeon.art and ("Interface\\LFGFrame\\UI-LFG-BACKGROUND-" .. dungeon.art) or nil
+    if not dungeon then
+        return nil
+    end
+    if type(dungeon.screen) == "number" then
+        return dungeon.screen, ART_CROP.forever
+    elseif dungeon.screen then
+        return "Interface\\Glues\\LoadingScreens\\LoadScreen" .. dungeon.screen, ART_CROP.classic
+    elseif dungeon.lfgArt then
+        return "Interface\\LFGFrame\\UI-LFG-BACKGROUND-" .. dungeon.lfgArt, ART_CROP.lfg
+    end
+    return nil
 end
 
 function Dungeons.name(id)
