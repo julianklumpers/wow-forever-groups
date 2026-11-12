@@ -1968,9 +1968,40 @@ local function onActionBlocked(event, addon, func)
     log("FAIL", "%s addon=%s function=%s", event, show(addon), show(func))
 end
 
-local function onInviteRequest(event, inviter)
-    log("RECV", "%s from %s", event, show(inviter))
+-- Which window WoW shows for an invite (the plain popup, or one asking for
+-- a role), the event's extra values, and the role functions there are.
+local function describeInvitePopups(when)
+    local popup = LFGInvitePopup
+    local plain = type(StaticPopup_Visible) == "function" and StaticPopup_Visible("PARTY_INVITE")
+    log("RECV", "invite %s: StaticPopup PARTY_INVITE=%s LFGInvitePopup=%s shown=%s", when, show(plain),
+        type(popup), show(type(popup) == "table" and popup.IsShown and popup:IsShown()))
+    if type(popup) == "table" and popup.GetChildren then
+        for i, child in ipairs({ popup:GetChildren() }) do
+            local name = child.GetName and child:GetName()
+            local checked = child.checkButton and child.checkButton.GetChecked and child.checkButton:GetChecked()
+            store("RECV", "LFGInvitePopup child %d: %s shown=%s checked=%s", i, show(name),
+                show(child.IsShown and child:IsShown()), show(checked))
+        end
+    end
+end
+
+local function onInviteRequest(event, inviter, ...)
+    log("RECV", "%s from %s, extra: %s", event, show(inviter), showAll(...))
+    log("RECV", "role functions: SetLFGRoles=%s GetLFGRoles=%s UnitSetRole=%s LFGInvitePopup_Show=%s "
+        .. "LFGInvitePopupAccept_OnClick=%s StaticPopupSpecial_Hide=%s", type(SetLFGRoles), type(GetLFGRoles),
+        type(UnitSetRole), type(LFGInvitePopup_Show), type(LFGInvitePopupAccept_OnClick),
+        type(StaticPopupSpecial_Hide))
+    if type(GetLFGRoles) == "function" then
+        log("RECV", "GetLFGRoles(): %s", showAll(pcall(GetLFGRoles)))
+    end
+    C_Timer.After(0.3, function()
+        describeInvitePopups("after 0.3 s")
+    end)
     tryAutoAccept(inviter)
+end
+
+local function onRoleEvent(event, ...)
+    log("RECV", "%s: %s; my role %s", event, showAll(...), show(UnitGroupRolesAssigned("player")))
 end
 
 local function onRoster()
@@ -2006,6 +2037,9 @@ local handlers = {
     ADDON_ACTION_BLOCKED = onActionBlocked,
     ADDON_ACTION_FORBIDDEN = onActionBlocked,
     PARTY_INVITE_REQUEST = onInviteRequest,
+    ROLE_POLL_BEGIN = onRoleEvent,
+    LFG_ROLE_CHECK_SHOW = onRoleEvent,
+    PLAYER_ROLES_ASSIGNED = onRoleEvent,
     GROUP_ROSTER_UPDATE = onRoster,
     CHAT_MSG_SYSTEM = onSystem,
     PLAYER_REGEN_DISABLED = onCombat,

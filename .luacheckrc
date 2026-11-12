@@ -123,8 +123,14 @@ files["wow/"] = {
     },
 }
 
+local probe_read_globals = { "GetLFGRoles", "LFGInvitePopup", "LFGInvitePopupAccept_OnClick", "LFGInvitePopup_Show",
+    "SetLFGRoles", "StaticPopupSpecial_Hide" }
+for _, name in ipairs(wow_read_globals) do
+    probe_read_globals[#probe_read_globals + 1] = name
+end
+
 files["probe/"] = {
-    read_globals = wow_read_globals,
+    read_globals = probe_read_globals,
     globals = {
         "ForeverGroupsProbeDB",
         "SLASH_FOREVERGROUPSPROBE1",
