@@ -37,12 +37,11 @@ end
 local WIDTH = 320
 local ROW_WIDTH = 268
 local ROW_HEIGHT = 30
-local ROWS_TOP = 84
+local ROWS_TOP = 80
 -- The dungeon's picture as a banner under the title bar; the texture is a
--- 2:1 picture with dark edges, cropped to the banner's shape. Its lower
--- BANNER_FADE pixels turn transparent, so it melts into the panel.
-local BANNER_TOP, BANNER_HEIGHT, BANNER_INSET, BANNER_FADE = 24, 124, 8, 60
-local BANNER_CROP = { 0.02, 0.98, 0.10, 0.88 }
+-- 2:1 picture with dark edges, cropped to the banner's shape.
+local BANNER_TOP, BANNER_HEIGHT, BANNER_INSET = 24, 112, 8
+local BANNER_CROP = { 0.02, 0.98, 0.12, 0.84 }
 local ROLE_ORDER = { T = 1, H = 2, D = 3 }
 
 -- Tank, healer, then DPS; within a role the order of the proposal.
@@ -98,21 +97,19 @@ end
 local function layoutTop(art)
     ui.banner:SetShown(art ~= nil)
     ui.bannerFade:SetShown(art ~= nil)
-    ui.bannerShade:SetShown(art ~= nil)
     ui.line:SetShown(art == nil)
     ui.dungeon:ClearAllPoints()
     ui.subtitle:ClearAllPoints()
     if not art then
         ui.dungeon:SetPoint("TOP", 0, -32)
-        ui.subtitle:SetPoint("TOP", 0, -58)
+        ui.subtitle:SetPoint("TOP", 0, -54)
         return ROWS_TOP
     end
     ui.banner:SetTexture(art)
-    ui.bannerFade:SetTexture(art)
     local bottom = BANNER_TOP + BANNER_HEIGHT
-    ui.dungeon:SetPoint("TOP", 0, -(bottom - 52))
-    ui.subtitle:SetPoint("TOP", 0, -(bottom - 26))
-    return bottom + 6
+    ui.dungeon:SetPoint("TOP", 0, -(bottom - 50))
+    ui.subtitle:SetPoint("TOP", 0, -(bottom - 28))
+    return bottom + 8
 end
 
 local function render(view)
@@ -177,33 +174,22 @@ local function onUpdate()
     ui.bar.text:SetText(string.format("%d s", math.ceil(left)))
 end
 
-local function gradient(texture, bottom, top)
-    return type(CreateColor) == "function" and pcall(texture.SetGradient, texture, "VERTICAL",
-        CreateColor(bottom[1], bottom[2], bottom[3], bottom[4]), CreateColor(top[1], top[2], top[3], top[4]))
-end
-
 local function buildBanner()
-    local left, right, top, bottom = unpack(BANNER_CROP)
-    local split = top + (bottom - top) * (BANNER_HEIGHT - BANNER_FADE) / BANNER_HEIGHT
     ui.banner = frame:CreateTexture(nil, "BORDER")
     ui.banner:SetPoint("TOPLEFT", BANNER_INSET, -BANNER_TOP)
     ui.banner:SetPoint("TOPRIGHT", -BANNER_INSET, -BANNER_TOP)
-    ui.banner:SetHeight(BANNER_HEIGHT - BANNER_FADE)
-    ui.banner:SetTexCoord(left, right, top, split)
-    ui.bannerFade = frame:CreateTexture(nil, "BORDER")
-    ui.bannerFade:SetPoint("TOPLEFT", ui.banner, "BOTTOMLEFT")
-    ui.bannerFade:SetPoint("TOPRIGHT", ui.banner, "BOTTOMRIGHT")
-    ui.bannerFade:SetHeight(BANNER_FADE)
-    ui.bannerFade:SetTexCoord(left, right, split, bottom)
-    if not gradient(ui.bannerFade, { 1, 1, 1, 0 }, { 1, 1, 1, 1 }) then
-        ui.bannerFade:SetAlpha(0.5)
-    end
-    -- A soft shadow behind the name, darkest where the picture still shows.
-    ui.bannerShade = frame:CreateTexture(nil, "BORDER", nil, 1)
-    ui.bannerShade:SetAllPoints(ui.bannerFade)
-    ui.bannerShade:SetColorTexture(1, 1, 1, 1)
-    if not gradient(ui.bannerShade, { 0, 0, 0, 0 }, { 0, 0, 0, 0.45 }) then
-        ui.bannerShade:SetColorTexture(0, 0, 0, 0.25)
+    ui.banner:SetHeight(BANNER_HEIGHT)
+    ui.banner:SetTexCoord(unpack(BANNER_CROP))
+    -- The banner's lower part fades into the dark panel, under the name.
+    ui.bannerFade = frame:CreateTexture(nil, "BORDER", nil, 2)
+    ui.bannerFade:SetPoint("BOTTOMLEFT", ui.banner, "BOTTOMLEFT")
+    ui.bannerFade:SetPoint("BOTTOMRIGHT", ui.banner, "BOTTOMRIGHT")
+    ui.bannerFade:SetHeight(BANNER_HEIGHT * 0.5)
+    ui.bannerFade:SetColorTexture(1, 1, 1, 1)
+    local faded = type(CreateColor) == "function" and pcall(ui.bannerFade.SetGradient, ui.bannerFade,
+        "VERTICAL", CreateColor(0, 0, 0, 0.65), CreateColor(0, 0, 0, 0))
+    if not faded then
+        ui.bannerFade:SetColorTexture(0, 0, 0, 0.3)
     end
 end
 
@@ -235,14 +221,13 @@ local function build()
     end
     frame:ClearAllPoints()
     frame:SetPoint("TOP", 0, -140)
-    local titleFont = _G.GameFontNormalHuge and "GameFontNormalHuge" or "GameFontNormalLarge"
-    ui.dungeon = Widgets.text(frame, titleFont, "CENTER")
+    ui.dungeon = Widgets.text(frame, "GameFontNormalLarge", "CENTER")
     ui.dungeon:SetWidth(WIDTH - 20)
     ui.subtitle = Widgets.text(frame, "GameFontDisableSmall", "CENTER")
     ui.subtitle:SetWidth(WIDTH - 20)
     ui.line = frame:CreateTexture(nil, "ARTWORK")
     ui.line:SetSize(ROW_WIDTH, 1)
-    ui.line:SetPoint("TOP", 0, -76)
+    ui.line:SetPoint("TOP", 0, -72)
     ui.line:SetColorTexture(1, 0.82, 0, 0.35)
     buildBanner()
     for i = 1, 5 do
