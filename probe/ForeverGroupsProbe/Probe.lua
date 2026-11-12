@@ -1704,6 +1704,44 @@ local function onChannelList(event, text, _, _, channelString, _, _, _, _, baseN
     noteCount(baseName, members, event)
 end
 
+-- Level ranges of the "Quests & Zones" activities, as the Group Finder
+-- gives them for dungeons (GetActivityInfoTable), and the zone map's own
+-- (C_Map.GetMapLevels) when the activity names a map.
+local function cmdZoneLevels()
+    local category
+    local catOk, categories = lfgCall("GetAvailableCategories")
+    for _, id in ipairs(catOk and type(categories) == "table" and categories or {}) do
+        local infoOk, info = lfgCall("GetLfgCategoryInfo", id)
+        local name = infoOk and type(info) == "table" and info.name
+        if type(name) == "string" and string.find(string.lower(name), "quest") then
+            category = id
+        end
+    end
+    local actOk, activities = lfgCall("GetAvailableActivities", category)
+    local count, withLevels = 0, 0
+    for _, activity in ipairs(actOk and type(activities) == "table" and activities or {}) do
+        local ok, info = lfgCall("GetActivityInfoTable", activity)
+        if ok and type(info) == "table" then
+            count = count + 1
+            local min = tonumber(info.minLevelSuggestion) or tonumber(info.minLevel) or 0
+            local max = tonumber(info.maxLevelSuggestion) or tonumber(info.maxLevel) or 0
+            if min > 0 or max > 0 then
+                withLevels = withLevels + 1
+            end
+            local mapLevels = ""
+            local getLevels = resolve("C_Map.GetMapLevels")
+            if type(info.mapID) == "number" and type(getLevels) == "function" then
+                mapLevels = " map " .. showAll(pcall(getLevels, info.mapID))
+            end
+            store("RECV", "zonelevels: %s %s min=%s max=%s minSug=%s maxSug=%s mapID=%s%s", show(activity),
+                show(info.fullName or info.shortName), show(info.minLevel), show(info.maxLevel),
+                show(info.minLevelSuggestion), show(info.maxLevelSuggestion), show(info.mapID), mapLevels)
+        end
+    end
+    log("INFO", "zonelevels: %d zone activities in category %s, %d with a level range; details in /fgp log",
+        count, show(category), withLevels)
+end
+
 local COMMANDS = {
     { "all", "run info, api, join, chan, whisper, big, ping and popup", cmdAll },
     { "info", "build, names, time, lockdown, group state", cmdInfo },
@@ -1728,6 +1766,7 @@ local COMMANDS = {
     { "clicksearch", "[off] test Group Finder searches from mouse clicks and scrolls in the world", cmdClickSearch },
     { "loadscreens", "[page] show the loading screens (classic by name, Forever's by file id)", cmdLoadScreens },
     { "images", "[page] show the dungeon background pictures the client has", cmdImages },
+    { "zonelevels", "level ranges of the Quests & Zones activities", cmdZoneLevels },
     { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },
     { "channels", "[name] member count of every joined channel (with a name: join it for the check)", cmdChannels },
     { "log", "[n] print the last n stored log lines", cmdLog },
