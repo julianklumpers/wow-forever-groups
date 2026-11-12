@@ -56,41 +56,6 @@ function W.paintTabs(y)
     return true
 end
 
--- Under the Dungeons tab: Search | Who is looking.
-local SUBTABS = { { key = "find", label = "Search" }, { key = "who", label = "Who is looking" } }
-local SUBTAB_WIDTH = 140
-
-function W.dungeonsView()
-    return ns.charDb and ns.charDb.dungeonsView == "who" and "who" or "find"
-end
-
-function W.buildSubtabs()
-    ui.subtabs = {}
-    for _, sub in ipairs(SUBTABS) do
-        ui.subtabs[sub.key] = Widgets.tab(W.frame, sub.label, SUBTAB_WIDTH, function()
-            ns.charDb.dungeonsView = sub.key
-            if sub.key == "who" then
-                ns.LfgList.searchIfStale(10)
-            end
-            ns.Window.refresh()
-        end)
-        ui.subtabs[sub.key]:SetHeight(24)
-    end
-end
-
--- Returns the y under the subtabs (shown only on the Dungeons tab).
-function W.paintSubtabs(y, shown)
-    for i, sub in ipairs(SUBTABS) do
-        local tab = ui.subtabs[sub.key]
-        tab:SetShown(shown)
-        if shown then
-            Widgets.paintTab(tab, W.dungeonsView() == sub.key)
-            W.place(tab, PAD + (i - 1) * SUBTAB_WIDTH, y)
-        end
-    end
-    return shown and y - 32 or y
-end
-
 function W.buildTabs()
     ui.tabs = {}
     for _, tab in ipairs({ { "dungeons", "Dungeons" }, { "quests", "Quests" } }) do

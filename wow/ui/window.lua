@@ -67,14 +67,6 @@ function Window.refresh()
     local y = -30
     W.place(ui.connectionBar, PAD - CARD_PADDING, y - 13)
     y = y - (W.paintTabs(y) and 38 or 26)
-    local dungeons = W.currentTab() == "dungeons"
-    y = W.paintSubtabs(y, dungeons)
-    if dungeons and W.dungeonsView() == "who" then
-        W.showWho(y)
-        return
-    end
-    ns.QueueWindow.hide()
-    ui.card:Show()
     W.place(ui.card, PAD - CARD_PADDING, y)
     y = y - W.refreshCard(state, full, W.currentTab())
     local cardBottom = y
@@ -130,43 +122,6 @@ function Window.refresh()
         y = cardBottom - 2
     end
     W.fitHeight(y)
-end
-
--- Dungeons › Who is looking: the table instead of the card and the choices.
-function W.showWho(y)
-    ui.card:Hide()
-    W.setSetupShown(false)
-    W.hideQuestWidgets()
-    ui.queueHeader:Hide()
-    ui.queueHeader.line:Hide()
-    for _, row in ipairs(queueRows) do
-        row:Hide()
-    end
-    for _, widget in ipairs({ ui.queueMore, ui.join, ui.joinSummary, ui.ready, ui.fill, ui.delist }) do
-        widget:Hide()
-    end
-    ui.hint:SetText("")
-    W.fitHeight(ns.QueueWindow.showIn(W.frame, y))
-end
-
--- Opens Dungeons › Who is looking, or closes the window when it already
--- shows it.
-function Window.toggleWho()
-    if not W.frame then
-        W.build()
-    end
-    local showing = W.frame:IsShown() and W.currentTab() == "dungeons" and W.dungeonsView() == "who"
-    if showing then
-        W.frame:Hide()
-        return
-    end
-    if not W.groupTab() then
-        ns.charDb.tab = "dungeons"
-    end
-    ns.charDb.dungeonsView = "who"
-    W.frame:Show()
-    ns.LfgList.searchIfStale(10)
-    Window.refresh()
 end
 
 function Window.onJoinClicked()
@@ -260,7 +215,6 @@ function W.build()
         Widgets.ICON)
     W.frame:SetScript("OnShow", Window.refresh)
     W.buildTabs()
-    W.buildSubtabs()
     W.buildCard()
     W.buildRoles()
     W.buildPlaystyle()
