@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.23.2 (2026-11-12)
+## 0.24.0 (2026-11-12)
 
 - Fake players for testing (`/fg fake`) get made-up names instead of "Fake 1", "Fake 2"…
 - Fake players only queue for the dungeons of your level.
