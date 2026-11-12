@@ -2,6 +2,9 @@
 
 ## 0.25.1 (2026-11-12)
 
+- Ticking a dungeon that wasn't searched yet searches WoW's Group Finder right away, so "Who is
+  looking" and the counts show its players and groups at once; unticking one updates the list
+  without a new search. New results show the moment they arrive.
 - Main window: while you choose alone, "Your roles" now comes first, with "Looking now" under
   it; the "Not in the queue" / "Not looking for a questing group" line is gone. On both tabs.
 - "Who is looking" is now a drawer on the side of the main window instead of a separate window

@@ -1351,6 +1351,8 @@ function QueueWindow.attach(main)
             frame:Hide()
         end
     end)
+    -- New results show at once, not at the next second's refresh.
+    ns.LfgList.onUpdate(ns.Window.refresh)
     dock()
 end
 

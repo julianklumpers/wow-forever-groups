@@ -446,6 +446,7 @@ function W.selectVisible(value)
     for _, dungeon in ipairs(W.visibleDungeons()) do
         selected[dungeon.id] = value or nil
     end
+    ns.LfgList.searchIfMissing()
     ns.Window.refresh()
 end
 
@@ -618,7 +619,9 @@ function W.buildDungeons()
                 W.selectedDungeons()[self.dungeon.id] = self:GetChecked() and true or nil
             end
             W.setHint("")
-            ns.LfgList.searchIfStale(5)
+            if not ns.LfgList.searchIfMissing() then
+                ns.LfgList.searchIfStale(5)
+            end
             ns.Window.refresh()
         end)
         cell.range = Widgets.text(cell, "GameFontDisableSmall")

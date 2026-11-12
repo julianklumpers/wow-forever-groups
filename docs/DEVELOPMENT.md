@@ -236,7 +236,8 @@ the Group Finder eye and an arrow that points the way the drawer moves) that ope
 main window unless the player closed it (the tab, its close button or Escape while the main window stays:
 `db.whoClosed`); `/fg queue` opens it. Opening with the main window doesn't search (that can come from code; a
 search must follow a click), the tab and `/fg queue` do. `Window.refresh` also refreshes it, so it follows the main
-window's tab, roles and dungeons. It moves with the main window and hides with it. No tabs: two framed blocks, one per source, each with a header band (icon and name; the Group Finder's also says
+window's tab, roles and dungeons, and so do new Group Finder results (`LfgList.onUpdate`). Ticking a dungeon the
+last search didn't ask for searches at once (`LfgList.searchIfMissing`, from that click); unticking only filters. It moves with the main window and hides with it. No tabs: two framed blocks, one per source, each with a header band (icon and name; the Group Finder's also says
 when it last searched): **Forever Groups** with Parties and then Players (queued solo players), and **WoW Group
 Finder** with Groups and then Players (solo players listed for your dungeons). Every table has the same columns: Roles (what the
 players can play; a party or group: the roles already in it), Needs (the places a party or group still has open,

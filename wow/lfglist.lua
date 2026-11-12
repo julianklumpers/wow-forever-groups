@@ -333,6 +333,24 @@ local function languageFilter()
     return filter
 end
 
+-- The dungeon activities the last search asked for; nil after an
+-- unfiltered search (it covers them all).
+local searchedActivities = {}
+
+-- From a click that changed the wanted dungeons: searches again only when
+-- one of them was not in the last search (unticking needs no search).
+function LfgList.searchIfMissing()
+    if searchedActivities == nil then
+        return false
+    end
+    for _, activity in ipairs(wantedActivities()) do
+        if not searchedActivities[activity] then
+            return LfgList.search()
+        end
+    end
+    return false
+end
+
 -- Only from a click or key press; returns false if WoW refused. Searches only
 -- for the wanted dungeons (WoW returns at most 100 results per search, so an
 -- unfiltered search can miss them at busy times).
@@ -347,12 +365,17 @@ function LfgList.search()
     local ok, err
     if #activities > 0 then
         ok, err = pcall(fn, CATEGORY_DUNGEONS, 0, 0, languageFilter(), false, nil, activities)
+        searchedActivities = {}
+        for _, activity in ipairs(activities) do
+            searchedActivities[activity] = true
+        end
     end
     if not ok then
         if err then
             Log.debug("filtered group finder search failed (%s); searching everything", tostring(err))
         end
         ok, err = pcall(fn, CATEGORY_DUNGEONS)
+        searchedActivities = nil
     end
     if not ok then
         Log.debug("group finder search failed: %s", tostring(err))
