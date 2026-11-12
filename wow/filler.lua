@@ -13,7 +13,7 @@ local Log = ns.Log
 -- time, and asks for a click when the results are used up or too old.
 local Filler = {}
 
-local INVITE_TIMEOUT = 60
+local INVITE_TIMEOUT = 30
 local STALE_RESULTS = 120
 local DECLINE_MESSAGES = { "ERR_DECLINE_GROUP_S", "ERR_ALREADY_IN_GROUP_S", "ERR_BAD_PLAYER_NAME_S" }
 

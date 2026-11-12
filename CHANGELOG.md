@@ -34,6 +34,8 @@
   tab name the right column; the fallback right-click menu closes when you click elsewhere.
 - Setting a role waits for the server: a player who just joined no longer looks like they
   switched roles, which made the addon invite a second healer from the Group Finder.
+- A Group Finder player who doesn't answer the invite is replaced after 30 seconds instead of
+  60 (70 for questing groups).
 - The leader sends all invites at once instead of half a second apart, so the group is together
   right after the last Accept.
 - The "Group found!" popup lists tank, healer, then DPS, with names in class colours, a crown

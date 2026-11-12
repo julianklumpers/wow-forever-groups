@@ -12,7 +12,7 @@ local Log = ns.Log
 local QuestFinder = {}
 
 local STALE = 20
-local INVITE_TIMEOUT = 70
+local INVITE_TIMEOUT = 30
 local MAX_ASKS = 2
 local ASK_WAIT = 60
 

@@ -170,7 +170,7 @@ When players have waited 2 minutes without a full group, the matchmaker may prop
 players); the roles left open are filled from WoW's own Group Finder: the leader's Accept click also runs a Group
 Finder search (searching is protected and needs a click), then the best listed solo players (right role, level and
 dungeon; single-role players first, longest listed first) get a whisper and an invite. Anyone who declines or does not
-join within 60 s is replaced. "Fill from Group Finder" in the window (or `/fg fill`) does the same for your own party;
+join within 30 s is replaced (a player who joins later is kept while a spot is open). "Fill from Group Finder" in the window (or `/fg fill`) does the same for your own party;
 `/fg dryrun` only prints the picks.
 
 ### Both directions
