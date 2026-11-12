@@ -2,6 +2,8 @@
 
 ## 0.25.0 (2026-11-12)
 
+- "Who is looking": sorting a table by a column no longer sorts the other tables too; each
+  table keeps its own order.
 - Playstyle is no longer required: "Any" is the new default and groups you with everyone, so
   more players fit together. The playstyle moved from its own section to a dropdown on the
   "Your roles" header; pick one there (or `/fg style relaxed`, `/fg style any`) to be grouped

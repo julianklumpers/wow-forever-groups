@@ -227,7 +227,8 @@ text, without column headers. Each table folds (its caption is a +/- button) to 
 16 DPS", "12 need DPS"). By default the half that fits what the player does is open: players with "I'd like to
 lead" on (they build a group), groups otherwise (they look for a place); a fold the player sets is kept in
 `db.queueFold` until the wish to lead changes, which brings back that choice's defaults. A click
-on a header sorts every table, a second click reverses (`db.queueSort`, `db.queueSortReverse`); the Show filter
+on a header sorts that table only, a second click reverses; each table keeps its own order (`db.queueSorts[key]`,
+with `key` and `reverse`); the Show filter
 matches a solo player's roles and a party's or group's needs. Right-clicking a row opens `wow/ui/playermenu.lua`
 (WoW's `MenuUtil` context menu, else a small menu of our own): Whisper and Invite to group for a player; Request to
 join and Whisper leader for a group. Request to join whispers the leader the `applyAsk` message

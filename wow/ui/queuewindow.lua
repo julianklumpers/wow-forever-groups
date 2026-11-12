@@ -315,8 +315,14 @@ local COLUMNS = {
 local TOP = 0
 local EXPECTED = { T = 1, H = 1, D = 3 }
 
+-- How a table is sorted: each table keeps its own column and order.
+local function sortOf(key)
+    local chosen = ns.db.queueSorts and ns.db.queueSorts[key]
+    return chosen and chosen.key or "role", chosen and chosen.reverse or false
+end
+
 -- A row of column headers right above a list's cells; clicking one sorts
--- (every list) by it, clicking it again reverses the order.
+-- that list by it, clicking it again reverses the order.
 local function buildHeaders(section)
     section.columns = {}
     for _, column in ipairs(COLUMNS) do
@@ -330,12 +336,9 @@ local function buildHeaders(section)
         if column.sort then
             header:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
             header:SetScript("OnClick", function()
-                if (ns.db.queueSort or "role") == column.sort then
-                    ns.db.queueSortReverse = not ns.db.queueSortReverse or nil
-                else
-                    ns.db.queueSort = column.sort
-                    ns.db.queueSortReverse = nil
-                end
+                local key, reverse = sortOf(section.key)
+                ns.db.queueSorts = ns.db.queueSorts or {}
+                ns.db.queueSorts[section.key] = { key = column.sort, reverse = key == column.sort and not reverse }
                 onInput(10)
                 QueueWindow.refresh()
             end)
@@ -407,6 +410,8 @@ local function buildSection(title, rows, key, kind)
     section.summary = Widgets.text(section.caption, "GameFontDisableSmall")
     section.summary:SetPoint("LEFT", section.header, "RIGHT", 6, 0)
     section.summary:SetWordWrap(false)
+    section.sortNote = Widgets.text(section.caption, "GameFontDisableSmall", "RIGHT")
+    section.sortNote:SetPoint("RIGHT", 0, 0)
     buildHeaders(section)
     section.area = CreateFrame("Frame", nil, frame)
     section.area:SetSize(WIDTH - 36, rows * ROW_HEIGHT)
@@ -564,6 +569,7 @@ local function fillSection(section, y, items, empty)
     section.caption.icon:SetTexture(folded and "Interface\\Buttons\\UI-PlusButton-Up"
         or "Interface\\Buttons\\UI-MinusButton-Up")
     section.summary:SetText(folded and summarize(section, items) or "")
+    section.sortNote:SetText("")
     if folded then
         section.line:Hide()
         section.area:Hide()
@@ -583,6 +589,7 @@ local function fillSection(section, y, items, empty)
     -- An empty table is just its caption and a line of text.
     local listed = #items > 0 and section.area:IsShown()
     section.line:SetShown(listed)
+    section.sortNote:SetText(listed and select(2, sortOf(section.key)) and "reversed order" or "")
     for _, header in ipairs(section.columns) do
         header:SetShown(listed and (header.column.sort ~= "needs" or anyNeeds))
         header:ClearAllPoints()
@@ -706,10 +713,9 @@ local function filtered(items)
     return result
 end
 
-local function sorted(items)
+local function sorted(items, sectionKey)
     items = filtered(items)
-    local key = ns.db.queueSort or "role"
-    local reverse = ns.db.queueSortReverse == true
+    local key, reverse = sortOf(sectionKey)
     table.sort(items, function(a, b)
         local result = COMPARE[key](a, b)
         if result == nil then
@@ -793,7 +799,7 @@ local function queueLists()
         local list = item.party and parties or solo
         list[#list + 1] = item
     end
-    return sorted(solo), sorted(parties), #parties > 0
+    return sorted(solo, "addonPlayers"), sorted(parties, "addonParties"), #parties > 0
 end
 
 -- A listed group's roles already in it and its open places, e.g. "HD" and
@@ -825,7 +831,7 @@ local function groupFinderItems()
             level = listing.level,
             color = { Widgets.classColor(listing.classToken) } }
     end
-    return sorted(items)
+    return sorted(items, "finderPlayers")
 end
 
 local function groupFinderGroupItems()
@@ -839,7 +845,7 @@ local function groupFinderGroupItems()
             level = listing.level,
             color = { Widgets.classColor(listing.classToken) } }
     end
-    return sorted(items)
+    return sorted(items, "finderGroups")
 end
 
 -- "Healer, 2 DPS" from the letters and, when given, how many of each.
@@ -943,8 +949,8 @@ function QueueWindow.openMenu(row, item)
 end
 
 local function refreshSortBar()
-    local key = ns.db.queueSort or "role"
     for _, section in ipairs({ sections.queue, sections.parties, sections.finder, sections.groups }) do
+        local key = sortOf(section.key)
         for _, header in ipairs(section.columns) do
             if header.sort ~= nil and header.sort == key then
                 header.label:SetTextColor(1, 0.82, 0)
@@ -953,7 +959,6 @@ local function refreshSortBar()
             end
         end
     end
-    sections.sortNote:SetText(ns.db.queueSortReverse and "reversed order" or "")
     local roles = shownRoles() or "THD"
     for role, toggle in pairs(sections.roleToggles) do
         Widgets.paintToggle(toggle, string.find(roles, role, 1, true) ~= nil, true)
@@ -1104,8 +1109,6 @@ local function build()
     local show = Widgets.text(frame, "GameFontNormalSmall")
     show:SetPoint("TOPLEFT", 18, -38 - TOP)
     show:SetText("Show:")
-    sections.sortNote = Widgets.text(frame, "GameFontDisableSmall", "RIGHT")
-    sections.sortNote:SetPoint("TOPRIGHT", -108, -38 - TOP)
     sections.roleToggles = {}
     for i, role in ipairs(Widgets.ROLES) do
         local toggle = Widgets.roleToggle(frame, role, 18, "GameFontHighlightSmall", function(self)

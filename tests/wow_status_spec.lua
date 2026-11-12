@@ -742,7 +742,54 @@ describe("Queue window order", function()
         assert.are.same({ "Bravo", "Charlie", "Alpha" }, order())
         client:click("Button", "Time")
         assert.are.same({ "Alpha", "Charlie", "Bravo" }, order())
-        assert.are.equal("waiting", client.env.ForeverGroupsDB.queueSort)
+        assert.are.equal("waiting", client.env.ForeverGroupsDB.queueSorts.finderPlayers.key)
+    end)
+
+    it("sorts each table on its own", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 20 })
+        unfold(client)
+        world:list("Bravo", "D", 799, 25, 300)
+        world:list("Alpha", "D", 799, 18, 100)
+        world:listGroup("Zed", 799, { T = 0, H = 0, D = 2 }, 300)
+        world:listGroup("Abe", 799, { T = 0, H = 0, D = 2 }, 100)
+        world:advance(CONNECT)
+        client:slash("/dq")
+        client:click("Button", "None")
+        client:click("CheckButton", "The Deadmines")
+        world:advance(6)
+        client:click("Button", "Who is looking »")
+        world:advance(1)
+        local function order(groups)
+            local names = {}
+            for _, widget in ipairs(client.widgets) do
+                if widget.kind == "FontString" and widget.parent and widget.parent.icons and widget.parent.shown
+                    and widget == widget.parent.name and (widget.text:find("+", 1, true) ~= nil) == groups then
+                    names[#names + 1] = widget.text
+                end
+            end
+            return names
+        end
+        local function nameHeaders()
+            local headers = {}
+            for _, widget in ipairs(client.widgets) do
+                if widget.kind == "Button" and widget.shown and widget.label and widget.label.text == "Name" then
+                    headers[#headers + 1] = widget
+                end
+            end
+            return headers
+        end
+        assert.are.same({ "Zed +2", "Abe +2" }, order(true))
+        assert.are.same({ "Bravo", "Alpha" }, order(false))
+        local headers = nameHeaders()
+        assert.are.equal(2, #headers)
+        local playersHeader, groupsHeader = headers[1], headers[2]
+        playersHeader.scripts.OnClick(playersHeader)
+        assert.are.same({ "Alpha", "Bravo" }, order(false))
+        assert.are.same({ "Zed +2", "Abe +2" }, order(true))
+        groupsHeader.scripts.OnClick(groupsHeader)
+        assert.are.same({ "Abe +2", "Zed +2" }, order(true))
+        assert.are.same({ "Alpha", "Bravo" }, order(false))
     end)
 end)
 
