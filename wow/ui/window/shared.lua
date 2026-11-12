@@ -94,8 +94,52 @@ function W.groupTab()
     return nil
 end
 
+-- Waiting in one queue shows only that queue's page, without tabs, until the
+-- player follows the link to the other queue; in both queues the tabs are
+-- back. nil when the tabs are shown.
+function W.queueTab()
+    local dungeons = (ns.engine ~= nil and ns.engine.myEntry ~= nil) or ns.Filler.isActive()
+    local quests = ns.QuestQueue.isQueued()
+    local single
+    if dungeons and not quests then
+        single = "dungeons"
+    elseif quests and not dungeons then
+        single = "quests"
+    end
+    if single ~= W.lastQueueTab then
+        W.lastQueueTab = single
+        W.browsingOther = false
+    end
+    if W.browsingOther then
+        return nil
+    end
+    return single
+end
+
+function W.fixedTab()
+    return W.groupTab() or W.queueTab()
+end
+
+-- The link under a single queue's page to the other queue's page.
+function W.placeOtherQueueLink(y, state)
+    local link = W.ui.otherQueue
+    local tab = W.groupTab() == nil and W.queueTab()
+    local other = tab == "dungeons" and "quests" or "dungeons"
+    local can = tab and (state == "solo" or state == "leader")
+        and (other == "dungeons" or #ns.Quests.groupQuests() > 0)
+    link:SetShown(can and true or false)
+    if not can then
+        return y
+    end
+    link.target = other
+    link:SetText(other == "quests" and "Also find a questing group »" or "Also find a dungeon group »")
+    link:SetWidth(math.ceil(link.label:GetStringWidth() or 40) + 2)
+    W.place(link, W.PAD, y)
+    return y - 22
+end
+
 function W.currentTab()
-    local fixed = W.groupTab()
+    local fixed = W.fixedTab()
     if fixed then
         return fixed
     end

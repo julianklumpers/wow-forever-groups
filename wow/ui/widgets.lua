@@ -698,6 +698,7 @@ function Widgets.link(parent, label, onClick)
     local link = CreateFrame("Button", nil, parent)
     local text = link:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     link:SetFontString(text)
+    link.label = text
     link:SetNormalFontObject(GameFontNormalSmall)
     link:SetHighlightFontObject(GameFontHighlightSmall)
     link:SetText(label)

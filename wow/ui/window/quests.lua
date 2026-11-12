@@ -117,6 +117,7 @@ function W.refreshQuestsTab(y, state)
     end
     ui.queueMore:Hide()
     y = W.layoutQuests(y, state)
+    y = W.placeOtherQueueLink(y, state)
     local queued = ns.QuestQueue.isQueued()
     local setup = not queued and (state == "solo" or state == "leader")
     local ready = queued or (W.selectedRoles() ~= nil and #W.tickedQuestKeys() > 0)

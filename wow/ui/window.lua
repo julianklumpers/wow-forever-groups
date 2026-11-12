@@ -100,6 +100,7 @@ function Window.refresh()
     elseif queued then
         y = W.layoutQueued(y, entry)
     end
+    y = W.placeOtherQueueLink(y, state)
 
     local searching = queued or ns.Filler.isActive()
     ui.join:SetText(searching and "Stop" or "Find group")

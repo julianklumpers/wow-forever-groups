@@ -14,6 +14,8 @@
 - "Who is looking" is a table: columns Role, Name, Level, Dungeons and Time, for Forever
   Groups players and the Group Finder list alike. Click a column header to sort, again to
   reverse (replaces the sort buttons). A long dungeon list is shortened ("RFC, HoT, RoL, +32").
+- While you wait in one queue the Dungeons/Quests tabs are hidden; a link "Also find a questing
+  group »" (or "dungeon group") opens the other one. Waiting in both shows the tabs again.
 
 ## 0.23.1 (2026-11-12)
 

@@ -165,7 +165,7 @@ describe("questing in the Group Finder, reviewed", function()
         client:press("W")
         assert.are.same({ ELWYNN }, client.listingArgs[1].activityIDs)
         world:list("Listed Heal", "H", 799, 20, 300)
-        client:click("Button", "Dungeons")
+        client:click("Button", "Also find a dungeon group »")
         client:slash("/dq join tank dm")
         world:advance(2)
         assert.is_true(client.ns.Filler.isActive())
@@ -285,7 +285,7 @@ describe("keep-alives with both queues", function()
         for i, client in ipairs({ a, b }) do
             client:slash("/dq join dps " .. (i == 1 and "dm" or "wc"))
             client:slash("/dq")
-            client:click("Button", "Quests")
+            client:click("Button", "Also find a questing group »")
             if not client.ns.charDb.lastRoles then
                 client:click("CheckButton", "DPS")
             end

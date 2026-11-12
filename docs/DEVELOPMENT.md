@@ -102,7 +102,9 @@ it ("Level 20 Enhancement Shaman (DPS) here, could you invite me…", "Inviting 
 
 ### Quests tab
 
-The window has two tabs at the top: Dungeons and Quests. The Quests tab lists the group and elite quests in the quest
+The window has two tabs at the top: Dungeons and Quests. While the player waits in only one queue the tabs are
+hidden and a link under the page ("Also find a questing group »") opens the other queue's page with the tabs; in
+both queues the tabs show, each with its timer (`W.queueTab` in `wow/ui/window/shared.lua`). The Quests tab lists the group and elite quests in the quest
 log outside dungeons: quests WoW tags Group (`C_QuestLog.GetQuestTagInfo`, tagID `Enum.QuestTag.Group`) or suggests
 a group size for (`suggestedGroup`); Dungeon, Raid and PvP quests and quests under a dungeon's header are left out.
 Every listed quest is ticked until the player unticks it. "Find questing group" queues the player with the chosen

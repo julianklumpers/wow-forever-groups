@@ -27,7 +27,7 @@ end
 -- stays open into the content below.
 -- Returns whether the tabs are shown.
 function W.paintTabs(y)
-    local shown = W.groupTab() == nil
+    local shown = W.fixedTab() == nil
     for _, widget in ipairs({ ui.tabs.dungeons, ui.tabs.quests, ui.tabLines[1], ui.tabLines[2] }) do
         widget:SetShown(shown)
     end
@@ -65,6 +65,13 @@ function W.buildTabs()
             ns.Window.refresh()
         end)
     end
+    ui.otherQueue = Widgets.link(W.frame, "", function(self)
+        W.browsingOther = true
+        ns.charDb.tab = self.target
+        W.setHint("")
+        ns.Window.refresh()
+    end)
+    ui.otherQueue:Hide()
     ui.tabLines = {}
     for i = 1, 2 do
         local line = W.frame:CreateTexture(nil, "ARTWORK")
