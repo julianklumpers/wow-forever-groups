@@ -326,13 +326,14 @@ function Widgets.levelColor(level, min, max)
 end
 
 -- A gold section title with a thin line under it.
-function Widgets.header(parent, text, right)
+-- gap: room between the text and the line under it (3 px by default).
+function Widgets.header(parent, text, right, gap)
     local label = Widgets.text(parent, "GameFontNormal")
     label:SetText(text)
     local line = parent:CreateTexture(nil, "ARTWORK")
     line:SetHeight(1)
     line:SetColorTexture(1, 0.82, 0, 0.25)
-    line:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -3)
+    line:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -(gap or 3))
     line:SetPoint("RIGHT", parent, "RIGHT", -(right or 16), 0)
     label.line = line
     return label

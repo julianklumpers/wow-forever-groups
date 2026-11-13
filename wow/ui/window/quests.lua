@@ -72,7 +72,7 @@ function W.layoutQuests(y, state)
         W.place(ui.questHeader, PAD, y)
         ui.questHeader:Show()
         ui.questHeader.line:Show()
-        y = y - 26
+        y = y - W.HEADER_STEP
         for i, key in ipairs(entry.dungeons) do
             if questRows[i] then
                 W.showQuestRow(questRows[i], key, nil, y, false)
@@ -97,7 +97,7 @@ function W.layoutQuests(y, state)
     W.place(ui.questHeader, PAD, y)
     ui.questHeader:Show()
     ui.questHeader.line:Show()
-    y = y - 26
+    y = y - W.HEADER_STEP
     for i, row in ipairs(questRows) do
         if quests[i] then
             W.showQuestRow(row, quests[i].key, quests[i], y, true)
@@ -175,7 +175,7 @@ function W.onQuestJoinClicked()
 end
 
 function W.buildQuests()
-    ui.questHeader = Widgets.header(W.frame, "Group and elite quests", PAD)
+    ui.questHeader = Widgets.header(W.frame, "Group and elite quests", PAD, W.HEADER_GAP)
     ui.questEmpty = Widgets.text(W.frame, "GameFontDisableSmall")
     ui.questEmpty:SetWidth(WIDTH - 2 * PAD)
     for i = 1, MAX_QUEST_ROWS do

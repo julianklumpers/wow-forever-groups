@@ -316,7 +316,7 @@ function W.layoutChoices(y, withPlaystyle)
     else
         W.hidePlaystyleMenu()
     end
-    y = y - 26
+    y = y - W.HEADER_STEP
     for i, role in ipairs(Widgets.ROLES) do
         W.place(roleToggles[role], PAD + (i - 1) * (TILE_WIDTH + TILE_GAP), y)
     end
@@ -359,7 +359,7 @@ function W.layoutSetup(y, partyRowCount, levelCount, otherCount)
     end
     if partyRowCount > 0 then
         W.place(ui.partyHeader, PAD, y)
-        y = y - 26
+        y = y - W.HEADER_STEP
         for i, row in ipairs(partyRows) do
             W.place(row, PAD, y - (i - 1) * PARTY_ROW_HEIGHT)
         end
@@ -368,7 +368,7 @@ function W.layoutSetup(y, partyRowCount, levelCount, otherCount)
     W.place(ui.dungeonHeader, PAD, y)
     ui.dungeonLinks:ClearAllPoints()
     ui.dungeonLinks:SetPoint("TOPRIGHT", W.frame, "TOPRIGHT", -PAD, y + 1)
-    y = y - 26
+    y = y - W.HEADER_STEP
     W.place(ui.empty, 22, y - 4)
     y = levelCount > 0 and W.layoutCells(y, 1, levelCount) or (y - DETAIL_HEIGHT)
     if not ui.otherToggle:IsShown() then
@@ -387,7 +387,7 @@ function W.layoutQueued(y, entry)
         and ns.Playstyle.describe({ entry.playstyle, unpack(ns.Playstyles.partners(entry.playstyle)) }, " or ")
     ui.queueHeader:SetText(styles and (header .. "  ·  " .. styles) or header)
     W.place(ui.queueHeader, PAD, y)
-    y = y - 26
+    y = y - W.HEADER_STEP
     local known = ns.Features.countsKnown()
     local shown = count > QUEUE_ROWS and QUEUE_ROWS - 1 or count
     for i, row in ipairs(queueRows) do
@@ -451,7 +451,7 @@ function W.selectVisible(value)
 end
 
 function W.buildRoles()
-    ui.rolesHeader = Widgets.header(W.frame, "Your roles", PAD)
+    ui.rolesHeader = Widgets.header(W.frame, "Your roles", PAD, W.HEADER_GAP)
     ui.roleHint = Widgets.text(W.frame, "GameFontHighlightSmall")
     ui.roleHint:SetWidth(WIDTH - 2 * PAD)
     ui.roleHint:SetTextColor(0.85, 0.85, 0.85)
@@ -575,7 +575,7 @@ function W.hidePlaystyleMenu()
 end
 
 function W.buildParty()
-    ui.partyHeader = Widgets.header(W.frame, "Party: roles follow each member's role in WoW", PAD)
+    ui.partyHeader = Widgets.header(W.frame, "Party: roles follow each member's role in WoW", PAD, W.HEADER_GAP)
     for i = 1, 4 do
         local row = CreateFrame("Frame", nil, W.frame)
         row:SetSize(WIDTH - 2 * PAD, PARTY_ROW_HEIGHT)
@@ -594,7 +594,7 @@ function W.buildParty()
 end
 
 function W.buildDungeons()
-    ui.dungeonHeader = Widgets.header(W.frame, "Dungeons", PAD)
+    ui.dungeonHeader = Widgets.header(W.frame, "Dungeons", PAD, W.HEADER_GAP)
     ui.otherToggle = Widgets.expander(W.frame, "Other dungeons", WIDTH - 2 * PAD, function()
         W.showOthers = not W.showOthers
         ns.LfgList.searchIfStale(5)

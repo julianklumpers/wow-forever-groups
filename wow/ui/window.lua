@@ -256,7 +256,7 @@ function W.build()
     for _, role in ipairs(Widgets.ROLES) do
         ui.setupWidgets[#ui.setupWidgets + 1] = roleToggles[role]
     end
-    ui.queueHeader = Widgets.header(W.frame, "Searching", PAD)
+    ui.queueHeader = Widgets.header(W.frame, "Searching", PAD, W.HEADER_GAP)
     for i = 1, QUEUE_ROWS do
         local row = CreateFrame("Frame", nil, W.frame)
         row:SetSize(ROW_WIDTH, QUEUE_ROW_HEIGHT)

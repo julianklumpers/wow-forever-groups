@@ -24,6 +24,11 @@ W.TILE_GAP = 12
 W.TILE_WIDTH = math.floor((W.WIDTH - 2 * W.PAD - 2 * W.TILE_GAP) / 3)
 W.PARTY_ROW_HEIGHT = 26
 W.SLOT_WIDTH, W.SLOT_GAP = 100, 8
+-- The main window's section headers: room under the text for the controls
+-- on the header line (playstyle, I'd like to lead, All / None) before the
+-- line, and the step from a header to what follows it.
+W.HEADER_GAP = 8
+W.HEADER_STEP = 31
 W.GREEN = { 0.3, 1, 0.3 }
 W.GOLD = { 1, 0.82, 0 }
 W.CONNECTION_COLORS = {
