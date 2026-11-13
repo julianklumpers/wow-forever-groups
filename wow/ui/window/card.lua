@@ -20,7 +20,7 @@ local slots = W.slots
 -- the group-found popup (Dungeons.art, cropped there for 304 x 112), shaded
 -- behind the text and fading into the card below.
 local BANNER_HEIGHT, BANNER_FADE = 74, 30
--- The row of member places, and the banner with it, inside the card.
+-- The row of member places, centred in the card.
 local SLOTS_LEFT = math.floor((WIDTH - 28 - (5 * SLOT_WIDTH + 4 * SLOT_GAP)) / 2)
 local POPUP_ASPECT = 304 / 112
 
@@ -362,11 +362,21 @@ function W.paintBanner(dungeon)
         part:SetShown(art ~= nil)
     end
     if not art then
+        card.background:ClearAllPoints()
+        card.background:SetAllPoints()
         return false
     end
     -- The popup's crop, its height narrowed to this wider banner around the
     -- same middle; the faded part continues the picture downwards.
-    local aspect = (5 * SLOT_WIDTH + 4 * SLOT_GAP) / BANNER_HEIGHT
+    -- Across the whole inner panel, and the card's background with it.
+    local left, right = W.cardBleed()
+    for _, part in ipairs({ card.bannerTop, card.background }) do
+        part:ClearAllPoints()
+        part:SetPoint("TOPLEFT", card, "TOPLEFT", -left, 0)
+    end
+    card.bannerTop:SetPoint("TOPRIGHT", card, "TOPRIGHT", right, 0)
+    card.background:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", right, 0)
+    local aspect = (WIDTH - 2 * (PAD - CARD_PADDING) + left + right) / BANNER_HEIGHT
     local middle = (crop[3] + crop[4]) / 2
     local half = (crop[4] - crop[3]) / 2 * POPUP_ASPECT / aspect
     local top, bottom = middle - half, middle + half
@@ -385,12 +395,13 @@ end
 function W.buildCard()
     local card = CreateFrame("Frame", nil, W.frame)
     card:SetSize(WIDTH - 2 * (PAD - CARD_PADDING), 100)
-    local background = card:CreateTexture(nil, "BACKGROUND")
-    background:SetAllPoints()
-    background:SetColorTexture(0, 0, 0, 0.35)
+    -- As wide as the banner, so nothing sticks out (W.paintBanner).
+    card.background = card:CreateTexture(nil, "BACKGROUND")
+    card.background:SetAllPoints()
+    card.background:SetColorTexture(0, 0, 0, 0.35)
     card.bannerTop = card:CreateTexture(nil, "BACKGROUND", nil, 1)
-    card.bannerTop:SetPoint("TOPLEFT", SLOTS_LEFT, 0)
-    card.bannerTop:SetPoint("TOPRIGHT", -SLOTS_LEFT, 0)
+    card.bannerTop:SetPoint("TOPLEFT")
+    card.bannerTop:SetPoint("TOPRIGHT")
     card.bannerTop:SetHeight(BANNER_HEIGHT - BANNER_FADE)
     card.bannerFade = card:CreateTexture(nil, "BACKGROUND", nil, 1)
     card.bannerFade:SetPoint("TOPLEFT", card.bannerTop, "BOTTOMLEFT")

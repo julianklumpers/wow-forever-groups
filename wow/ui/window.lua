@@ -64,7 +64,9 @@ local function refreshMain()
     local setup = canLead and not queued and not full and not ns.Filler.isActive()
 
     local y = -30
-    y = y - (W.paintTabs(y) and 38 or 6)
+    local tabs = W.paintTabs(y)
+    W.fitInset(tabs)
+    y = y - (tabs and 38 or 10)
     local cardBottom
     local function placeCard(top)
         W.place(ui.card, PAD - CARD_PADDING, top)

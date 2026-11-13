@@ -152,7 +152,6 @@ describe("finding a replacement", function()
         assert.are.equal(card.bannerTop.texture, card.bannerFade.texture)
         local slot = leader.ns.WindowParts.slots[1]
         assert.is_true(slot.point[5] <= -(card.bannerTop.height + card.bannerFade.height))
-        assert.are.equal(slot.point[4], -card.bannerTop.point[2])
         leader.party = {}
         leader:fire("GROUP_ROSTER_UPDATE")
         world:advance(1)

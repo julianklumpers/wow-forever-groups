@@ -172,6 +172,46 @@ function W.placeOtherQueueLink(y, state)
     return y - 22
 end
 
+-- The gold panel's inner panel (ButtonFrameTemplate's Inset) starts below
+-- room for the tabs; without tabs it moves up under the title bar, so the
+-- card starts inside it instead of across its top edge.
+local INSET_TOP_WITHOUT_TABS = -26
+-- The inner panel's border, which the card's picture stays inside.
+local INSET_BORDER = 3
+
+-- How far the card may reach left and right past its own edges to fill the
+-- inner panel (0, 0 without one).
+function W.cardBleed()
+    local saved = W.insetTopLeft
+    if not saved or type(saved[3]) ~= "number" or type(W.insetRight) ~= "number" then
+        return 0, 0
+    end
+    local cardLeft = W.PAD - W.CARD_PADDING
+    return math.max(0, cardLeft - saved[3] - INSET_BORDER), math.max(0, cardLeft + W.insetRight - INSET_BORDER)
+end
+
+function W.fitInset(tabs)
+    local inset = W.frame and W.frame.Inset
+    if type(inset) ~= "table" or type(inset.GetNumPoints) ~= "function" then
+        return
+    end
+    if not W.insetTopLeft then
+        for i = 1, inset:GetNumPoints() do
+            local point, relativeTo, relativePoint, x, y = inset:GetPoint(i)
+            if point == "TOPLEFT" then
+                W.insetTopLeft = { relativeTo, relativePoint, x, y }
+            elseif point == "BOTTOMRIGHT" then
+                W.insetRight = x
+            end
+        end
+        if not W.insetTopLeft then
+            return
+        end
+    end
+    local saved = W.insetTopLeft
+    inset:SetPoint("TOPLEFT", saved[1], saved[2], saved[3], tabs and saved[4] or INSET_TOP_WITHOUT_TABS)
+end
+
 function W.currentTab()
     local fixed = W.fixedTab()
     if fixed then

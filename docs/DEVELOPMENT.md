@@ -9,8 +9,9 @@ How the addon works inside, for anyone reading or changing the code. The player-
 - `wow/` – thin WoW layer: hidden channel, send queue, invites, `/fg` commands (`/dq` still works); `wow/ui/` window and proposal popup;
   the main window is `wow/ui/window.lua` plus its parts in `wow/ui/window/` (shared, card, setup, quests, tabs); the
   card (status, "Looking now", the group; with a group, the dungeon's picture as a banner behind its title,
-  `W.paintBanner`: the popup's crop narrowed to the wider banner, as wide as the row of member places, which sit
-  under it; a shade behind the text and a faded lower part). The connection is a dot in the title bar, left of the
+  `W.paintBanner`: the popup's crop narrowed to the wider banner, across the inner panel (`W.cardBleed`, from the
+  ButtonFrameTemplate Inset's anchors) with the card's background, the member places under it; a shade behind the
+  text and a faded lower part). Without tabs the Inset's top moves up under the title bar (`W.fitInset`). The connection is a dot in the title bar, left of the
   close button, with its word only while not plainly connected (`W.refreshConnection`)
   leads the window, except alone and choosing: then the roles come first and
   the card, without a title, follows them (`W.cardBelowRoles`)

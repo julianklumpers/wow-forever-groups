@@ -3,8 +3,9 @@
 ## 0.25.2 (2026-11-13)
 
 - The group card shows the dungeon's picture behind its title, like the group-found popup:
-  shaded behind the text and fading into the card, as wide as the row of members, which sits
-  under it. The member places have rounded corners.
+  shaded behind the text and fading into the card, across the window's whole inner panel, with
+  the members under it. The member places have rounded corners. Without tabs, the inner panel
+  starts right under the title bar.
 - The connection moved to the window's title bar: a small dot left of the close button (hover
   for details), with its word only while it isn't simply connected (connecting, a problem, an
   update out). The strip it had above the card is gone when there are no tabs.
