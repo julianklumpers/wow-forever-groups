@@ -19,7 +19,9 @@ local slots = W.slots
 -- The group's dungeon as a banner behind the card's title: the picture of
 -- the group-found popup (Dungeons.art, cropped there for 304 x 112), shaded
 -- behind the text and fading into the card below.
-local BANNER_HEIGHT, BANNER_FADE = 76, 34
+local BANNER_HEIGHT, BANNER_FADE = 74, 30
+-- The row of member places, and the banner with it, inside the card.
+local SLOTS_LEFT = math.floor((WIDTH - 28 - (5 * SLOT_WIDTH + 4 * SLOT_GAP)) / 2)
 local POPUP_ASPECT = 304 / 112
 
 -- The status card under the tabs: what the queue, the group or the party is
@@ -138,7 +140,8 @@ function W.refreshConnection()
     end
     local color = CONNECTION_COLORS[connection.state]
     Widgets.paintDot(card.dot, color)
-    card.connection:SetText(connection.text)
+    local plain = connection.state == "connected" and not newer
+    card.connection:SetText(plain and "" or connection.text)
     card.connection:SetTextColor(color[1], color[2], color[3])
     card.connectionInfo = connection
 end
@@ -202,7 +205,7 @@ function W.refreshCard(state, full, tab)
             text:Hide()
         end
     end
-    W.paintBanner(content.group and not questTab and ns.GroupView.trackedDungeon())
+    local banner = W.paintBanner(content.group and not questTab and ns.GroupView.trackedDungeon())
     local composition
     if questTab then
         composition = nil
@@ -282,8 +285,9 @@ function W.refreshCard(state, full, tab)
             card.subtitle:Show()
             y = -52
         end
-        y = y - 4
-        local left = math.floor((WIDTH - 28 - (5 * SLOT_WIDTH + 4 * SLOT_GAP)) / 2)
+        -- Under the banner's fade, not in it.
+        y = banner and -(BANNER_HEIGHT + 4) or (y - 4)
+        local left = SLOTS_LEFT
         local tallest = 0
         for i, slot in ipairs(slots) do
             tallest = math.max(tallest, Widgets.paintSlot(slot, rows[i], layout))
@@ -358,11 +362,11 @@ function W.paintBanner(dungeon)
         part:SetShown(art ~= nil)
     end
     if not art then
-        return
+        return false
     end
     -- The popup's crop, its height narrowed to this wider banner around the
     -- same middle; the faded part continues the picture downwards.
-    local aspect = (WIDTH - 2 * (PAD - CARD_PADDING)) / BANNER_HEIGHT
+    local aspect = (5 * SLOT_WIDTH + 4 * SLOT_GAP) / BANNER_HEIGHT
     local middle = (crop[3] + crop[4]) / 2
     local half = (crop[4] - crop[3]) / 2 * POPUP_ASPECT / aspect
     local top, bottom = middle - half, middle + half
@@ -375,6 +379,7 @@ function W.paintBanner(dungeon)
         CreateColor(1, 1, 1, 0), CreateColor(1, 1, 1, 1))) then
         card.bannerFade:SetAlpha(0.5)
     end
+    return true
 end
 
 function W.buildCard()
@@ -384,16 +389,16 @@ function W.buildCard()
     background:SetAllPoints()
     background:SetColorTexture(0, 0, 0, 0.35)
     card.bannerTop = card:CreateTexture(nil, "BACKGROUND", nil, 1)
-    card.bannerTop:SetPoint("TOPLEFT")
-    card.bannerTop:SetPoint("TOPRIGHT")
+    card.bannerTop:SetPoint("TOPLEFT", SLOTS_LEFT, 0)
+    card.bannerTop:SetPoint("TOPRIGHT", -SLOTS_LEFT, 0)
     card.bannerTop:SetHeight(BANNER_HEIGHT - BANNER_FADE)
     card.bannerFade = card:CreateTexture(nil, "BACKGROUND", nil, 1)
     card.bannerFade:SetPoint("TOPLEFT", card.bannerTop, "BOTTOMLEFT")
     card.bannerFade:SetPoint("TOPRIGHT", card.bannerTop, "BOTTOMRIGHT")
     card.bannerFade:SetHeight(BANNER_FADE)
     card.bannerShade = card:CreateTexture(nil, "BACKGROUND", nil, 2)
-    card.bannerShade:SetPoint("TOPLEFT")
-    card.bannerShade:SetPoint("TOPRIGHT")
+    card.bannerShade:SetPoint("TOPLEFT", card.bannerTop, "TOPLEFT")
+    card.bannerShade:SetPoint("TOPRIGHT", card.bannerTop, "TOPRIGHT")
     card.bannerShade:SetHeight(BANNER_HEIGHT)
     card.bannerShade:SetColorTexture(1, 1, 1, 1)
     local hasGradient = type(CreateColor) == "function"
@@ -411,19 +416,24 @@ function W.buildCard()
         ns.ProgressWindow.toggle()
     end)
     card.progressLink:SetPoint("TOPRIGHT", -12, -13)
-    -- The channel connection, small on the right of the tab row: a dot and
-    -- the state in its colour. It belongs to both tabs; the card below the
-    -- tabs shows the chosen tab's status.
+    -- The channel connection in the title bar, left of the close button: a
+    -- dot in the state's colour, with its word only while it is not simply
+    -- connected (connecting, a problem, an update out); details on hover.
     local bar = CreateFrame("Frame", nil, W.frame)
-    bar:SetSize(WIDTH - 2 * (PAD - CARD_PADDING), 2)
+    bar:SetSize(1, 16)
+    if W.frame.CloseButton then
+        bar:SetPoint("RIGHT", W.frame.CloseButton, "LEFT", -4, 0)
+    else
+        bar:SetPoint("TOPRIGHT", W.frame, "TOPRIGHT", -32, -4)
+    end
     ui.connectionBar = bar
     card.connection = Widgets.text(bar, "GameFontNormalSmall", "RIGHT")
-    card.connection:SetPoint("RIGHT", bar, "RIGHT", -CARD_PADDING, 0)
+    card.connection:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
     card.dot = Widgets.dot(bar)
     card.dot:SetPoint("RIGHT", card.connection, "LEFT", -5, 0)
     local hover = CreateFrame("Frame", nil, bar)
-    hover:SetPoint("TOPLEFT", card.dot, "TOPLEFT", -4, 4)
-    hover:SetPoint("BOTTOMRIGHT", card.connection, "BOTTOMRIGHT", 4, -4)
+    hover:SetPoint("TOPLEFT", card.dot, "TOPLEFT", -6, 6)
+    hover:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 4, -2)
     hover:EnableMouse(true)
     hover:SetScript("OnEnter", function(self)
         local info = card.connectionInfo

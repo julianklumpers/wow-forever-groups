@@ -710,11 +710,10 @@ end
 -- One place in the group: role icon with the player's name in class colour,
 -- or a dim icon with "open".
 function Widgets.slot(parent)
-    local slot = CreateFrame("Frame", nil, parent)
+    local slot = backdropFrame("Frame", parent)
     slot:SetSize(100, 50)
-    local background = slot:CreateTexture(nil, "BACKGROUND")
-    background:SetAllPoints()
-    background:SetColorTexture(1, 1, 1, 0.05)
+    addOutline(slot)
+    paintOutline(slot, { 1, 1, 1, 0.05 }, { 1, 1, 1, 0.14 })
     slot.icon = Widgets.roleIcon(slot, "D", 20)
     slot.icon:SetPoint("TOP", 0, -4)
     slot.name = Widgets.text(slot, "GameFontHighlightSmall", "CENTER")
