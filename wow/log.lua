@@ -60,6 +60,17 @@ function Log.info(fmt, ...)
     store("INFO", msg)
 end
 
+-- How Forever Groups gets a group (asking leaders, inviting from the Group
+-- Finder, whispers): kept out of the chat so it simply seems to happen;
+-- shown with /fg debug on, and always in the saved log.
+function Log.detail(fmt, ...)
+    local msg = format(fmt, ...)
+    store("DETAIL", msg)
+    if ns.db and ns.db.debug then
+        print(PREFIX .. msg)
+    end
+end
+
 function Log.warn(fmt, ...)
     local msg = format(fmt, ...)
     print(PREFIX .. "|cffffd040" .. msg .. "|r")

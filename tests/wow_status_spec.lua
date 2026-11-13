@@ -36,8 +36,12 @@ describe("Status bar", function()
         client.ns.db.noListing = true
         client:slash("/dq join tank,dps auto")
         world:advance(65)
+        assert.truthy(statusText(client):find("^In queue 1:0%d as Tank/DPS$"))
+        client.ns.db.debug = true
+        client.ns.Status.refresh()
         assert.truthy(statusText(client):find(
             "^In queue 1:0%d as Tank/DPS  %-  Building your own group: looking for"))
+        client.ns.db.debug = false
         assert.is_nil(statusText(client):find("click to search", 1, true))
         local bar = client:frame("ForeverGroupsStatusFrame")
         local searches = client.searches

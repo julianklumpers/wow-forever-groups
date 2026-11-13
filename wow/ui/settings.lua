@@ -86,7 +86,9 @@ local TABS = {
                     { key = "showSentWhispers", inverted = true,
                         label = "Hide the whispers Forever Groups sends for me",
                         tip = "The players still get them; only the copy in your own chat (\"To ...\") is left "
-                            .. "out. Answers that come back always show, and whispers you type yourself too." },
+                            .. "out, and so are the answers of a leader Forever Groups asked for you (it answers "
+                            .. "their questions about your level, class or spec). Whispers you type yourself, and "
+                            .. "from anyone else, always show. /fg debug on shows everything." },
                     { key = "noPartyAnnounce", inverted = true, label = "Post in party chat",
                         tip = "As leader, says in party chat that the group is complete, and when you look for "
                             .. "a replacement." },

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.26.0 (2026-11-13)
+
+- Finding a group now simply happens: no more chat lines about asking leaders, inviting players
+  from the Group Finder or building your own group, and no "Asking groups to invite you (1
+  asked) · own group in 0:24" in the status. You see "In queue" / "Looking for a group", then
+  "Group forming" and your group; when you join a group a leader you asked, one line says so:
+  "Group found for Ragefire Chasm: you're the Tank."
+- The answers of a leader Forever Groups asked for you stay out of your chat too, and when such a
+  leader asks back for your level, class or spec ("lvl?", "what spec?"), Forever Groups answers
+  for you, unseen (Settings → Messages: "Answer to an asked leader's question"). Whispers from
+  anyone else always show.
+- `/fg debug on` shows all of it again in chat and in the status (`/fg debug off` hides it);
+  everything is always in the saved log for `/fg bugreport`.
+
 ## 0.25.2 (2026-11-13)
 
 - Fixes from a code review: an asked group whose listing can't be read for a moment no longer

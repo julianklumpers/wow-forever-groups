@@ -64,6 +64,7 @@ servers or websites involved; everything happens in game.
 | `/fg help` | All commands |
 | `/fg selftest` | Check which game features work in your client |
 | `/fg bugreport` | A report to copy when something goes wrong |
+| `/fg debug on` | Show in chat everything Forever Groups does for you (`/fg debug off` to hide it again) |
 
 ## Questions
 
@@ -78,9 +79,10 @@ when asking to be invited, and (as leader) a line in party chat when the group i
 It only contacts players listed for the same dungeon or quest, asks one group leader at a
 time (the next after 20 seconds without an invite, or at once when the leader says no or the
 group fills up), recently listed groups first, and doesn't ask the same leader again for 15
-minutes. When a leader you asked invites you, you join right away (a setting). You can change
-or turn off every message. The "To ..." copies of these whispers are left out of your own chat
-(a setting); the other player gets them as usual.
+minutes. When a leader you asked invites you, you join right away (a setting). If a leader
+asks back for your level, class or spec, Forever Groups answers for you. You can change or turn
+off every message. None of this shows in your chat: you just see "Looking for a group" and then
+your group. Type `/fg debug on` to see everything it does.
 
 **Can I use it without WoW's Group Finder?**
 Yes: turn off "Use WoW's Group Finder" in the settings. Forever Groups then only works with

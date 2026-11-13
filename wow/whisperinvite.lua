@@ -103,7 +103,7 @@ local function inviteForDungeon(name, role)
         return
     end
     reply(name, ns.Messages.text("whisperYes", { role = string.lower(roleName), dungeon = dungeon }))
-    Log.info("Invited %s, who whispered you, as %s.", name, roleName)
+    Log.detail("Invited %s, who whispered you, as %s.", name, roleName)
     return true
 end
 
@@ -116,7 +116,7 @@ local function inviteForQuest(name, role)
     if not ns.QuestFinder.inviteWhisperer(name, role) then
         return false
     end
-    Log.info("Invited %s, who whispered you, as %s.", name, roleName)
+    Log.detail("Invited %s, who whispered you, as %s.", name, roleName)
     return true
 end
 

@@ -32,6 +32,13 @@ describe("reading a leader's answer", function()
         end
     end)
 
+    it("knows a question about the player", function()
+        for _, text in ipairs({ "lvl?", "what spec?", "class?", "you tank?", "ilvl" }) do
+            assert.is_true(Replies.isQuestion(text), text)
+        end
+        assert.is_false(Replies.isQuestion("sure"))
+    end)
+
     it("does not read words inside other words", function()
         assert.is_nil(Replies.classify("know any healer?"))
         assert.is_nil(Replies.classify("fullmetal"))

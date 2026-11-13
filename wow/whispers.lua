@@ -15,6 +15,9 @@ local Whispers = {}
 local ECHO_WAIT = 10
 
 local pending = {}
+-- Players whose whispers to us are answers to a whisper the addon sent
+-- (a leader it asked): name => until when they stay out of the chat.
+local quiet = {}
 
 -- WoW may give a name with or without the realm.
 local function sameName(a, b)
@@ -52,7 +55,7 @@ local function prune()
 end
 
 local function hideEcho(_, _, text, target)
-    if ns.db and ns.db.showSentWhispers then
+    if ns.db and (ns.db.showSentWhispers or ns.db.debug) then
         return false
     end
     if ns.isSecret(text) or ns.isSecret(target) or type(text) ~= "string" then
@@ -65,6 +68,26 @@ local function hideEcho(_, _, text, target)
         if sent.text == text and sameName(sent.name, target) then
             return true
         end
+    end
+    return false
+end
+
+-- Whispers from this player are answers to the addon's question for the
+-- next `seconds`: kept out of the chat (shown with /fg debug on).
+function Whispers.expectReplies(name, seconds)
+    quiet[name] = GetTime() + seconds
+end
+
+local function hideReply(_, _, text, sender)
+    if (ns.db and (ns.db.showSentWhispers or ns.db.debug)) or ns.isSecret(sender) or ns.isSecret(text) then
+        return false
+    end
+    local key = Whispers.find(quiet, sender)
+    if key and GetTime() < quiet[key] then
+        return true
+    end
+    if key then
+        quiet[key] = nil
     end
     return false
 end
@@ -88,6 +111,7 @@ function Whispers.init()
         return
     end
     pcall(add, "CHAT_MSG_WHISPER_INFORM", hideEcho)
+    pcall(add, "CHAT_MSG_WHISPER", hideReply)
 end
 
 ns.Whispers = Whispers

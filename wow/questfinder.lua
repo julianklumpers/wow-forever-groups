@@ -23,8 +23,9 @@ local asked = {}
 -- Asked leaders who said no or whose group left the Group Finder, and those
 -- who said yes (when).
 local over, promisedAt = {}, {}
--- The Group Finder result each asked leader was asked from.
-local askedIds = {}
+-- The Group Finder result each asked leader was asked from, and the
+-- leaders whose question was answered.
+local askedIds, answered = {}, {}
 -- Everyone invited while this queue entry lasts: a player who let the
 -- invite run out is not invited again.
 local tried = {}
@@ -151,7 +152,7 @@ local function invite(listing, key, role, quest)
     if not ok then
         Log.warn("Inviting %s failed: %s", listing.name, tostring(err))
     end
-    Log.info("Invited %s from the Group Finder for %s.", listing.name, quest.title)
+    Log.detail("Invited %s from the Group Finder for %s.", listing.name, quest.title)
 end
 
 local function ask(listing, quest)
@@ -169,7 +170,8 @@ local function ask(listing, quest)
         return
     end
     ns.Apply.rememberAsk(listing.leader)
-    Log.info("Asked %s, who leads a group in %s, to invite you for %s.", listing.leader, quest.zone, quest.title)
+    ns.Whispers.expectReplies(listing.leader, 90)
+    Log.detail("Asked %s, who leads a group in %s, to invite you for %s.", listing.leader, quest.zone, quest.title)
 end
 
 local function askCount()
@@ -193,7 +195,7 @@ local function settleAsks(listings, updatedAt)
             end
             if not listed then
                 over[leader] = true
-                Log.info("%s's group is no longer listed; asking another.", leader)
+                Log.detail("%s's group is no longer listed; asking another.", leader)
             end
         end
     end
@@ -407,16 +409,22 @@ function QuestFinder.onWhisper(text, sender)
     end
     if answer == "no" then
         over[sender] = true
-        Log.info("%s can't take you; asking another group.", sender)
+        Log.detail("%s can't take you; asking another group.", sender)
         QuestFinder.onResults()
-    elseif answer == "yes" then
+        return
+    end
+    if answer == "yes" then
         promisedAt[sender] = GetTime()
+    end
+    if not answered[sender] and ns.Replies.isQuestion(text) then
+        answered[sender] = true
+        ns.Apply.answerQuestion(sender)
     end
 end
 
 function QuestFinder.reset()
     invited, asked, tried, focus, chosen, focusJoined = {}, {}, {}, nil, nil, nil
-    over, promisedAt, askedIds = {}, {}, {}
+    over, promisedAt, askedIds, answered = {}, {}, {}, {}
 end
 
 -- For the status: { invited = n, asked = n }.
@@ -472,7 +480,8 @@ function QuestFinder.onInvite(inviter, tank, healer, dps)
     local role = ns.LfgPick.joinRole(current.members[1].roles,
         remaining or ns.LfgPick.inviteRoles(tank == true, healer == true, dps == true))
     if ns.Group.acceptInvite(role) then
-        Log.info("Joined %s's group as %s.", inviter, ns.Widgets.ROLE_NAMES[role] or "?")
+        Log.info("Questing group found: you're the %s.", ns.Widgets.ROLE_NAMES[role] or "?")
+        Log.detail("Joined %s's group.", inviter)
     end
 end
 

@@ -88,8 +88,11 @@ function Status.current(scope)
             headline = "A group was found: accept the WoW invite from " .. group.leader .. ".",
         }
     end
+    -- How the group comes about (asking leaders, inviting from the Group
+    -- Finder) shows only with /fg debug on; otherwise it simply happens.
+    local details = ns.db and ns.db.debug
     local applied = ns.Apply.summary()
-    if applied and applied.invitedBy then
+    if applied and applied.invitedBy and (details or ns.db.noAutoAcceptAsked) then
         return {
             text = "Accept the invite from " .. applied.invitedBy,
             detail = "Group for " .. Dungeons.name(applied.dungeon), alert = true, lead = false,
@@ -97,8 +100,8 @@ function Status.current(scope)
         }
     end
     local fill = ns.Filler.summary()
-    local detail = fill and ("Building your own group: " .. fill) or nil
-    if applied and applied.asked then
+    local detail = details and fill and ("Building your own group: " .. fill) or nil
+    if details and applied and applied.asked then
         detail = string.format("Asking groups to invite you (%d asked)  ·  own group in %s", applied.asked,
             Widgets.formatTime(applied.left))
     end
@@ -130,13 +133,13 @@ function Status.current(scope)
         local roles = questEntry.members[1].roles
         local finder = ns.QuestFinder.summary()
         local parts = { ns.QuestQueue.describe(questEntry.dungeons) }
-        if finder.invited > 0 then
+        if details and finder.invited > 0 then
             parts[#parts + 1] = string.format("invited %d from the Group Finder", finder.invited)
         end
-        if finder.asked > 0 then
+        if details and finder.asked > 0 then
             parts[#parts + 1] = string.format("asked %d group%s", finder.asked, finder.asked == 1 and "" or "s")
         end
-        if ns.Listing.isOurs() then
+        if details and ns.Listing.isOurs() then
             parts[#parts + 1] = "listed in the Group Finder"
         end
         return waiting(string.format("Looking for a questing group %s as %s",
@@ -144,7 +147,7 @@ function Status.current(scope)
             table.concat(parts, "  ·  "), { roles = roles })
     end
     if fill then
-        return lead("Group Finder: " .. fill, view and view.text, { slots = slots })
+        return lead(details and ("Group Finder: " .. fill) or "Group forming", view and view.text, { slots = slots })
     end
 
     if view then

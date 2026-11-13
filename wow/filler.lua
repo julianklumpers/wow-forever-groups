@@ -131,12 +131,12 @@ local function invite(pick)
     if not ok then
         Log.debug("invite %s failed: %s", pick.name, tostring(err))
     end
-    Log.info("Invited %s from the Group Finder as %s.", pick.name, role)
+    Log.detail("Invited %s from the Group Finder as %s.", pick.name, role)
 end
 
 local function finish(text)
     if text then
-        Log.info(text)
+        Log.detail(text)
     end
     state = nil
     render()
@@ -306,7 +306,7 @@ function Filler.start(opts)
     if dungeon then
         ns.GroupView.track(dungeon)
     end
-    Log.info("Looking in the Group Finder for: %s.", describeLetters(opts.missing))
+    Log.detail("Looking in the Group Finder for: %s.", describeLetters(opts.missing))
     Filler.step()
 end
 
@@ -399,7 +399,7 @@ function Filler.recompute()
     end
     local missing = Filler.missingFor(members)
     if missing and missing ~= state.open then
-        Log.info("Roles changed; now looking for: %s.", missing ~= "" and describeLetters(missing) or "nobody")
+        Log.detail("Roles changed; now looking for: %s.", missing ~= "" and describeLetters(missing) or "nobody")
         state.open = missing
         changed()
         Filler.step()
@@ -517,7 +517,7 @@ local function checkJoins()
             state.pending[name] = nil
             state.open = removeLetter(state.open, pending.role)
             found = true
-            Log.info("%s joined as %s.", name, Widgets.ROLE_NAMES[pending.role])
+            Log.detail("%s joined as %s.", name, Widgets.ROLE_NAMES[pending.role])
         end
     end
     for name, role in pairs(state.late) do
@@ -527,7 +527,7 @@ local function checkJoins()
             ns.RoleSync.expect(name, role)
             if string.find(state.open, role, 1, true) then
                 state.open = removeLetter(state.open, role)
-                Log.info("%s joined after all, as %s.", name, Widgets.ROLE_NAMES[role])
+                Log.detail("%s joined after all, as %s.", name, Widgets.ROLE_NAMES[role])
             else
                 Log.warn("%s joined after all, but the %s spot was given to someone else.", name,
                     Widgets.ROLE_NAMES[role])
@@ -587,7 +587,7 @@ local function onSystemMessage(text)
         if name and state.pending[name] then
             state.pending[name] = nil
             ns.RoleSync.forget(name)
-            Log.info("%s did not join; trying someone else.", name)
+            Log.detail("%s did not join; trying someone else.", name)
             changed()
             Filler.step()
             return
@@ -613,7 +613,7 @@ function Filler.tick()
             state.late[name] = pending.role
             ns.RoleSync.forget(name)
             expired = true
-            Log.info("%s did not answer the invite; trying someone else.", name)
+            Log.detail("%s did not answer the invite; trying someone else.", name)
         end
     end
     if expired then

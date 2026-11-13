@@ -90,7 +90,7 @@ describe("Group Finder flows after review", function()
         tank:joins("Heal A")
         world:advance(3)
         assert.is_false(tank.ns.Filler.isActive())
-        assert.is_true(tank:said("Heal A joined after all, as Healer"))
+        assert.is_true(tank:logged("Heal A joined after all, as Healer"))
     end)
 
     it("lists the group even when nobody fitting is listed yet", function()

@@ -361,6 +361,16 @@ function Client:said(pattern)
     return false
 end
 
+-- A line in the saved log (also the details kept out of the chat).
+function Client:logged(pattern)
+    for _, line in ipairs(self.ns.db.log or {}) do
+        if line:find(pattern) then
+            return true
+        end
+    end
+    return false
+end
+
 -- The player presses a key while playing.
 -- A mouse click on the 3D world (not on a window): player input, like a key.
 function Client:clickWorld(button)
@@ -398,7 +408,14 @@ function Client:leaves(name)
     self:fire("GROUP_ROSTER_UPDATE")
 end
 
+-- Whether chat filters keep it out of the chat is in client.incoming.
 function Client:whisperFrom(name, text)
+    local hidden = false
+    for _, filter in ipairs(self.chatFilters.CHAT_MSG_WHISPER or {}) do
+        hidden = hidden or filter(self.env.ChatFrame1, "CHAT_MSG_WHISPER", text, name) == true
+    end
+    self.incoming = self.incoming or {}
+    self.incoming[#self.incoming + 1] = { name = name, text = text, hidden = hidden }
     self:fire("CHAT_MSG_WHISPER", text, name)
 end
 

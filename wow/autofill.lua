@@ -103,7 +103,7 @@ function AutoFill.afterGroupFormed(view)
     end
     local ok, err = ns.join(members, { view.dungeon }, view.joinedAt)
     if ok then
-        Log.info("Still looking for %s for %s.", ns.Widgets.describeRoles(view.missing), Dungeons.name(view.dungeon))
+        Log.detail("Still looking for %s for %s.", ns.Widgets.describeRoles(view.missing), Dungeons.name(view.dungeon))
     else
         Log.debug("could not stay in the queue with the group: %s", tostring(err))
     end

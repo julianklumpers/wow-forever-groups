@@ -168,9 +168,17 @@ local function cmdDungeons(rest)
     end
 end
 
-local function cmdDebug()
-    ns.db.debug = not ns.db.debug
-    Log.info("Debug logging %s.", ns.db.debug and "on" or "off")
+local function cmdDebug(rest)
+    local word = string.lower(trim(rest or ""))
+    if word == "on" then
+        ns.db.debug = true
+    elseif word == "off" then
+        ns.db.debug = false
+    else
+        ns.db.debug = not ns.db.debug
+    end
+    Log.info("Debug %s: %s.", ns.db.debug and "on" or "off", ns.db.debug
+        and "what Forever Groups does (asking, inviting, whispers) shows in chat" or "only the results show")
 end
 
 local function cmdSlots(rest)
@@ -397,7 +405,7 @@ local COMMANDS = {
     { "status", "show queue and connection status", cmdStatus },
     { "dungeons", "[all] list dungeons for your level", cmdDungeons },
     { "invite", "send the group invites again (leader)", Group.inviteAll },
-    { "debug", "toggle logging of sent and received messages", cmdDebug },
+    { "debug", "[on | off]  show what Forever Groups does (asking, inviting, whispers, messages)", cmdDebug },
     { "slots", "<t> <h> <d> | reset  test with a smaller group", cmdSlots },
     { "log", "[n] show the last n log lines", cmdLog },
     { "queue", "show who is looking (queue and Group Finder)", function() ns.QueueWindow.show() end },

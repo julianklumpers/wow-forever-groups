@@ -18,8 +18,13 @@ How the addon works inside, for anyone reading or changing the code. The player-
   leads the window, except alone and choosing: then the roles come first and
   the card, without a title, follows them (`W.cardBelowRoles`)
 - every whisper the addon sends goes through `wow/whispers.lua` (`Whispers.send`), which hides its "To ..." echo in
-  the player's chat with a `CHAT_MSG_WHISPER_INFORM` filter (exact text and name, for 10 s; off with
-  `db.showSentWhispers`)
+  the player's chat with a `CHAT_MSG_WHISPER_INFORM` filter (exact text and name, for 10 s); a leader asked
+  automatically (`Whispers.expectReplies`, 90 s) has their whispers kept out with a `CHAT_MSG_WHISPER` filter, and a
+  question of theirs (`Replies.isQuestion`) gets the `askAnswer` message. Both filters are off with
+  `db.showSentWhispers` or `db.debug`
+- how a group comes about is kept out of sight: process lines use `Log.detail` (saved log; chat only with
+  `/fg debug on`, `db.debug`), and `Status.current` adds the asking/filling details only with `db.debug`; the chat
+  gets outcomes ("Group found for X: you're the Tank.")
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
 - `probe/ForeverGroupsProbe/` – API probe addon for in-game checks (`/fgp help`)
 - `tests/` – busted specs; `tests/helpers/sim.lua` simulates engines on a shared channel,

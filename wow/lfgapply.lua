@@ -20,6 +20,8 @@ local ASK_TIMEOUT = 20
 -- A leader who whispered yes gets this long to send the invite, also past
 -- the time we would otherwise start building our own group.
 local PROMISE_WAIT = 30
+-- How long an asked leader's whispers stay out of the chat.
+local REPLY_QUIET = 90
 local WAIT_FOR_INVITE = 60
 local ASK_SPACING = 2
 local INVITE_VALID = 60
@@ -105,7 +107,7 @@ local function settleAsks(roles)
             end
             if not room then
                 a.over = true
-                Log.info("%s's group %s; asking another.", leader, found and "is full" or "is no longer listed")
+                Log.detail("%s's group %s; asking another.", leader, found and "is full" or "is no longer listed")
             end
         end
     end
@@ -246,10 +248,13 @@ function ask(pick)
     end
     if not pick.request then
         Apply.rememberAsk(pick.leader)
+        ns.Whispers.expectReplies(pick.leader, REPLY_QUIET)
     end
     asks[pick.leader] = { dungeon = pick.dungeon, at = GetServerTime(), askedAt = GetTime(), request = pick.request,
         listingId = pick.id }
-    Log.info("Asked %s to invite you for %s.", pick.leader, Dungeons.name(pick.dungeon))
+    -- The player's own "Request to join" says it was sent; automatic asks don't.
+    local say = pick.request and Log.info or Log.detail
+    say("Asked %s to invite you for %s.", pick.leader, Dungeons.name(pick.dungeon))
 end
 
 -- Follows an invite from a leader we asked: joined, or expired.
@@ -259,7 +264,7 @@ local function followInvite()
         return false
     end
     if IsInGroup() and not UnitIsGroupLeader("player") then
-        Log.info("You joined %s's group for %s.", leader, Dungeons.name(invited.dungeon))
+        Log.detail("You joined %s's group for %s.", leader, Dungeons.name(invited.dungeon))
         Apply.reset()
         ns.Filler.stop(true)
         if ns.engine and ns.engine.myEntry then
@@ -284,7 +289,7 @@ function Apply.tick()
     seekingStartedAt = seekingStartedAt or GetTime() - SEARCH_SLACK
     if GetServerTime() - seekingSince >= WAIT_FOR_INVITE and not promised() then
         if askCount() > 0 then
-            Log.info("No invite from the groups you asked; building your own group now.")
+            Log.detail("No invite from the groups you asked; building your own group now.")
         end
         dropAutomaticAsks()
         return
@@ -325,7 +330,8 @@ local function onInviteRequest(inviter, tank, healer, dps)
     a.invitedAt = GetServerTime()
     local role = joinRole(inviter, tank == true, healer == true, dps == true)
     if not ns.db.noAutoAcceptAsked and (a.request or Apply.isSeeker()) and ns.Group.acceptInvite(role) then
-        Log.info("Joined %s's group for %s as %s.", inviter, Dungeons.name(a.dungeon), Widgets.ROLE_NAMES[role] or "?")
+        Log.info("Group found for %s: you're the %s.", Dungeons.name(a.dungeon), Widgets.ROLE_NAMES[role] or "?")
+        Log.detail("Joined %s's group.", inviter)
         return
     end
     Log.info("%s invited you for %s. Accept the invite!", inviter, Dungeons.name(a.dungeon))
@@ -365,6 +371,20 @@ end
 
 -- A whisper from a leader we asked: a clear no moves on to the next group
 -- at once, a clear yes holds off asking others while the invite comes.
+-- A question from an asked leader ("lvl?", "what spec?") gets the player's
+-- level, spec and role, as unseen as the question.
+function Apply.answerQuestion(leader)
+    local entry = ns.engine and ns.engine.myEntry
+    local roles = entry and entry.members[1].roles or ns.charDb.lastRoles or ""
+    local text = ns.Messages.text("askAnswer", {
+        level = UnitLevel("player"), spec = ns.Spec.myLabel() or "", role = Widgets.describeRoles(roles),
+    })
+    if text and not (C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()) then
+        ns.Whispers.send(leader, text)
+        Log.detail("Answered %s's question: %s", leader, text)
+    end
+end
+
 function Apply.wasAsked(name)
     return ns.Whispers.find(asks, name) ~= nil
 end
@@ -381,9 +401,15 @@ function Apply.onWhisper(text, sender)
     end
     if answer == "no" then
         a.over = true
-        Log.info("%s can't take you; asking another group.", sender)
-    elseif answer == "yes" then
+        Log.detail("%s can't take you; asking another group.", key)
+        return
+    end
+    if answer == "yes" then
         a.yesAt = GetServerTime()
+    end
+    if not a.request and not a.answered and ns.Replies.isQuestion(text) then
+        a.answered = true
+        Apply.answerQuestion(key)
     end
 end
 

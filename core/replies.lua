@@ -38,6 +38,22 @@ local function anyWord(set, list)
     return false
 end
 
+-- Words of a question about the player, which the addon can answer itself
+-- ("lvl?", "what spec?", "class?", "you tank?").
+local QUESTION_WORDS = { "lvl", "level", "class", "spec", "role", "ilvl", "gs", "gear", "tank", "heal", "healer",
+    "dps", "what", "which" }
+
+function Replies.isQuestion(text)
+    if type(text) ~= "string" then
+        return false
+    end
+    local set = {}
+    for word in string.gmatch(string.lower(text), "[%a]+") do
+        set[word] = true
+    end
+    return anyWord(set, QUESTION_WORDS)
+end
+
 function Replies.classify(text)
     if type(text) ~= "string" then
         return nil

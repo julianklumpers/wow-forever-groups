@@ -26,6 +26,9 @@ Messages.LIST = {
     { id = "questAsk", label = "Asking a group leader to invite you (quest)",
         default = "Level {level} {spec} ({role}) here, could you invite me for {quest}?",
         keys = { "level", "spec", "role", "quest" } },
+    { id = "askAnswer", label = "Answer to an asked leader's question (level, class, spec)",
+        default = "Level {level} {spec}, {role}.",
+        keys = { "level", "spec", "role" }, markAtEnd = true },
     { id = "whisperYes", label = "Answer: inviting a player who whispered you",
         default = "Inviting you as {role} for {dungeon}.",
         keys = { "role", "dungeon" } },
@@ -73,6 +76,7 @@ end
 local function fill(template, values)
     if values.spec == nil or values.spec == "" then
         template = string.gsub(template, "{spec} %({role}%)", "{role}")
+        template = string.gsub(template, " {spec},", ",")
     end
     local parts = {}
     for sentence in string.gmatch(template, "[^%.!%?]+[%.!%?]*%s*") do
