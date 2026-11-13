@@ -66,7 +66,11 @@ local function refreshMain()
     local y = -30
     local tabs = W.paintTabs(y)
     W.fitInset(tabs)
-    y = y - (tabs and 38 or 10)
+    if tabs then
+        y = y - 38
+    else
+        y = W.insetTop() or (y - 10)
+    end
     local cardBottom
     local function placeCard(top)
         W.place(ui.card, PAD - CARD_PADDING, top)

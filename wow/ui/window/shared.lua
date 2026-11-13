@@ -179,6 +179,15 @@ local INSET_TOP_WITHOUT_TABS = -26
 -- The inner panel's border, which the card's picture stays inside.
 local INSET_BORDER = 3
 
+-- Without tabs: the top of the inner panel's inside, where the card starts;
+-- nil without an inner panel.
+function W.insetTop()
+    if not W.insetTopLeft then
+        return nil
+    end
+    return INSET_TOP_WITHOUT_TABS - INSET_BORDER
+end
+
 -- How far the card may reach left and right past its own edges to fill the
 -- inner panel (0, 0 without one).
 function W.cardBleed()
