@@ -447,6 +447,12 @@ function W.buildCard()
     bar:SetSize(1, 16)
     if W.frame.CloseButton then
         bar:SetPoint("RIGHT", W.frame.CloseButton, "LEFT", -4, 0)
+        -- The panel's title bar and border are frames of their own; on the
+        -- close button's level the dot is drawn above them.
+        local level = W.frame.CloseButton.GetFrameLevel and W.frame.CloseButton:GetFrameLevel()
+        if type(level) == "number" then
+            bar:SetFrameLevel(level)
+        end
     else
         bar:SetPoint("TOPRIGHT", W.frame, "TOPRIGHT", -32, -4)
     end
