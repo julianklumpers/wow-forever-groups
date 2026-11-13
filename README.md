@@ -49,7 +49,7 @@ servers or websites involved; everything happens in game.
 ## Getting started
 
 1. Install the addon (CurseForge, Wago or WoWInterface) and log in.
-2. Type `/fg` or click the minimap button.
+2. Type `/fg`, click the minimap button, or the Forever Groups tab on WoW's Group Finder.
 3. Tick your roles and dungeons (or open the **Quests** tab) and press **Find group**.
 
 ## Commands

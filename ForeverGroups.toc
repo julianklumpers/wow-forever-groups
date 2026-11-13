@@ -79,6 +79,7 @@ wow\ui\playermenu.lua
 wow\ui\playstylemenu.lua
 wow\ui\queuewindow.lua
 wow\ui\minimap.lua
+wow\ui\findertab.lua
 wow\ui\settings.lua
 wow\ui\messageswindow.lua
 wow\slash.lua

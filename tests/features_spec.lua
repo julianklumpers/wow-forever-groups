@@ -478,3 +478,41 @@ describe("the group card", function()
         assert.is_false(leader:find("Button", "Quest progress").enabled)
     end)
 end)
+
+describe("the tab on WoW's Group Finder", function()
+    local function finder(client)
+        local env = client.env
+        local parent = env.CreateFrame("Frame", "LFGParentFrame", env.UIParent)
+        parent.WhoListingTab = env.CreateFrame("Frame", nil, parent)
+        env.HideUIPanel = function(frame)
+            client.hiddenPanel = frame
+        end
+        return parent
+    end
+
+    it("appears once WoW's Group Finder loads, under its tabs, and opens the Forever Groups window", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 20 })
+        world:advance(30)
+        local parent = finder(client)
+        client:fire("ADDON_LOADED", "Blizzard_GroupFinder_VanillaStyle")
+        local tab = client.ns.FinderTab.tab()
+        assert.is_not_nil(tab)
+        assert.are.equal(parent, tab.parent)
+        assert.are.equal("LargeSideTabButtonTemplate", tab.template)
+        assert.are.same({ "TOPLEFT", parent.WhoListingTab, "BOTTOMLEFT", 0, -2 }, tab.point)
+        tab.mouseUpHandler(tab, "LeftButton", true)
+        assert.is_true(client:frame("ForeverGroupsFrame").shown)
+        assert.are.equal(parent, client.hiddenPanel)
+    end)
+
+    it("goes under LFGForever's tab when that one is there", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 20 })
+        world:advance(30)
+        local parent = finder(client)
+        local other = client.env.CreateFrame("Frame", "LFGForeverBlizzardTab", parent)
+        client:fire("ADDON_LOADED", "Blizzard_GroupFinder_VanillaStyle")
+        assert.are.same({ "TOPLEFT", other, "BOTTOMLEFT", 0, -2 }, client.ns.FinderTab.tab().point)
+    end)
+end)

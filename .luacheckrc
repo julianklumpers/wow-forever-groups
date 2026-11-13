@@ -4,6 +4,8 @@ codes = true
 exclude_files = { ".lua51/", "dist/", ".lua/", ".luarocks/", ".install/" }
 
 local wow_read_globals = {
+    "HideUIPanel",
+    "LFGParentFrame",
     "LFGInvitePopup",
     "StaticPopupSpecial_Hide",
     "MenuResponse",

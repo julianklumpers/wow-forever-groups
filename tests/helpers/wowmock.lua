@@ -747,6 +747,12 @@ local function buildEnv(world, client)
         end
         return widget
     end
+    function methods.SetCustomOnMouseUpHandler(widget, handler)
+        widget.mouseUpHandler = handler
+    end
+    function methods.GetParent(widget)
+        return widget.parent
+    end
     function methods.SetupMenu(widget, generator)
         widget.menuGenerator = generator
     end

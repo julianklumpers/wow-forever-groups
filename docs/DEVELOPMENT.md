@@ -28,6 +28,10 @@ How the addon works inside, for anyone reading or changing the code. The player-
 - how a group comes about is kept out of sight: process lines use `Log.detail` (saved log; chat only with
   `/fg debug on`, `db.debug`), and `Status.current` adds the asking/filling details only with `db.debug`; the chat
   gets outcomes ("Group found for X: you're the Tank.")
+- `wow/ui/findertab.lua` adds a launcher tab to WoW's Group Finder (`LFGParentFrame`, from the load-on-demand
+  `Blizzard_GroupFinder_VanillaStyle`) with WoW's `LargeSideTabButtonTemplate`, under the last side tab (LFGForever's
+  `LFGForeverBlizzardTab` when present, re-placed on show). It only opens our window and closes theirs
+  (`HideUIPanel`, out of combat); that Group Finder is secure code, so its panels are never shown or read
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
 - `probe/ForeverGroupsProbe/` – API probe addon for in-game checks (`/fgp help`)
 - `tests/` – busted specs; `tests/helpers/sim.lua` simulates engines on a shared channel,

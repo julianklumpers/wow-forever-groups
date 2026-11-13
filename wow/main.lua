@@ -439,6 +439,7 @@ ns.on("ADDON_LOADED", function(name)
         end
     end)
     ns.Whispers.init()
+    ns.FinderTab.init()
     Group.init()
     ns.LfgList.init()
     Filler.init()

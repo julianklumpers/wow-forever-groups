@@ -14,6 +14,8 @@
 - A leader's answer is understood in Russian, German, French, Spanish and Portuguese too ("нет",
   "voll", "complet", "да", "ja", "oui", "лвл?", "quel niveau ?"...). Once you're in the leader's
   group, their whispers show again. What a leader answered is in the saved log.
+- A Forever Groups tab on WoW's own Group Finder, under its side tabs (and under LFGForever's,
+  if you have that): it opens the Forever Groups window.
 - `/fg debug on` shows all of it again in chat and in the status (`/fg debug off` hides it);
   everything is always in the saved log for `/fg bugreport`.
 
