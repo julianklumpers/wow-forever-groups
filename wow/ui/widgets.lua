@@ -709,13 +709,17 @@ end
 
 -- One place in the group: role icon with the player's name in class colour,
 -- or a dim icon with "open".
+-- Room inside a member place's rounded border, above the icon and below the
+-- last line.
+local SLOT_PADDING = 9
+
 function Widgets.slot(parent)
     local slot = backdropFrame("Frame", parent)
     slot:SetSize(100, 50)
     addOutline(slot)
     paintOutline(slot, { 1, 1, 1, 0.05 }, { 1, 1, 1, 0.14 })
     slot.icon = Widgets.roleIcon(slot, "D", 20)
-    slot.icon:SetPoint("TOP", 0, -4)
+    slot.icon:SetPoint("TOP", 0, -SLOT_PADDING)
     slot.name = Widgets.text(slot, "GameFontHighlightSmall", "CENTER")
     slot.name:SetPoint("TOP", slot.icon, "BOTTOM", 0, -3)
     slot.name:SetWidth(94)
@@ -770,7 +774,7 @@ function Widgets.paintSlot(slot, data, layout)
         slot.name:SetText("open")
         slot.name:SetTextColor(0.5, 0.5, 0.5)
     end
-    local y = -54
+    local y = -50 - SLOT_PADDING
     local function line(widget, shown, text)
         widget:SetShown(shown)
         if shown then
@@ -801,7 +805,7 @@ function Widgets.paintSlot(slot, data, layout)
         questText = string.format("%d quest%s", quests, quests == 1 and "" or "s")
     end
     line(slot.quests, layout.quests, questText)
-    local height = -y + 4
+    local height = -y + SLOT_PADDING
     slot:SetHeight(height)
     return height
 end
