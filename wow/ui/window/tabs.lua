@@ -66,7 +66,6 @@ function W.buildTabs()
                 ns.QueueWindow.searchIfStale(10, tab[1])
             end
             ns.Window.refresh()
-            ns.QueueWindow.follow(tab[1])
         end)
     end
     ui.otherQueue = Widgets.link(W.frame, "", function(self)
@@ -77,7 +76,6 @@ function W.buildTabs()
             ns.QueueWindow.searchIfStale(10, self.target)
         end
         ns.Window.refresh()
-        ns.QueueWindow.follow(self.target)
     end)
     ui.otherQueue:Hide()
     ui.tabLines = {}

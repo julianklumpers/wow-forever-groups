@@ -378,7 +378,6 @@ local function tick()
     ns.InspectSpec.tick()
     Status.refresh()
     ns.MinimapButton.refresh()
-    ns.QueueWindow.refresh()
     ticks = ticks + 1
     if ticks % 5 == 0 then
         ns.RoleSync.apply()

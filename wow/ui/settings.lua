@@ -163,7 +163,6 @@ local function applied()
     ns.Status.refresh()
     ns.MinimapButton.refresh()
     ns.Window.refresh()
-    ns.QueueWindow.refresh()
 end
 
 local function currentTab()

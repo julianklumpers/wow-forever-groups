@@ -7,7 +7,12 @@ ns = ns or {}
 local Replies = {}
 
 -- Taken out first, so their "no" is not read as a refusal.
-local YES_PHRASES = { "no problem", "no prob", "no worries", "why not" }
+local YES_PHRASES = { "no problemo", "no problem", "no probs", "no prob", "no worries", "why not", "1 min", "one min",
+    "a min", "in a min", "1 sec", "a sec" }
+-- Taken out too: a "no" or "full" that says what the group lacks, not a
+-- refusal ("we have no tank", "not full yet").
+local NEUTRAL_PHRASES = { "not full", "no tank", "no tanks", "no healer", "no healers", "no heal", "no heals",
+    "no dps", "no damage" }
 local NO_PHRASES = {
     "no thanks", "no thx", "no ty", "not needed", "dont need", "don't need", "do not need", "no need",
     "already have", "already got", "got one", "we're full", "were full", "we are full", "is full",
@@ -15,8 +20,8 @@ local NO_PHRASES = {
 }
 local NO_WORDS = { "no", "nope", "nah", "sorry", "sry", "full", "nvm", "found", "declined" }
 local YES_WORDS = {
-    "sure", "yes", "yep", "yup", "yeah", "yea", "ya", "ok", "okay", "kk", "k", "np", "inv", "invite", "invited",
-    "inviting", "invd", "sec", "secs", "moment", "min", "omw", "coming", "come", "welcome", "y",
+    "sure", "yes", "yep", "yup", "yeah", "yea", "ya", "ok", "okay", "kk", "np", "inv", "invite", "invited",
+    "inviting", "invd", "sec", "secs", "moment", "omw", "coming", "come", "welcome", "y",
 }
 
 local function contains(text, phrase)
@@ -42,6 +47,11 @@ function Replies.classify(text)
     for _, phrase in ipairs(YES_PHRASES) do
         if contains(text, phrase) then
             yes = true
+            text = string.gsub(text, string.gsub(phrase, "(%p)", "%%%1"), " ")
+        end
+    end
+    for _, phrase in ipairs(NEUTRAL_PHRASES) do
+        if contains(text, phrase) then
             text = string.gsub(text, string.gsub(phrase, "(%p)", "%%%1"), " ")
         end
     end

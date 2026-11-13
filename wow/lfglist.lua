@@ -334,16 +334,12 @@ local function languageFilter()
     return filter
 end
 
--- The dungeon activities the last search asked for; nil after an
--- unfiltered search (it covers them all).
+-- The dungeon activities the last dungeon search asked for.
 local searchedActivities = {}
 
 -- From a click that changed the wanted dungeons: searches again only when
 -- one of them was not in the last search (unticking needs no search).
 function LfgList.searchIfMissing()
-    if searchedActivities == nil then
-        return false
-    end
     for _, activity in ipairs(wantedActivities()) do
         if not searchedActivities[activity] then
             return LfgList.search()
@@ -377,7 +373,8 @@ function LfgList.search()
             Log.debug("filtered group finder search failed (%s); searching everything", tostring(err))
         end
         ok, err = pcall(fn, CATEGORY_DUNGEONS)
-        searchedActivities = nil
+        -- Capped at 100 results: no dungeon counts as covered.
+        searchedActivities = {}
     end
     if not ok then
         Log.debug("group finder search failed: %s", tostring(err))
@@ -400,6 +397,7 @@ function LfgList.searchZones(zones)
     end
     zoneSearchedAt, anySearchAt = GetTime(), GetTime()
     lastKind = "zones"
+    searchedActivities = {}
     searchingZones = {}
     for _, zone in ipairs(zones) do
         searchingZones[zone] = true
@@ -531,6 +529,16 @@ function LfgList.totalResults()
 end
 
 -- Listed groups (two or more players) with the roles they still need.
+-- Whether a result is still listed, also when it could not be read (its
+-- leader's name not there yet): asks wait for it instead of giving up.
+function LfgList.stillListed(id)
+    if id == nil then
+        return false
+    end
+    local info = call("GetSearchResultInfo", id)
+    return type(info) == "table" and not isSecret(info.isDelisted) and not info.isDelisted
+end
+
 function LfgList.groups()
     local groups = {}
     for _, listing in ipairs(listings) do

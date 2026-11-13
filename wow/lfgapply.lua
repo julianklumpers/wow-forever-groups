@@ -31,6 +31,7 @@ local SEARCH_SLACK = 2
 local REQUEST_KEPT = 300
 
 local asks = {}
+local nextPick
 -- A leader asked automatically is not asked again for a while, also in a
 -- later queue or after a reload: they said no, or did not answer.
 local ASKED_COOLDOWN = 15 * 60
@@ -99,6 +100,9 @@ local function settleAsks(roles)
             for role in string.gmatch(found and roles or "", ".") do
                 room = room or (found.remaining[role] or 0) > 0
             end
+            if not found and ns.LfgList.stillListed(a.listingId) then
+                room = true
+            end
             if not room then
                 a.over = true
                 Log.info("%s's group %s; asking another.", leader, found and "is full" or "is no longer listed")
@@ -113,6 +117,23 @@ local function invitedBy()
             return leader, a
         end
     end
+end
+
+-- The next listed group to ask, or nil when none is left.
+function nextPick(entry)
+    local wanted, exclude = {}, {}
+    for _, id in ipairs(entry.dungeons) do
+        wanted[id] = true
+    end
+    local groups = ns.Playstyle.filter(ns.LfgList.groups(), entry.playstyle)
+    for _, group in ipairs(groups) do
+        if Apply.recentlyAsked(group.leader) or asks[group.leader] then
+            exclude[group.id] = true
+        end
+    end
+    return LfgPick.groupsToApply(groups, {
+        roles = entry.members[1].roles, dungeons = wanted, exclude = exclude, max = 1,
+    })[1]
 end
 
 -- A solo player in the queue who is not building a group yet. A player who
@@ -141,7 +162,18 @@ function Apply.wantsToBuild()
     if seekingSince ~= nil and GetServerTime() - seekingSince >= WAIT_FOR_INVITE then
         return true
     end
-    return freshResults() and askCount() == 0 and GetTime() - lastAskAt >= ASK_SPACING
+    if not freshResults() or GetTime() - lastAskAt < ASK_SPACING or nextPick(ns.engine.myEntry) ~= nil then
+        return false
+    end
+    -- No group left to ask: build once every leader asked has clearly
+    -- ended it (a no, a full or delisted group); one who did not answer may
+    -- still invite within the minute.
+    for _, a in pairs(asks) do
+        if not a.request and not a.over then
+            return false
+        end
+    end
+    return true
 end
 
 function Apply.reset()
@@ -215,7 +247,8 @@ function ask(pick)
     if not pick.request then
         Apply.rememberAsk(pick.leader)
     end
-    asks[pick.leader] = { dungeon = pick.dungeon, at = GetServerTime(), askedAt = GetTime(), request = pick.request }
+    asks[pick.leader] = { dungeon = pick.dungeon, at = GetServerTime(), askedAt = GetTime(), request = pick.request,
+        listingId = pick.id }
     Log.info("Asked %s to invite you for %s.", pick.leader, Dungeons.name(pick.dungeon))
 end
 
@@ -261,26 +294,12 @@ function Apply.tick()
     if waitingForInvite() or GetTime() - lastAskAt < ASK_SPACING or proposalOpen() or not freshResults() then
         return
     end
-    local wanted, exclude = {}, {}
-    for _, id in ipairs(entry.dungeons) do
-        wanted[id] = true
-    end
-    local groups = ns.Playstyle.filter(ns.LfgList.groups(), entry.playstyle)
-    for _, group in ipairs(groups) do
-        if Apply.recentlyAsked(group.leader) or asks[group.leader] then
-            exclude[group.id] = true
-        end
-    end
-    local pick = LfgPick.groupsToApply(groups, {
-        roles = entry.members[1].roles, dungeons = wanted, exclude = exclude, max = 1,
-    })[1]
+    local pick = nextPick(entry)
     if pick then
         ask(pick)
     end
 end
 
--- An invite from a leader we asked is joined at once, while still looking
--- (or for a request the player clicked), unless switched off.
 -- The role to join an asked group with: DPS while it has a DPS place, else
 -- tank, else healer, of the roles the player plays. The open places come
 -- from the group's listing, else from the invite (the roles it asks for).
@@ -293,12 +312,11 @@ local function joinRole(inviter, tank, healer, dps)
             remaining = group.remaining
         end
     end
-    if not remaining and (tank or healer or dps) then
-        remaining = { T = tank and 1 or 0, H = healer and 1 or 0, D = dps and 1 or 0 }
-    end
-    return LfgPick.joinRole(roles, remaining)
+    return LfgPick.joinRole(roles, remaining or LfgPick.inviteRoles(tank, healer, dps))
 end
 
+-- An invite from a leader we asked is joined at once, while still looking
+-- (or for a request the player clicked), unless switched off.
 local function onInviteRequest(inviter, tank, healer, dps)
     local a = asks[inviter]
     if not a then
@@ -347,8 +365,13 @@ end
 
 -- A whisper from a leader we asked: a clear no moves on to the next group
 -- at once, a clear yes holds off asking others while the invite comes.
+function Apply.wasAsked(name)
+    return ns.Whispers.find(asks, name) ~= nil
+end
+
 function Apply.onWhisper(text, sender)
-    local a = type(sender) == "string" and asks[sender]
+    local key = ns.Whispers.find(asks, sender)
+    local a = key and asks[key]
     if not a or a.over or a.invitedAt then
         return
     end

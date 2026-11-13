@@ -22,6 +22,16 @@ describe("reading a leader's answer", function()
         assert.is_nil(Replies.classify(nil))
     end)
 
+    it("does not read a group's missing role or a question as a refusal or a yes", function()
+        assert.are.equal("yes", Replies.classify("no probs"))
+        assert.are.equal("yes", Replies.classify("no problemo"))
+        assert.are.equal("yes", Replies.classify("1 min"))
+        for _, text in ipairs({ "not full yet", "we have no tank, can you tank?", "no tank yet",
+            "what is your min ilvl", "1k" }) do
+            assert.is_nil(Replies.classify(text), text)
+        end
+    end)
+
     it("does not read words inside other words", function()
         assert.is_nil(Replies.classify("know any healer?"))
         assert.is_nil(Replies.classify("fullmetal"))

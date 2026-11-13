@@ -778,6 +778,9 @@ local function buildEnv(world, client)
     function methods.IsShown(widget)
         return widget.shown
     end
+    function methods.IsVisible(widget)
+        return isVisible(widget)
+    end
     function methods.SetText(widget, text)
         widget.text = text
     end

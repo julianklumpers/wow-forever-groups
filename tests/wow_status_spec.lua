@@ -455,6 +455,12 @@ describe("Queue window", function()
         main:Hide()
         client:slash("/dq")
         assert.is_true(queue.shown)
+        client.env.UIParent.shown = false
+        queue:Hide()
+        client.env.UIParent.shown = true
+        assert.is_nil(client.ns.db.whoClosed)
+        tab.scripts.OnClick(tab)
+        assert.is_true(queue.shown)
         queue:Hide()
         main:Hide()
         client:slash("/dq")

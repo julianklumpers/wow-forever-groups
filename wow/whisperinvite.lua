@@ -146,6 +146,10 @@ function WhisperInvite.onWhisper(text, sender)
     if not goal or sender == ns.selfName or goal.excluded[sender] then
         return
     end
+    -- A leader we asked to invite us is answering that, not asking to join.
+    if ns.Apply.wasAsked(sender) or ns.QuestFinder.wasAsked(sender) then
+        return
+    end
     if string.find(text, "^%[Forever Groups%]") or string.find(text, "^%[DungeonQueue%]") then
         return
     end

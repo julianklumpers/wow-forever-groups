@@ -106,7 +106,6 @@ function W.setWantsLead(wants)
     end
     W.setHint("")
     ns.Window.refresh()
-    ns.QueueWindow.refresh()
 end
 
 -- "lead" for the Find group summary when a solo player wants to lead.

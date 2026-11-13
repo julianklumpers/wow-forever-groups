@@ -463,6 +463,18 @@ describe("the questing queue and WoW's Group Finder", function()
         assert.are.equal("Group Lead", client.acceptedFrom)
     end)
 
+    it("does not take an asked leader's answer for someone asking to join", function()
+        local world = World.new()
+        world:listGroup("Group Lead", ELWYNN, { T = 0, H = 1, D = 2 }, 200)
+        local client = queued(world)
+        assert.are.same({ "Group Lead" }, whispered(client, "could you invite me for Hogger%?$"))
+        local before = #client.whispers
+        client:whisperFrom("Group Lead", "sure, you dps?")
+        world:advance(1)
+        assert.are.same({}, client.invites)
+        assert.are.equal(before, #client.whispers)
+    end)
+
     it("asks one group leader at a time", function()
         local world = World.new()
         world:listGroup("Group Lead", ELWYNN, { T = 0, H = 1, D = 2 }, 200)

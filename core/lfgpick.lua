@@ -78,6 +78,15 @@ end
 -- player's roles in that order).
 local JOIN_ORDER = { "D", "T", "H" }
 
+-- The open places an invite asks for (PARTY_INVITE_REQUEST's tank, healer
+-- and damage flags), or nil when it names none.
+function LfgPick.inviteRoles(tank, healer, dps)
+    if not (tank or healer or dps) then
+        return nil
+    end
+    return { T = tank and 1 or 0, H = healer and 1 or 0, D = dps and 1 or 0 }
+end
+
 function LfgPick.joinRole(roles, remaining)
     roles = roles or ""
     for _, role in ipairs(JOIN_ORDER) do

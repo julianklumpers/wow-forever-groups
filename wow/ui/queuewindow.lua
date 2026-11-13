@@ -1284,8 +1284,10 @@ local function open(fromInput)
         -- Closed by the player (its close button or Escape) while the main
         -- window stays: it stays closed next time too.
         frame:HookScript("OnHide", function()
+            -- IsVisible, not IsShown: hiding the whole UI (Alt+Z, a
+            -- cinematic) hides both without the player closing anything.
             local main = ns.WindowParts.frame
-            if main and main:IsShown() then
+            if main and main:IsVisible() then
                 ns.db.whoClosed = true
             end
             paintHandle()
@@ -1356,15 +1358,6 @@ function QueueWindow.attach(main)
     dock()
 end
 
--- The main window switched tabs ("dungeons" or "quests"): an open window
--- switches with it.
-function QueueWindow.follow(tab)
-    if not frame or not frame:IsShown() then
-        return
-    end
-    setMode(tab)
-    QueueWindow.refresh()
-end
 
 function QueueWindow.tab()
     return handle

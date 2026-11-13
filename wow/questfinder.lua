@@ -23,6 +23,8 @@ local asked = {}
 -- Asked leaders who said no or whose group left the Group Finder, and those
 -- who said yes (when).
 local over, promisedAt = {}, {}
+-- The Group Finder result each asked leader was asked from.
+local askedIds = {}
 -- Everyone invited while this queue entry lasts: a player who let the
 -- invite run out is not invited again.
 local tried = {}
@@ -120,11 +122,12 @@ local function updateEntry(key)
     ns.questEngine:updateEntry(current.members, pendingRoles(), { key })
 end
 
+-- Returns whether the whisper went out.
 local function whisper(name, text)
     if not text or ns.db.noWhisper or (C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()) then
-        return
+        return false
     end
-    ns.Whispers.send(name, text)
+    return (ns.Whispers.send(name, text))
 end
 
 local function invite(listing, key, role, quest)
@@ -153,15 +156,19 @@ end
 
 local function ask(listing, quest)
     asked[listing.leader] = GetTime()
-    ns.Apply.rememberAsk(listing.leader)
+    askedIds[listing.leader] = listing.id
     if ns.db.dryRun then
         Log.info("Dry run: would ask %s, who leads a group in %s, to invite you.", listing.leader, quest.zone)
         return
     end
-    whisper(listing.leader, ns.Messages.text("questAsk", {
+    local sent = whisper(listing.leader, ns.Messages.text("questAsk", {
         level = UnitLevel("player"), spec = ns.Spec.myLabel(),
         role = ns.Widgets.describeRoles(entry().members[1].roles), quest = quest.title,
     }))
+    if not sent then
+        return
+    end
+    ns.Apply.rememberAsk(listing.leader)
     Log.info("Asked %s, who leads a group in %s, to invite you for %s.", listing.leader, quest.zone, quest.title)
 end
 
@@ -180,7 +187,7 @@ end
 local function settleAsks(listings, updatedAt)
     for leader, at in pairs(asked) do
         if not over[leader] and not promisedAt[leader] and updatedAt > at and GetTime() - at < ASK_WAIT then
-            local listed = false
+            local listed = ns.LfgList.stillListed(askedIds[leader])
             for _, listing in ipairs(listings) do
                 listed = listed or (not listing.solo and listing.leader == leader)
             end
@@ -384,13 +391,14 @@ function QuestFinder.request(listing, roles, wanted)
 end
 
 function QuestFinder.wasAsked(leader)
-    return asked[leader] ~= nil
+    return ns.Whispers.find(asked, leader) ~= nil
 end
 
 -- A whisper from a leader we asked: a clear no moves on to the next group,
 -- a clear yes holds off asking others while the invite comes.
 function QuestFinder.onWhisper(text, sender)
-    if type(sender) ~= "string" or not asked[sender] or over[sender] then
+    sender = ns.Whispers.find(asked, sender)
+    if not sender or over[sender] then
         return
     end
     local ok, answer = pcall(ns.Replies.classify, text)
@@ -408,7 +416,7 @@ end
 
 function QuestFinder.reset()
     invited, asked, tried, focus, chosen, focusJoined = {}, {}, {}, nil, nil, nil
-    over, promisedAt = {}, {}
+    over, promisedAt, askedIds = {}, {}, {}
 end
 
 -- For the status: { invited = n, asked = n }.
@@ -451,7 +459,8 @@ end
 -- once, unless switched off.
 function QuestFinder.onInvite(inviter, tank, healer, dps)
     local current = entry()
-    if not asked[inviter] or not current or #current.members ~= 1 or ns.db.noAutoAcceptAsked then
+    if not asked[inviter] or not current or #current.members ~= 1 or ns.db.noAutoAcceptAsked
+        or next(invited) ~= nil or (current.reserved or "") ~= "" then
         return
     end
     local remaining
@@ -460,10 +469,8 @@ function QuestFinder.onInvite(inviter, tank, healer, dps)
             remaining = listing.remaining
         end
     end
-    if not remaining and (tank or healer or dps) then
-        remaining = { T = tank and 1 or 0, H = healer and 1 or 0, D = dps and 1 or 0 }
-    end
-    local role = ns.LfgPick.joinRole(current.members[1].roles, remaining)
+    local role = ns.LfgPick.joinRole(current.members[1].roles,
+        remaining or ns.LfgPick.inviteRoles(tank == true, healer == true, dps == true))
     if ns.Group.acceptInvite(role) then
         Log.info("Joined %s's group as %s.", inviter, ns.Widgets.ROLE_NAMES[role] or "?")
     end

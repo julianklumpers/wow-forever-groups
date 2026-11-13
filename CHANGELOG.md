@@ -2,6 +2,15 @@
 
 ## 0.25.2 (2026-11-13)
 
+- Fixes from a code review: an asked group whose listing can't be read for a moment no longer
+  counts as gone (so two leaders aren't asked at once); when the only group's leader says no
+  (or it fills up or leaves), your own group is built right away instead of after a minute;
+  answers like "no probs", "not full yet" or "we have no tank" are no longer read as a no;
+  a leader's answer is matched also when WoW adds the realm to the name, and never taken for
+  someone asking to join your group; a questing invite is no longer accepted once Forever
+  Groups started inviting players itself; a leader is only kept from being asked again when
+  the question was really sent; hiding the whole UI (Alt+Z) no longer closes "Who is looking"
+  for good; and the window no longer redraws "Who is looking" twice per update.
 - The group card shows the dungeon's picture behind its title, like the group-found popup:
   shaded behind the text and fading into the card, across the window's whole inner panel, with
   the members under it. The member places have rounded corners. Without tabs, the inner panel
