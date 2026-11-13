@@ -240,6 +240,22 @@ describe("Channel connection", function()
         assert.are.equal("", client.ns.WindowParts.ui.card.connection.text)
     end)
 
+    it("shows no connecting screen and, in a party, no tabs while connecting", function()
+        local world = World.new()
+        local client = world:addClient("Party Leader", { level = 20 })
+        client.party = { "Party Friend" }
+        client.isLeader = true
+        client:slash("/dq")
+        assert.is_nil(client:findText("^Joining the Forever Groups channel%.$"))
+        assert.is_nil(client:find("Button", "Dungeons"))
+        assert.is_nil(client:find("Button", "Quests"))
+        assert.is_not_nil(client:findText("^Your party: 2/5$"))
+        local solo = world:addClient("Solo Player", { level = 20 })
+        solo:slash("/dq")
+        assert.is_nil(solo:findText("^Joining the Forever Groups channel%.$"))
+        assert.is_not_nil(solo:find("Button", "Dungeons"))
+    end)
+
     it("shows paused while WoW blocks addon messages", function()
         local world = World.new()
         local client = world:addClient("Solo Player", { level = 20 })

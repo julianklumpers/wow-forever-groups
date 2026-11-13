@@ -12,7 +12,8 @@ How the addon works inside, for anyone reading or changing the code. The player-
   `W.paintBanner`: the popup's crop narrowed to the wider banner, across the inner panel (`W.cardBleed`, from the
   ButtonFrameTemplate Inset's anchors) with the card's background, the member places under it; a shade behind the
   text and a faded lower part). Without tabs the Inset's top moves up under the title bar (`W.fitInset`). The connection is a dot in the title bar, left of the
-  close button, with its word only while not plainly connected (`W.refreshConnection`)
+  close button, with its word only while not plainly connected (`W.refreshConnection`); there is no connecting
+  card, and in a party the tabs stay away while connecting (`W.groupTab`)
   leads the window, except alone and choosing: then the roles come first and
   the card, without a title, follows them (`W.cardBelowRoles`)
 - every whisper the addon sends goes through `wow/whispers.lua` (`Whispers.send`), which hides its "To ..." echo in

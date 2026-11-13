@@ -50,9 +50,6 @@ function W.cardContent(state)
         return { title = status.text, subtitle = status.headline, detail = status.detail, lead = status.lead,
             color = color }
     end
-    if not ns.engine then
-        return { title = "Connecting...", subtitle = "Joining the Forever Groups channel.", color = GOLD }
-    end
     if state == "raid" then
         return { title = "You are in a raid", subtitle = "Leave the raid to queue.", color = GOLD }
     end
@@ -76,8 +73,10 @@ end
 
 -- The Quests tab's card: the questing queue, a proposal, or the group.
 function W.questCardContent(state)
+    -- Still connecting: the window simply shows what it can (the title
+    -- bar's dot says it is connecting).
     if not ns.questEngine then
-        return { title = "Connecting...", subtitle = "Joining the Forever Groups channel.", color = GOLD }
+        return { color = GOLD }
     end
     local proposal = ns.questEngine.myProposalKey and ns.questEngine.proposals[ns.questEngine.myProposalKey]
     if proposal and not proposal.outcome then

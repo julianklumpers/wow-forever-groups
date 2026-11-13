@@ -124,6 +124,10 @@ function W.groupTab()
         return not ns.QuestGroup.isDone() and "quests" or nil
     elseif ns.GroupView.isActive() then
         return "dungeons"
+    elseif not ns.engine then
+        -- Still connecting: what kind of group this is shows once
+        -- connected; until then no tabs that may vanish a moment later.
+        return W.currentTabChoice()
     end
     return nil
 end
@@ -221,10 +225,10 @@ function W.fitInset(tabs)
     inset:SetPoint("TOPLEFT", saved[1], saved[2], saved[3], tabs and saved[4] or INSET_TOP_WITHOUT_TABS)
 end
 
-function W.currentTab()
-    local fixed = W.fixedTab()
-    if fixed then
-        return fixed
-    end
+function W.currentTabChoice()
     return ns.charDb and ns.charDb.tab == "quests" and "quests" or "dungeons"
+end
+
+function W.currentTab()
+    return W.fixedTab() or W.currentTabChoice()
 end
