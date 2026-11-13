@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.2 (2026-11-13)
+
+- The group card shows the dungeon's picture behind its title, like the group-found popup:
+  shaded behind the text and fading into the card.
+
 ## 0.25.1 (2026-11-13)
 
 - The whispers Forever Groups sends for you (asking a leader, before an invite, answers to "heal?")

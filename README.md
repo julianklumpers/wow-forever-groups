@@ -27,8 +27,8 @@ in the group, with roles set for you.
 - **Uses WoW's Group Finder too** — invites solo players listed for your dungeon, asks listed
   groups to invite you (and joins when they do, as the role they still need), lists your own
   group, and invites players who whisper a needed role.
-- **In the group** — a card with every member's role, spec, distance to the entrance and
-  dungeon quests; share your quests in one click; a waypoint to the entrance.
+- **In the group** — a card with the dungeon's picture and every member's role, spec, distance
+  to the entrance and dungeon quests; share your quests in one click; a waypoint to the entrance.
 - **Status bar** — boss progress (e.g. 4/7 bosses) and everyone's quest progress, folded out
   under the bar.
 - **Who is looking** — a drawer on the side of the window with the players and groups looking

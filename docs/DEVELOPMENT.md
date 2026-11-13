@@ -8,7 +8,9 @@ How the addon works inside, for anyone reading or changing the code. The player-
 - `core/` – pure Lua 5.1, no WoW API: protocol, queue, matchmaking, election, proposals, engine
 - `wow/` – thin WoW layer: hidden channel, send queue, invites, `/fg` commands (`/dq` still works); `wow/ui/` window and proposal popup;
   the main window is `wow/ui/window.lua` plus its parts in `wow/ui/window/` (shared, card, setup, quests, tabs); the
-  card (status, "Looking now", the group) leads the window, except alone and choosing: then the roles come first and
+  card (status, "Looking now", the group; with a group, the dungeon's picture as a banner behind its title,
+  `W.paintBanner`: the popup's crop narrowed to the wider banner, a shade behind the text and a faded lower part)
+  leads the window, except alone and choosing: then the roles come first and
   the card, without a title, follows them (`W.cardBelowRoles`)
 - every whisper the addon sends goes through `wow/whispers.lua` (`Whispers.send`), which hides its "To ..." echo in
   the player's chat with a `CHAT_MSG_WHISPER_INFORM` filter (exact text and name, for 10 s; off with

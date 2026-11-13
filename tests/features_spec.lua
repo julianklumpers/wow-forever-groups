@@ -143,6 +143,20 @@ describe("finding a replacement", function()
         assert.is_nil(leader:findText("^Your party is complete"))
     end)
 
+    it("shows the group's dungeon as a banner behind the card's title, and none without a group", function()
+        local world, leader = inDungeon()
+        leader:slash("/dq")
+        local card = leader.ns.WindowParts.ui.card
+        assert.is_true(card.bannerTop.shown)
+        assert.are.equal("Interface\\Glues\\LoadingScreens\\LoadScreenDeadmines", card.bannerTop.texture)
+        assert.are.equal(card.bannerTop.texture, card.bannerFade.texture)
+        leader.party = {}
+        leader:fire("GROUP_ROSTER_UPDATE")
+        world:advance(1)
+        leader.ns.Window.refresh()
+        assert.is_false(card.bannerTop.shown)
+    end)
+
     it("starts over for a new group, and after the same boss is killed again", function()
         local world, leader = inDungeon()
         for i = 1, 8 do

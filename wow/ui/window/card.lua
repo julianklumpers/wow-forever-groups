@@ -16,6 +16,11 @@ local CONNECTION_COLORS = W.CONNECTION_COLORS
 local SLOT_ROLES = W.SLOT_ROLES
 local ui = W.ui
 local slots = W.slots
+-- The group's dungeon as a banner behind the card's title: the picture of
+-- the group-found popup (Dungeons.art, cropped there for 304 x 112), shaded
+-- behind the text and fading into the card below.
+local BANNER_HEIGHT, BANNER_FADE = 76, 34
+local POPUP_ASPECT = 304 / 112
 
 -- The status card under the tabs: what the queue, the group or the party is
 -- doing, the group's places and links.
@@ -197,6 +202,7 @@ function W.refreshCard(state, full, tab)
             text:Hide()
         end
     end
+    W.paintBanner(content.group and not questTab and ns.GroupView.trackedDungeon())
     local composition
     if questTab then
         composition = nil
@@ -341,12 +347,62 @@ function W.refreshCard(state, full, tab)
     return height
 end
 
+-- dungeon: the group's dungeon id, or nil for no banner.
+function W.paintBanner(dungeon)
+    local card = ui.card
+    local art, crop = nil, nil
+    if dungeon then
+        art, crop = Dungeons.art(dungeon)
+    end
+    for _, part in ipairs({ card.bannerTop, card.bannerFade, card.bannerShade }) do
+        part:SetShown(art ~= nil)
+    end
+    if not art then
+        return
+    end
+    -- The popup's crop, its height narrowed to this wider banner around the
+    -- same middle; the faded part continues the picture downwards.
+    local aspect = (WIDTH - 2 * (PAD - CARD_PADDING)) / BANNER_HEIGHT
+    local middle = (crop[3] + crop[4]) / 2
+    local half = (crop[4] - crop[3]) / 2 * POPUP_ASPECT / aspect
+    local top, bottom = middle - half, middle + half
+    local split = top + (bottom - top) * (BANNER_HEIGHT - BANNER_FADE) / BANNER_HEIGHT
+    card.bannerTop:SetTexture(art)
+    card.bannerTop:SetTexCoord(crop[1], crop[2], top, split)
+    card.bannerFade:SetTexture(art)
+    card.bannerFade:SetTexCoord(crop[1], crop[2], split, bottom)
+    if not (card.bannerFaded and pcall(card.bannerFade.SetGradient, card.bannerFade, "VERTICAL",
+        CreateColor(1, 1, 1, 0), CreateColor(1, 1, 1, 1))) then
+        card.bannerFade:SetAlpha(0.5)
+    end
+end
+
 function W.buildCard()
     local card = CreateFrame("Frame", nil, W.frame)
     card:SetSize(WIDTH - 2 * (PAD - CARD_PADDING), 100)
     local background = card:CreateTexture(nil, "BACKGROUND")
     background:SetAllPoints()
     background:SetColorTexture(0, 0, 0, 0.35)
+    card.bannerTop = card:CreateTexture(nil, "BACKGROUND", nil, 1)
+    card.bannerTop:SetPoint("TOPLEFT")
+    card.bannerTop:SetPoint("TOPRIGHT")
+    card.bannerTop:SetHeight(BANNER_HEIGHT - BANNER_FADE)
+    card.bannerFade = card:CreateTexture(nil, "BACKGROUND", nil, 1)
+    card.bannerFade:SetPoint("TOPLEFT", card.bannerTop, "BOTTOMLEFT")
+    card.bannerFade:SetPoint("TOPRIGHT", card.bannerTop, "BOTTOMRIGHT")
+    card.bannerFade:SetHeight(BANNER_FADE)
+    card.bannerShade = card:CreateTexture(nil, "BACKGROUND", nil, 2)
+    card.bannerShade:SetPoint("TOPLEFT")
+    card.bannerShade:SetPoint("TOPRIGHT")
+    card.bannerShade:SetHeight(BANNER_HEIGHT)
+    card.bannerShade:SetColorTexture(1, 1, 1, 1)
+    local hasGradient = type(CreateColor) == "function"
+    -- Dark behind the title on the left, clear on the right.
+    if not (hasGradient and pcall(card.bannerShade.SetGradient, card.bannerShade, "HORIZONTAL",
+        CreateColor(0, 0, 0, 0.75), CreateColor(0, 0, 0, 0.1))) then
+        card.bannerShade:SetColorTexture(0, 0, 0, 0.45)
+    end
+    card.bannerFaded = hasGradient
     card.crown = card:CreateTexture(nil, "ARTWORK")
     card.crown:SetSize(16, 16)
     card.crown:SetPoint("TOPLEFT", 12, -11)
