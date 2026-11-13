@@ -7,8 +7,9 @@
   the members under it. The member places have rounded corners. Without tabs, the inner panel
   starts right under the title bar.
 - No "Connecting..." screen in the window any more: while Forever Groups connects, it shows
-  your group or your choices as usual (the title bar's dot says it's connecting), and in a party
-  no tabs that would disappear a moment later.
+  your group or your choices as usual, and in a party no tabs that would disappear a moment
+  later. You still see it's connecting: the Find group button reads "Connecting..." until it
+  can be pressed, and the dot in the title bar pulses.
 - The connection moved to the window's title bar: a small dot left of the close button (hover
   for details), with its word only while it isn't simply connected (connecting, a problem, an
   update out). The strip it had above the card is gone when there are no tabs.

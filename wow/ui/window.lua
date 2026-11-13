@@ -121,7 +121,8 @@ local function refreshMain()
     y = W.placeOtherQueueLink(y, state)
 
     local searching = queued or ns.Filler.isActive()
-    ui.join:SetText(searching and "Stop" or (W.leadWord("dungeons") and "Find players" or "Find group"))
+    ui.join:SetText(searching and "Stop" or not engine and "Connecting..."
+        or (W.leadWord("dungeons") and "Find players" or "Find group"))
     ui.join:SetShown(searching or setup)
     local ready = searching or (W.selectedRoles() ~= nil and #W.selectedVisibleIds() > 0)
     ui.joinSummary:SetShown(setup and not searching and ready)

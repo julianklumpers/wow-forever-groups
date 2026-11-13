@@ -143,6 +143,20 @@ function W.refreshConnection()
     card.connection:SetText(plain and "" or connection.text)
     card.connection:SetTextColor(color[1], color[2], color[3])
     card.connectionInfo = connection
+    -- The dot pulses while connecting, so the window shows it is on its way.
+    local bar = ui.connectionBar
+    if connection.state == "connecting" then
+        if not bar.pulsing then
+            bar.pulsing = true
+            bar:SetScript("OnUpdate", function()
+                card.dot:SetAlpha(0.35 + 0.65 * math.abs(math.sin(GetTime() * 2.5)))
+            end)
+        end
+    elseif bar.pulsing then
+        bar.pulsing = false
+        bar:SetScript("OnUpdate", nil)
+        card.dot:SetAlpha(1)
+    end
 end
 
 -- The five places of the group being searched for, solo or not yet in a

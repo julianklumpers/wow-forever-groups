@@ -254,6 +254,13 @@ describe("Channel connection", function()
         solo:slash("/dq")
         assert.is_nil(solo:findText("^Joining the Forever Groups channel%.$"))
         assert.is_not_nil(solo:find("Button", "Dungeons"))
+        local bar = solo.ns.WindowParts.ui.connectionBar
+        assert.is_not_nil(solo:find("Button", "Connecting..."))
+        assert.is_true(bar.pulsing)
+        world:advance(CONNECT)
+        assert.is_nil(solo:find("Button", "Connecting..."))
+        assert.is_not_nil(solo:find("Button", "Find group"))
+        assert.is_false(bar.pulsing)
     end)
 
     it("shows paused while WoW blocks addon messages", function()
