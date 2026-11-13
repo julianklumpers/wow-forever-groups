@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Dungeons = ns.Dungeons
 local Log = ns.Log
 
@@ -151,7 +153,7 @@ function Quests.titleOf(questId)
             return title
         end
     end
-    return "quest " .. tostring(questId)
+    return string.format(L["quest %s"], tostring(questId))
 end
 
 -- The name of what a group is for: a dungeon, or a quest key ("176-3").
@@ -159,6 +161,10 @@ function Quests.nameOf(key)
     local questId = ns.QuestMatch.parse(key)
     if questId then
         return Quests.titleOf(questId)
+    end
+    local battleground = ns.Battlegrounds.parseKey(key)
+    if battleground then
+        return ns.Battlegrounds.name(battleground)
     end
     return Dungeons.name(key)
 end

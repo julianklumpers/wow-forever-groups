@@ -33,6 +33,11 @@ How the addon works inside, for anyone reading or changing the code. The player-
   `LFGForeverBlizzardTab` when present, re-placed on show). It only opens our window and closes theirs
   (`HideUIPanel`, out of combat); that Group Finder is secure code, so its panels are never shown or read
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
+- `media/` – `icon.tga` (64×64, 32-bit uncompressed, top-left origin; the only image in the package) and the logo
+  for README and download sites (`logo-1024.png`, `logo-400.png`); their SVG sources are in `media/source/`
+  (`logo.svg`, `icon.svg`; the ribbon's font is Cinzel from Google Fonts). Render them with headless Chrome
+  (`--screenshot --default-background-color=00000000`), scale down with `sips -z`, and write the icon as an
+  uncompressed TGA: `sips -s format tga` gives RLE
 - `probe/ForeverGroupsProbe/` – API probe addon for in-game checks (`/fgp help`)
 - `tests/` – busted specs; `tests/helpers/sim.lua` simulates engines on a shared channel,
   `tests/helpers/wowmock.lua` loads the full addon (per the .toc) into mocked WoW clients
@@ -109,7 +114,7 @@ to copy.
 
 ### Playstyle
 
-A dropdown on the roles header (dungeons tab only; `W.buildPlaystyle` in `wow/ui/window/setup.lua`): the choice
+A dropdown on the line under the role tiles, on the left (dungeons tab only; `W.buildPlaystyle` in `wow/ui/window/setup.lua`): the choice
 and WoW's own dropdown button (atlas `common-dropdown-a-button`, with its `-hover` and `-pressedhover` states; the
 plain `Arrow-Down-Up` when the atlas is missing) in a rounded box like the role tiles, as wide as the longest
 playstyle and centred on the "I'd like to lead" checkbox, on a `DropdownButton` whose `SetupMenu` builds WoW's own menu with a radio per
@@ -119,7 +124,8 @@ Finder: Relaxed, Learning, Serious or Expert (the words come from `GetGeneralPla
 everyone; Learning and Relaxed players are grouped together, and so are Serious and Expert ones; the two camps never
 are (`core/playstyles.lua`). The playstyle travels in the queue entry, the matchmaker keeps each group within one camp,
 and a client turns down a proposal that mixes them. The proposal popup, the status and the party message name the
-group's playstyles, the one most players picked first (on a tie the calmer one).
+group's playstyles, the one most players picked first (on a tie the calmer one). While the popup asks, the main window
+steps aside (`Window.stepAside`) and comes back once the proposal ends, if it was open (`Window.comeBack`).
 
 The Group Finder side uses WoW's own field (`generalPlaystyle` of a search result, Enum.LFGEntryGeneralPlaystyle):
 groups are only asked and players only invited when their playstyle fits (a listing without a readable one is kept),
@@ -138,17 +144,96 @@ roles that fit none of the spec gives a warning, nothing more. The spec travels 
 the proposal popup and the group card show it for players with Forever Groups, and the whispers the addon sends name
 it ("Level 20 Enhancement Shaman (DPS) here, could you invite me…", "Inviting you now. I'm the Enhancement Shaman.").
 
+The role tiles show the class in that role (`Specs.forRole`, `Widgets.setTileLook`): the tree it plays the role with
+(the current one if it fits, else the first), as retail's spec art (atlas `spec-thumbnail-<class>-<spec>`, cut to the
+tile around its upper middle, under a gradient dark at the bottom; Feral as tank gets the guardian art), with a small
+role icon at the bottom left and the role and the tree's name (when it is certain) on one line beside it. The art
+exists in Forever's client for all nine classes (`/fgp classart`, `/fgp specart`). Unticked tiles are dimmed and grey;
+a role the class can't play keeps the plain tile with the large role icon. "Needed most" is a small label at the top
+left. The group card's member places (`Widgets.paintSlot`) show a member's spec art when the spec is known (their
+own, learned from the queue or by inspecting; `Spec.indexOf`, `Specs.artFor`) and plays the place's role; else the
+tree their class plays that role with (`Specs.forRole`: a Feral druid healing shows Restoration; the group popup
+the same through `Spec.labelInRole`); when several trees could, or nothing is known, their class's emblem
+(`classicon-<class>`, dimmed), both filling the place, with class and spec on one line; art is cut to shape by `Widgets.coverAtlas`. In the
+rounded boxes (role tiles, member places) art runs up to the border and follows the round corners through a mask
+(`Widgets.roundArt`, `Interface\Common\common-iconmask`; `/fgp mask`); without mask support it stays 5 px in. `/fg preview` shows the card with a sample group
+(`W.previewComposition`), to see it without being in a group.
+
+### Battlegrounds tab
+
+`core/battlegrounds.lua` lists the battlegrounds: Warsong Gulch (10 players, from level 10) with its Group Finder
+activity (Forever's "Battlegrounds" category 118 offers only Warsong Gulch, activity 919; `/fgp pvp`), Arathi Basin
+(15, from 20) and Darkspear Islands (15, from 30, Forever's own), which only the Forever Groups queue finds players
+for. Battlegrounds put players together by level bracket (10-19, 20-29, ...), so only listings whose leader is in the
+player's bracket count. `LfgList` searches that
+category as a third kind of result (`searchBattlegrounds`, `battlegroundListings`), each listing with its open places
+(`open`: the battleground's size less its members; roles hardly matter). The tab (`wow/ui/window/battlegrounds.lua`)
+shows the role tiles, the wish to lead (`charDb.wantsLeadBattlegrounds`), the ticked battlegrounds
+(`charDb.battlegroundUnticked`) with counts per role and groups with room, and Who is looking shows those listings.
+Signing up stays the player's: at a battlemaster (`C_PvP.JoinBattlefield` is protected), where a leader can sign the
+whole group up.
+
+Find group on the tab looks two ways at once, whichever finds a group first: the Forever Groups battleground queue
+(below) for all ticked battlegrounds, and WoW's Group Finder (`wow/bgfinder.lua`) for the first ticked one it lists;
+Stop ends both. The Group Finder side takes a group size ("Party (5)" or "Premade (10)",
+`charDb.bgSize`). Alone and not wishing to lead, it first asks the leaders of listed groups in the bracket with room,
+one at a time (the `bgAsk` whisper; the next after 20 s, at once on a no or when the group leaves the Group Finder;
+answers and questions handled as for dungeons) and joins an asked leader's invite (`noAutoAcceptAsked` turns that
+off); after 60 s without one (also when no group is listed, so the Forever Groups queue gets its chance first), or
+with the wish to lead, or as a party leader, it builds the group from listed solo
+players in the bracket (the longest listed first, but healers first while the group lacks one per five players:
+the player counts when they ticked Healer, invited healers while in the group or on the way; the places still
+lacking a healer stay open, and the card says "Still looking for N healers"; the
+`bgInvite` whisper before each invite; no answer within 30 s or a decline frees the place, read from WoW's own
+`ERR_DECLINE_GROUP_S` / `ERR_ALREADY_IN_GROUP_S` texts through `Filler.declinedName`). Once a player it invited
+joins, the dungeon and questing queues are left (`Queues.leaveOthers`; while it builds they ignore the roster). While
+it looks, the role tiles and battleground ticks are locked. A leader asked by hand from Who is looking counts as asked
+for 5 minutes, as for dungeons. Past five players the
+party becomes a raid first (`C_PartyInfo.ConvertToRaid` works from a timer, `/fgp raid`; WoW makes it one a moment
+later). Once the group has its size, Find group ends with "sign it up at a battlemaster"; leaving the
+group while it builds stops it. The card shows what it does,
+and once signed up WoW's battleground queue (`GetBattlefieldStatus`: signed up with the estimated wait, ready to
+enter, inside). Who is looking's "Request to join" asks a battleground group's leader the same way.
+
+The battleground queue is a third engine (`wow/bgqueue.lua`) on the same channel with its own messages: the dungeon
+protocol under the prefix `b1|` (`Protocol.BATTLEGROUNDS`, any roles up to five). An entry lists battleground keys
+with the bracket (`wsg-20`: Warsong Gulch at 20-29, `Battlegrounds.key`). `core/bgmatch.lua` anchors a group on the
+longest waiting player and one of its keys and adds the others who wait for it (more shared keys first, then by
+waiting time) up to a party of five; two players are enough. Parties never merge (at most one entry with more than
+one player, which leads); otherwise the wish to lead decides. One healer when someone heals, the rest DPS where they
+can. A party leader waits with the party, and the Group Finder invites on their way keep places (`reserved`, the
+proposal's `missing`); a raid or a party of five leaves the queue, as does joining someone else's group. While solo
+Forever Groups players wait for the same battleground, the Group Finder leaves places open for them
+(`BgQueue.soloWaiting`). Once a group forms the leader invites; for Warsong Gulch the leader's Find group goes on
+filling it from the Group Finder up to the chosen size (`BgFinder.onFormed`), for the others the leader is told to
+sign it up at a battlemaster; everyone else stops looking. A `/reload` keeps the place (`charDb.bgQueue`), as for the
+other queues. Queue messages are capped at 255 bytes, so the queue forms parties of at most five; a premade of ten
+fills on from the Group Finder as a raid.
+
+All three queues go along (`wow/queues.lua`): a player can wait in each; while one has a group proposal for the
+player the others step out, and once a group forms the others are left ("A dungeon group formed, so you left the
+battleground queue."), and Find group through the Group Finder stops.
+
 ### Quests tab
 
-The window has two tabs at the top: Dungeons and Quests. While the player waits in only one queue the tabs are
-hidden and a link under the page ("Also find a questing group »") opens the other queue's page with the tabs; in
-both queues the tabs show, each with its timer (`W.queueTab` in `wow/ui/window/shared.lua`). The Quests tab lists the group and elite quests in the quest
+The window has three tabs at the top: Dungeons, Quests and Battlegrounds. While the player waits in only one queue
+the tabs are hidden and links under the page ("Also find a questing group »", "Also find a battleground group »")
+open another queue's page with the tabs; in more queues the tabs show, each with its timer (`W.queueTab` in `wow/ui/window/shared.lua`). The chosen tab shows the
+art of WoW's Group Finder buttons (`groupfinder-button-dungeons` / `-questing`, found with `/fgp finderart`; the
+`groupfinder-background-*` versions are too dark); the chosen
+tab's picture runs on under it across the content and fades out, as one picture (`paintArt` in
+`wow/ui/window/tabs.lua`, parts of the atlas through `Widgets.atlasPart`); the other tab shows only its name. With tabs
+the inner panel starts right under their gold base line, which replaces its top border (the Inset's
+`NineSlice.TopEdge` and top corners are hidden, `W.fitInset`) and runs between its side edges (`W.panelEdges`); the
+chosen tab's sides run into it with an outward rounded corner. The Quests tab lists the group and elite quests in the quest
 log outside dungeons: quests WoW tags Group (`C_QuestLog.GetQuestTagInfo`, tagID `Enum.QuestTag.Group`) or suggests
 a group size for (`suggestedGroup`); Dungeon, Raid and PvP quests and quests under a dungeon's header are left out.
 Every listed quest is ticked until the player unticks it. "Find questing group" queues the player with the chosen
 roles; a party leader queues the whole party (members keep their party roles) for the ticked quests the party is
 not already big enough for, and a party that changes leaves the questing queue. Playstyles do not apply to quests.
-A `/reload` keeps the place in the questing queue (`charDb.questQueue`).
+A `/reload` keeps the place in the questing queue (`charDb.questQueue`). For both queues: back within 2 minutes
+(`Config.ENTRY_TIMEOUT`) keeps the old place; back within 15 minutes (`Config.RESTORE_WINDOW`, a disconnect) queues
+again at the end; later, not at all.
 
 The questing queue is a second engine (`wow/questqueue.lua`) with its own messages: the dungeon protocol under the
 prefix `q1|` (`Protocol.QUESTS`), where a group has at most one tank and one healer and the rest DPS. A queue entry
@@ -210,10 +295,34 @@ When queued players cannot make a full group, the matchmaker proposes a partial 
 players); the roles left open are filled from WoW's own Group Finder: the leader's Accept click also runs a Group
 Finder search (searching is protected and needs a click), then the best listed solo players (right role, level and
 dungeon; single-role players first, longest listed first) get a whisper and an invite. Anyone who declines or does not
-join within 30 s is replaced (a player who joins later is kept while a spot is open). A role that a solo Forever Groups player
+join within 30 s is replaced (a player who joins later is kept while a spot is open). The invite follows the whisper
+after 1.5 s, so an away player's automatic reply (`CHAT_MSG_AFK`/`CHAT_MSG_DND`) comes first and they are passed over
+uninvited. Every open invite takes a place in the party, also one given up on: WoW keeps an unanswered invite open
+for exactly 60 s. The filler counts those places and invites no more than the party has room for; after WoW's
+`ERR_GROUP_FULL` ("Your party is full") right after one of its invites it invites nobody for 10 s. A pending invite
+can't be taken back (`C_PartyInfo.UninviteUnit` is protected and left the invite open in the probe). The group card
+fills its open places with `Filler.invites()` by role: the invited player's name with "invited" and the seconds left
+of the 30, or "frees in" and the seconds until WoW drops a given-up invite. `/fg preview` shows both in its sample group. A role that a solo Forever Groups player
 waiting in the queue for the dungeon can play is left to the matchmaker first (`addonRoles` in `wow/filler.lua`);
 only the other roles go to the Group Finder, and that role too if the matchmaker has not grouped them within 20 s. "Fill from Group Finder" in the window (or `/fg fill`) does the same for your own party;
-`/fg dryrun` only prints the picks.
+`/fg dryrun` only prints the picks. Filling has no window of its own: what it waits for goes to the saved log
+(`Log.detail`, chat with `/fg debug on`) and the status bar shows who is invited.
+
+Roles in the group (`wow/rolesync.lua`): each player's Forever Groups role is set in WoW's party frames once. A
+player who then picks another role keeps it, except the player's own role when it is one they did not queue for:
+the spec decides it elsewhere: Deadly Boss Mods sets the role from the spec 2 s after joining a group or a /reload
+(`DBM:RoleCheck`, first DAMAGER, then the spec's role; found with the probe's role watch, which logs every
+`UnitSetRole` with its Lua stack). While Forever Groups holds the player's role, `DBM.RoleCheck` is wrapped to do
+nothing (in Forever's client it only sets the role; outside such groups DBM works as always), and the check DBM
+already planned while loading (before Forever Groups loads) is called off with `DBM:Unschedule`; the saved roles
+count from the moment the addon loads. Any other change is
+set back: right away from a `hooksecurefunc("UnitSetRole")` hook, else when WoW reports it (at most once per 5 s);
+only with several roles ticked may it change between them. In a group Forever Groups follows the player's role is
+always held: the current one if ticked, else the first ticked one. The agreed roles are kept in `charDb.roleSync`, so they still hold after a /reload; and in a group
+Forever Groups follows (`GroupView.isTracking`) with nothing agreed for the player, a role outside the ticked ones
+gives way to the first ticked one. Groups the addon does not follow are left alone. The group card
+shows each member in their own role (two tanks as two tanks) and as open places what a group of one tank, one
+healer and three DPS still lacks (`GroupView.composition`).
 
 ### Both directions
 
@@ -229,16 +338,19 @@ is accepted at once while still looking, or for a "Request to join" click (`Grou
 `noAutoAcceptAsked`). An invite from a listed group brings up WoW's role window (`LFGInvitePopup`, with
 `PARTY_INVITE_REQUEST`'s tank/healer/damage flags) instead of the plain popup, and it stays up after joining
 (probe, 2026-11-12); it is closed with `StaticPopupSpecial_Hide` right away and again after 0.3 and 1 s, and the role
-is set through `RoleSync.expect` (`UnitSetRole("player")` once in the group): `LfgPick.joinRole` takes DPS while the
-group has a DPS place, else tank, else healer, of the player's roles, from the listing's open places, else the
-invite's flags. An ask ends early when results that came in after it no longer list the group (by name, or as a
+is set through `RoleSync.expect` (`UnitSetRole("player")` once in the group). An ask offers one role
+(`LfgPick.askRole`): of the player's roles the scarcest the group still needs (tank, then healer, then DPS); with the
+open places unknown (battleground asks, or a listing without them) healer, then DPS, then tank.
+The ask's whisper names only that role and its spec, and the player joins with it, unless the invite asks for other
+roles; then `LfgPick.joinRole` takes DPS while the group has a DPS place, else tank, else healer, from the listing's
+open places, else the invite's flags. Quest and battleground asks do the same. An ask ends early when results that came in after it no longer list the group (by name, or as a
 result id still listed: `LfgList.stillListed`, since a leader's name can arrive late) or show no
 place for the player's roles, or when the leader whispers a clear no; a clear yes gives the leader 30 s more, also
 past the 60 s (`core/replies.lua` reads the answer: refusal and yes words and phrases, "no problem" taken out first;
 both or neither is left open). An invite from an asked leader holds off building; joining that group leaves the
 Forever Groups queue. With no fitting group, or no invite in time, the player builds a group instead (inviting a player
 makes you a party leader, after which another group's invite cannot be accepted, hence this order). A solo player who
-ticked "I'd like to lead" (on the right of the roles header; `charDb.wantsLead` for dungeons,
+ticked "I'd like to lead" (on the right of the line under the role tiles; `charDb.wantsLead` for dungeons,
 `charDb.wantsLeadQuests` for group quests, each going into its own queue's entry) asks no groups (`Apply.isSeeker`, and the questing
 side in `wow/questfinder.lua`) and builds the group right away. The wish travels as the last field of the queue
 entry (`v2|Q|…|<lead>`, "1"; older clients ignore it), and `Matchmaker.chooseLeaderEntry` picks the leader in this
@@ -246,6 +358,37 @@ order: a party (it never breaks up), a solo player who would like to lead, the t
 being filled it is also listed in the Group Finder (`wow/lfglisting.lua`; listing is protected, so it waits in
 `wow/input.lua` for the next key press or click). Searches include every language unless "Find players of every
 language" is off; without a language filter the server only returns the player's own language.
+
+WoW returns at most 100 results per search, and its "found" count is just the number returned (no paging; five
+low-level dungeons together already give 100, one alone 40-70 at a busy time; `/fgp lfgapi`). So a search covers
+one part (`searchParts` in `wow/lfglist.lua`): the main part is the dungeons that matter (being filled, else queued
+for, else ticked); the rest of the player's level, only for the window's numbers, is searched on its own. While
+nothing is known about the rest yet, the first search covers everything at once (part "all"), so every dungeon has
+numbers right away; the next key press or click, at least 1.5 s later, searches the main part on its own, and after a
+main search the rest follows the same way while the main results are younger than the refresh interval
+(`LfgList.searchRestIfDue`, called from `wow/keysearch.lua` and from `LfgList.searchIfStale`). What counts as the
+player's input for a search (`/fgp clicksearch`): key presses (a frame that lets keys through), a left click on the
+3D world (`WorldFrame` OnMouseDown), zooming the camera (`CameraZoomIn`/`CameraZoomOut`), using an action button
+(`UseAction`) and moving the mouse onto the main window or Who is looking (`KeySearch.watch`, OnEnter); not
+`GLOBAL_MOUSE_DOWN` nor turning the camera (`CameraOrSelectOrMoveStart`), which are blocked. One click or key press allows one search: a second `Search` in the same handler is
+`ADDON_ACTION_BLOCKED` (`/fgp lfgapi twice`), so the parts can't be searched at once. The server answers in about
+0.2 s and allows about two searches (of any kind) per five seconds; a third is refused (`LFG_LIST_SEARCH_FAILED`
+"throttled"), refused tries don't count (`/fgp lfgapi gap 1.5`, with the addon's own searches off: two in a row always
+worked, the third within ~5 s always failed). So `LfgList` keeps the times of its searches (dungeons, zones and
+battlegrounds alike, `roomToSearch`): with two in the last 5.5 s a search waits and goes out on a later input
+(`retryPart`; `Filler.searchAgain` then says so instead of warning). A refused search is undone (its dungeons count
+as not searched, the part keeps its turn, the search times go back) and tried again on input at least 3 s later, at
+most 3 times in a row. Wailing Caverns alone already gives 100 results at a busy time. Results replace only the listings of the dungeons searched
+(`coveredActivities`), and a listing for dungeons of both parts (it comes back in each search under a new id) is
+kept once per leader, the newest; listings of a part not searched again are dropped after 2 minutes; a search from Blizzard's window replaces them all. Alone and looking with one role, the main
+search uses WoW's advanced filter (`Search`'s sixth argument, built from `C_LFGList.GetAdvancedFilter` with the
+activities' `groupFinderActivityGroupID`s, which Forever requires, and one of `needsTank`/`needsHealer`/
+`needsDamage`): the server then leaves out groups without a place for that role, solo players stay. With several
+roles there is no filter: the server reads several as "needs all of them" (`/fgp lfgapi healdps`, 2026-11-13: 8
+groups needing a healer and DPS, none needing only one of them, where the plain search had 3 and 16 of those). A click on a role tile also sets WoW's Group Finder roles to the ticked ones (`LfgList.syncRoles`,
+Forever's `C_LFGListRoles.SetRoles`; only from that click, off for the session after an error). On a trial account
+(`IsTrialAccount`, `IsVeteranTrialAccount`) a login message says addon messages, and so the queue, don't work there
+(Forever 1.60.1).
 
 Players who see the listing whisper the leader (there are no applications). While a group is being built,
 `wow/whisperinvite.lua` invites a whisperer who names a role that is still open ("heal?", "dps lf group"), asks once
@@ -293,7 +436,16 @@ the same counts per quest (`lookingCounts(wanted, "quests")`, `groupsNeedingMe(w
 counts, per dungeon and in "Looking now", the listed groups that need one of the player's ticked roles
 (`QueueWindow.groupsNeedingMe`, from the listings' `remaining`); the dungeon's tooltip names their leaders. These
 counts are hidden when Forever Groups won't ask groups for you: with "I'd like to lead" on (per tab) or with asking
-groups switched off (`db.noApply`); "Who is looking" still lists the groups.
+groups switched off (`db.noApply`); "Who is looking" still lists the groups. Next to that count a dungeon row says
+how much the player's roles are wanted (`W.demand` in `wow/ui/window/setup.lua`): "Tank needed" (green) when fewer
+others looking can play that role than a group has places for it, "quiet" when no group needs them and nobody
+looks; only for dungeons whose
+Group Finder numbers are known (`LfgList.isSearched`: in the last dungeon search, or no activity, or the Group
+Finder off). Before queueing, a dungeon search asks for the ticked dungeons and every dungeon for the player's
+level, so the unticked rows are known too; once queued or filling, only those dungeons. The role tile of the role
+needed most for the ticked dungeons (fewest looking per place in a group, among the roles the class can play; none
+on a tie or with nobody looking) says "Needed most" (`W.neededRole`, `Widgets.paintNeeded`), not while queued and
+not on the Quests tab.
 
 ### During and after forming
 
@@ -320,13 +472,38 @@ groups switched off (`db.noApply`); "Who is looking" still lists the groups.
   the counts per player, and "Share my quests" shares every shareable quest, 1.5 s apart (`wow/questshare.lua`).
 - **Replacement:** `wow/run.lua` counts bosses killed (`ENCOUNTER_END`). A dungeon's boss count comes from WoW's
   Adventure Guide when it lists the dungeon, else from finished runs (the most ever killed in one run). When someone leaves the full group before every known boss is down, the leader gets a popup to
-  queue the group for a replacement (Forever Groups and the Group Finder, the leaver excluded).
+  queue the group for a replacement (Forever Groups and the Group Finder, the leaver excluded); with
+  `db.autoReplace` that happens without the popup. Only the popup's click searches the Group Finder; without it the
+  filler starts from the current results and `wow/keysearch.lua` refreshes them on the next key press. While the
+  followed run goes on (`GroupView.isActive`) the window shows no setup (roles, party, dungeons); for the leader with
+  an open place its main button is "Find replacement" (`Run.findReplacement`, the same as the popup's).
+- **Taking the lead:** a member of a dungeon group with open places whose leader has no Forever Groups (not seen by
+  `Presence`) gets a "Make me leader" button next to "Looking now" (`wow/takelead.lua`). It whispers the leader
+  the `askLead` message; once the player leads within 10 minutes (`PARTY_LEADER_CHANGED` / `GROUP_ROSTER_UPDATE`),
+  `Run.fillGroup` queues the group and fills it like a replacement, without a Group Finder search.
+
+### Languages
+
+What the player reads is translated: `core/locale.lua` keeps the translations (`locales/deDE.lua`, `esES.lua` for
+esES and esMX, `ruRU.lua`) keyed by the English text, and `ns.L["English text"]` gives the player's language
+(`db.language` from Settings → Display → Language, else `GetLocale`), English when a text has none. Texts set once
+when a window is built follow a new choice after a /reload, which the settings offer in a popup. Placeholders keep their order (Lua's `string.format` has no positional
+arguments). `Log.info`/`Log.warn` translate their format themselves (the saved log stays English), and so do the
+widgets for their labels and tooltips (`Widgets.button`, `check`, `header`, `link`, `tab`, `window`, `tooltip`) and
+`W.setHint`; `ns.Locale.count(n, one, many)` picks singular or plural. Texts defined as data are marked with
+`ns.Locale.mark(...)` (returns its argument). Whispers and party messages stay English (`Widgets.describeRolesEnglish`,
+`Dungeons.englishName`, `Battlegrounds.englishName`); dungeon and battleground names on screen come from the client
+in its language (`GetActivityInfoTable(...).fullName`, `C_PvP.GetBattlegroundInfo`). `tools/localekeys.lua` lists
+every key from the source (`lua tools/localekeys.lua`), and `tests/locale_spec.lua` checks that each language has
+all of them with the same placeholders. Not translated: the protocol's own error texts, `/fg selftest` and debug lines.
 
 ### Messages and settings
 
 Every whisper and party message the addon sends is a template in `wow/messages.lua` (`Messages.LIST`), editable and
 switchable in the settings' Messages tab (`wow/ui/messageswindow.lua`), with placeholders `{dungeon} {quest} {zone}
-{size} {role} {roles} {spec} {level}`. A sentence whose placeholder is empty is dropped, `|` escapes are stripped and
+{size} {role} {roles} {spec} {level} {battleground}`. In the asks to a leader `{spec}` is the spec that plays the
+roles looked for (`Spec.myLabel(roles)`: a Feral druid looking as healer is a Restoration Druid; the class alone when
+several specs could). A sentence whose placeholder is empty is dropped, `|` escapes are stripped and
 the text is cut at 255 bytes. Sent messages start with `[Forever Groups]` (the ask to a leader ends with
 "(Forever Groups)"), so incoming whispers with that mark are ignored. The settings window (`wow/ui/settings.lua`) has
 the tabs Groups, Messages and Display.

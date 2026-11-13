@@ -175,7 +175,16 @@ function Dungeons.art(id)
     return nil
 end
 
+-- The names in the player's language, from WoW's Group Finder (set by
+-- LfgList.loadLevelRanges on a client in another language than English).
+Dungeons.localNames = {}
+
 function Dungeons.name(id)
+    return Dungeons.localNames[id] or Dungeons.englishName(id)
+end
+
+-- For whispers and party messages, which stay English.
+function Dungeons.englishName(id)
     local dungeon = Dungeons.byId[id]
     return dungeon and dungeon.name or ("dungeon " .. tostring(id))
 end

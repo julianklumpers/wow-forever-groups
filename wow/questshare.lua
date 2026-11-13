@@ -157,8 +157,11 @@ function QuestShare.shareMine(dungeon)
             push(quest.questID)
         end)
     end
-    Log.info("Sharing %d quest%s for %s with your group.", #queue, #queue == 1 and "" or "s",
-        Dungeons.name(dungeon))
+    if #queue == 1 then
+        Log.info("Sharing 1 quest for %s with your group.", Dungeons.name(dungeon))
+    else
+        Log.info("Sharing %d quests for %s with your group.", #queue, Dungeons.name(dungeon))
+    end
     return #queue
 end
 

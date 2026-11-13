@@ -13,16 +13,7 @@ local expected
 local session
 
 local function whisper(name, text)
-    if not text or ns.db.noWhisper then
-        return
-    end
-    if C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
-        return
-    end
-    local ok, err = ns.Whispers.send(name, text)
-    if not ok then
-        Log.debug("whisper to %s failed: %s", name, tostring(err))
-    end
+    return ns.Whispers.sendIfAllowed(name, text)
 end
 
 local function invite(name)
@@ -68,10 +59,11 @@ local function inPartyWith(name)
     return false
 end
 
--- view.queue is "quests" for a questing group: no dungeon to follow and no
--- Group Finder places to fill.
+-- view.queue is "quests" for a questing group and "battlegrounds" for a
+-- battleground group: no dungeon to follow and no places for the dungeon
+-- filler.
 function Group.formed(view)
-    local quest = view.queue == "quests"
+    local quest = view.queue ~= nil
     local dungeon = ns.Quests.nameOf(view.dungeon)
     local fakes, leaderIsFake = fakeCount(view)
     -- A test group with fakes never becomes a real party: nothing to follow.
@@ -127,7 +119,16 @@ function Group.formed(view)
     if fakes > 0 then
         Log.info("%d fake players are not invited.", fakes)
     end
-    local text = ns.Messages.text("groupInvite", { dungeon = dungeon, spec = ns.Spec.myLabel() })
+    local mine
+    for _, member in ipairs(view.members) do
+        if member.name == ns.selfName then
+            mine = member.role
+        end
+    end
+    local english = (view.queue == nil and ns.Dungeons.englishName(view.dungeon))
+        or (view.queue == "battlegrounds" and ns.Battlegrounds.englishName(ns.Battlegrounds.parseKey(view.dungeon)))
+        or dungeon
+    local text = ns.Messages.text("groupInvite", { dungeon = english, spec = ns.Spec.myLabel(mine) })
     for _, name in ipairs(others) do
         whisper(name, text)
         invite(name)
@@ -162,7 +163,7 @@ local function onRosterUpdate()
     if session.role == "leader" and next(pending) == nil then
         session = nil
     elseif session.role == "member" and names[session.leader] then
-        ns.Status.complete("You joined " .. session.leader .. "'s group.")
+        ns.Status.complete(string.format(ns.L["You joined %s's group."], session.leader))
         session = nil
     end
 end
@@ -241,7 +242,7 @@ end
 -- The leader of a proposal the player accepted that is still open: its
 -- invite can arrive before the last answer reaches this client.
 local function acceptedProposalLeader(inviter)
-    for _, engine in ipairs({ ns.engine, ns.questEngine }) do
+    for _, engine in ipairs(ns.Queues.engines()) do
         local proposal = engine and engine.myProposalKey and engine.proposals[engine.myProposalKey]
         if proposal and not proposal.outcome and proposal.leader == inviter
             and proposal.answers[engine.name] == "Y" then

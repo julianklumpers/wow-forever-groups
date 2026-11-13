@@ -50,6 +50,7 @@ describe("Filling from WoW's Group Finder", function()
         tank:joins("Old Heal")
         tank:system("Good Dps declines your group invitation.")
         assert.is_true(tank:logged("Good Dps did not join"))
+        world:advance(2)
         invitedOnly(tank, { "Next Dps" })
         tank:joins("Next Dps")
         assert.is_true(tank:logged("Group complete!"))
@@ -82,7 +83,7 @@ describe("Filling from WoW's Group Finder", function()
         tank:system(declined .. " declines your group invitation.")
         world:advance(1)
         assert.are.equal(4, #tank.invites)
-        assert.is_not_nil(tank:findText("Leaving DPS to Forever Groups players in the queue"))
+        assert.is_true(tank:logged("Leaving DPS to Forever Groups players in the queue"))
         world:advance(10)
         assert.is_true(addon:proposalShown())
         assert.is_true(tank:proposalShown())
@@ -105,7 +106,7 @@ describe("Filling from WoW's Group Finder", function()
         builder.ns.engine:updateEntry(builder.ns.engine.myEntry.members, "HD")
         world:advance(2)
         tank:system(tank.invites[#tank.invites] .. " declines your group invitation.")
-        world:advance(1)
+        world:advance(2)
         assert.are.equal(5, #tank.invites)
     end)
 
@@ -171,7 +172,10 @@ describe("Filling from WoW's Group Finder", function()
         tank:joins("Dps 2")
         world:advance(130)
         assert.are.equal(searches, tank.searches)
-        invitedOnly(tank, { "Dps 7" })
+        invitedOnly(tank, { "Dps 5" })
+        for _, name in ipairs(tank.invites) do
+            assert.are_not.equal("Dps 6", name)
+        end
     end)
 
     it("keeps the results fresh on key presses while filling, also when every role is invited", function()
@@ -196,7 +200,7 @@ describe("Filling from WoW's Group Finder", function()
         world:advance(20)
         tank:press("W")
         assert.are.equal(searches, tank.searches)
-        world:advance(11)
+        world:advance(44)
         invitedOnly(tank, { "Dps 4" })
         assert.are.equal("", tank.ns.Filler.stillNeeded())
         tank:press("W")
@@ -224,7 +228,84 @@ describe("Filling from WoW's Group Finder", function()
         assert.is_false(client:logged("Slow Heal did not answer"))
         world:advance(8)
         assert.is_true(client:logged("Slow Heal did not answer"))
+        for _, name in ipairs(client.invites) do
+            assert.are_not.equal("Quick Heal", name)
+        end
+        world:advance(30)
         invitedOnly(client, { "Quick Heal" })
+    end)
+
+    it("passes over a player whose whisper gets an away reply, before inviting", function()
+        local world = World.new()
+        local tank = world:addClient("Tanky Mctank", { level = 20 })
+        world:list("Listed Heal", "H", 799, 20, 300)
+        world:list("Away Dps", "D", 799, 20, 290)
+        for _, name in ipairs({ "Dps A", "Dps B", "Dps C" }) do
+            world:list(name, "D", 799, 20, 100)
+        end
+        world:advance(CONNECT)
+        tank:slash("/dq join tank dm")
+        tank:slash("/dq fill")
+        world:advance(1)
+        tank:fire("CHAT_MSG_AFK", "Away from keyboard", "Away Dps")
+        world:advance(2)
+        for _, name in ipairs(tank.invites) do
+            assert.are_not.equal("Away Dps", name)
+        end
+        assert.is_true(tank:logged("Away Dps is away"))
+        invitedOnly(tank, { "Listed Heal", "Dps A", "Dps B", "Dps C" })
+    end)
+
+    it("shows the invited players in the open places, with the time left", function()
+        local world = World.new()
+        local tank = world:addClient("Tanky Mctank", { level = 20 })
+        world:list("Listed Heal", "H", 799, 20, 300)
+        for _, name in ipairs({ "Dps A", "Dps B", "Dps C" }) do
+            world:list(name, "D", 799, 20, 100)
+        end
+        world:advance(CONNECT)
+        tank:slash("/dq")
+        tank:click("CheckButton", "Tank")
+        tank:slash("/dq fill")
+        world:advance(2)
+        tank:joins("Listed Heal")
+        world:advance(1)
+        local function slotOf(name)
+            for _, slot in ipairs(tank.ns.WindowParts.slots) do
+                if slot.shown and slot.name.text == name then
+                    return slot
+                end
+            end
+        end
+        local slot = slotOf("Dps A")
+        assert.is_not_nil(slot)
+        assert.are.equal("invited", slot.className.text)
+        assert.is_truthy(slot.specName.text:match("^0:%d%d$"))
+        world:advance(30)
+        slot = slotOf("Dps A")
+        assert.are.equal("frees in", slot.className.text)
+        world:advance(30)
+        assert.is_nil(slotOf("Dps A"))
+    end)
+
+    it("waits when WoW says the party is full, and tries again after a while", function()
+        local world = World.new()
+        local tank = world:addClient("Tanky Mctank", { level = 20 })
+        world:list("Listed Heal", "H", 799, 20, 300)
+        world:list("Dps A", "D", 799, 20, 200)
+        world:advance(CONNECT)
+        tank:slash("/dq join tank dm")
+        tank:slash("/dq fill")
+        world:advance(2)
+        local invites = #tank.invites
+        tank:system(tank.env.ERR_GROUP_FULL)
+        assert.is_true(tank:logged("WoW says the party is full"))
+        world:list("Dps B", "D", 799, 20, 100)
+        tank:system("Listed Heal declines your group invitation.")
+        world:advance(5)
+        assert.are.equal(invites, #tank.invites)
+        world:advance(8)
+        assert.is_true(#tank.invites > invites)
     end)
 
     it("only lists the picks in a dry run", function()
@@ -240,7 +321,7 @@ describe("Filling from WoW's Group Finder", function()
         world:advance(2)
         assert.are.same({}, client.invites)
         assert.is_true(client:said("%[dry run%] Would invite Heal as Healer"))
-        assert.is_not_nil(client:findText("Nobody listed for: DPS, DPS"))
+        assert.is_true(client:logged("Nobody listed for: DPS, DPS"))
     end)
 
     it("asks for another search when nobody fits, and searches only on clicks", function()
@@ -252,8 +333,9 @@ describe("Filling from WoW's Group Finder", function()
         client:click("CheckButton", "Tank")
         client:slash("/dq fill")
         world:advance(2)
-        assert.is_not_nil(client:findText("Nobody listed for: Healer, DPS, DPS, DPS"))
+        assert.is_true(client:logged("Nobody listed for: Healer, DPS, DPS, DPS"))
         world:list("Late Heal", "H", 799)
+        world:advance(4)
         client:slash("/dq fill")
         world:advance(2)
         invitedOnly(client, { "Late Heal" })
@@ -457,3 +539,155 @@ describe("A player who switches roles after joining", function()
         assert.are.equal("DAMAGER", leader.roles["Listed Heal"])
     end)
 end)
+
+describe("The player's own role", function()
+    local function healerLeader(ticks)
+        local world = World.new()
+        local leader = world:addClient("Heally Mcheal", { level = 20, class = "DRUID" })
+        world:list("Listed Tank", "T", 799, 20, 300)
+        world:advance(CONNECT)
+        leader:slash("/dq")
+        for _, role in ipairs(ticks) do
+            leader:click("CheckButton", role)
+        end
+        leader:click("Button", "None")
+        leader:click("CheckButton", "The Deadmines")
+        leader:slash("/dq fill")
+        world:advance(2)
+        leader:joins("Listed Tank")
+        world:advance(6)
+        return world, leader
+    end
+
+    it("stays the one role the player chose, also when WoW sets another from the spec", function()
+        local world, leader = healerLeader({ "Healer" })
+        assert.are.equal("HEALER", leader.roles["Heally Mcheal"])
+        leader.roles["Heally Mcheal"] = "TANK"
+        leader:fire("ROLE_CHANGED_INFORM")
+        world:advance(3)
+        assert.are.equal("HEALER", leader.roles["Heally Mcheal"])
+        assert.is_false(leader:logged("Roles changed"))
+        leader.roles["Heally Mcheal"] = "TANK"
+        leader:fire("ROLE_CHANGED_INFORM")
+        world:advance(6)
+        assert.are.equal("HEALER", leader.roles["Heally Mcheal"])
+    end)
+
+    it("is set back at once when another addon sets it from the spec", function()
+        local world, leader = healerLeader({ "Healer" })
+        local sets = #leader.roleSets
+        leader.env.UnitSetRole("player", "TANK")
+        assert.are.equal("HEALER", leader.roles["Heally Mcheal"])
+        assert.are.same({ "Heally Mcheal=TANK", "Heally Mcheal=HEALER" }, { unpack(leader.roleSets, sets + 1) })
+        world:advance(3)
+        assert.are.equal("HEALER", leader.roles["Heally Mcheal"])
+    end)
+
+    it("keeps Deadly Boss Mods from setting it from the spec, and leaves DBM alone otherwise", function()
+        local world = World.new()
+        local client = world:addClient("Heally Mcheal", { level = 20, class = "DRUID", beforeLogin = function(c)
+            c.env.DBM = { RoleCheck = function()
+                c.env.UnitSetRole("player", "TANK")
+            end }
+        end })
+        world:advance(CONNECT)
+        client.party, client.isLeader = { "Some Tank" }, true
+        client.env.DBM:RoleCheck(false)
+        assert.are.equal("TANK", client.roles["Heally Mcheal"])
+
+        client:slash("/dq")
+        client:click("CheckButton", "Healer")
+        client.roles["Heally Mcheal"] = "HEALER"
+        client.ns.GroupView.track("5")
+        client:fire("GROUP_ROSTER_UPDATE")
+        local sets = #client.roleSets
+        client.env.DBM:RoleCheck(false)
+        assert.are.equal("HEALER", client.roles["Heally Mcheal"])
+        assert.are.equal(sets, #client.roleSets)
+    end)
+
+    it("calls off the role check Deadly Boss Mods planned before the addon loaded", function()
+        local world, leader = healerLeader({ "Healer" })
+        local saved = leader:logout()
+        local cancelled = {}
+        local again = world:addClient("Heally Mcheal", { level = 20, class = "DRUID", saved = saved,
+            beforeLogin = function(c)
+                local dbm = {}
+                function dbm.RoleCheck()
+                    c.env.UnitSetRole("player", "TANK")
+                end
+                function dbm.Unschedule(_, f)
+                    cancelled[#cancelled + 1] = f
+                end
+                c.env.DBM = dbm
+            end })
+        assert.are.equal(again.env.DBM.foreverGroupsRoleCheck, cancelled[1])
+    end)
+
+    it("may change between the roles the player chose", function()
+        local world, leader = healerLeader({ "Healer", "DPS" })
+        local mine = leader.roles["Heally Mcheal"]
+        local other = mine == "HEALER" and "DAMAGER" or "HEALER"
+        leader.roles["Heally Mcheal"] = other
+        leader:fire("ROLE_CHANGED_INFORM")
+        world:advance(3)
+        assert.are.equal(other, leader.roles["Heally Mcheal"])
+    end)
+
+    it("is the ticked one in a group Forever Groups follows, also when nothing was agreed for it", function()
+        local world = World.new()
+        local client = world:addClient("Heally Mcheal", { level = 20, class = "DRUID" })
+        world:advance(CONNECT)
+        client:slash("/dq")
+        client:click("CheckButton", "Healer")
+        client.party, client.isLeader = { "Some Tank" }, true
+        client.roles["Heally Mcheal"] = "TANK"
+        client.ns.GroupView.track("5")
+        client:fire("GROUP_ROSTER_UPDATE")
+        world:advance(3)
+        assert.are.equal("HEALER", client.roles["Heally Mcheal"])
+    end)
+
+    it("is left alone in a group Forever Groups does not follow", function()
+        local world = World.new()
+        local client = world:addClient("Heally Mcheal", { level = 20, class = "DRUID" })
+        world:advance(CONNECT)
+        client:slash("/dq")
+        client:click("CheckButton", "Healer")
+        client.party, client.isLeader = { "Some Tank" }, true
+        client.roles["Heally Mcheal"] = "TANK"
+        client:fire("GROUP_ROSTER_UPDATE")
+        world:advance(3)
+        assert.are.equal("TANK", client.roles["Heally Mcheal"])
+    end)
+
+    it("still holds after a /reload, without anything else happening in the group", function()
+        local world, leader = healerLeader({ "Healer" })
+        local saved = leader:logout()
+        saved.charDb.roleSync = nil
+        local again = world:addClient("Heally Mcheal", { level = 20, class = "DRUID", saved = saved })
+        again.party, again.isLeader = { "Listed Tank" }, true
+        again.roles["Heally Mcheal"] = "TANK"
+        world:advance(CONNECT)
+        assert.are.equal("HEALER", again.roles["Heally Mcheal"])
+    end)
+end)
+
+describe("The group card's places", function()
+    it("show every member in their own role, two tanks as two tanks, and what the group still lacks", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        world:advance(CONNECT)
+        leader.party, leader.isLeader = { "Second Tank", "Some Dps" }, true
+        leader.roles = { ["Tanky Mctank"] = "TANK", ["Second Tank"] = "TANK", ["Some Dps"] = "DAMAGER" }
+        leader:fire("GROUP_ROSTER_UPDATE")
+        local composition = leader.ns.GroupView.composition()
+        local shown = {}
+        for i, slot in ipairs(composition.slots) do
+            shown[i] = slot.role .. "=" .. (slot.name or "open")
+        end
+        assert.are.same({ "T=Tanky Mctank", "T=Second Tank", "D=Some Dps", "H=open", "D=open" }, shown)
+        assert.are.equal("HD", composition.open)
+    end)
+end)
+

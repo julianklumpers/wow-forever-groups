@@ -22,10 +22,14 @@ local function onInput()
     if not ns.db or InCombatLockdown() or ns.Input.run() or not ns.Features.refresh() then
         return
     end
+    if ns.Window.isShown() and ns.LfgList.searchRestIfDue(INTERVAL) then
+        return
+    end
     if ns.LfgList.secondsSinceAnySearch() < INTERVAL then
         return
     end
-    if ns.QuestFinder.searchIfUseful(INTERVAL) or ns.Filler.searchIfUseful(INTERVAL) then
+    if ns.QuestFinder.searchIfUseful(INTERVAL) or ns.Filler.searchIfUseful(INTERVAL)
+        or ns.BgFinder.searchIfUseful(INTERVAL) then
         return
     end
     -- The dungeon queue comes first: an open Who is looking on the Quests
@@ -34,6 +38,10 @@ local function onInput()
         return
     end
     if (ns.Filler.isActive() or (ns.engine and ns.engine.myEntry)) and ns.LfgList.searchIfStale(FRESH) then
+        return
+    end
+    if ns.Window.isShown() and ns.WindowParts.currentTab() == "battlegrounds"
+        and ns.QueueWindow.searchIfStale(INTERVAL, "battlegrounds") then
         return
     end
     if ns.QueueWindow.isShown() then
@@ -52,6 +60,13 @@ function KeySearch.init()
     frame = CreateFrame("Frame", "ForeverGroupsKeySearchFrame", UIParent)
     if not worldHooked and WorldFrame and WorldFrame.HookScript then
         worldHooked = pcall(WorldFrame.HookScript, WorldFrame, "OnMouseDown", onInput)
+        -- WoW counts these as the player's own input too (a mouse click
+        -- anywhere, GLOBAL_MOUSE_DOWN, or turning the camera does not).
+        for _, name in ipairs({ "CameraZoomIn", "CameraZoomOut", "UseAction" }) do
+            if type(_G[name]) == "function" then
+                pcall(hooksecurefunc, name, onInput)
+            end
+        end
     end
     local ok = pcall(frame.SetPropagateKeyboardInput, frame, true)
     local passes = ok and (not frame.GetPropagateKeyboardInput or frame:GetPropagateKeyboardInput())
@@ -62,6 +77,18 @@ function KeySearch.init()
     frame:SetScript("OnKeyDown", onInput)
     ready = pcall(frame.EnableKeyboard, frame, true)
     Log.debug("key search %s", ready and "ready" or "unavailable")
+end
+
+-- Moving the mouse onto a Forever Groups window is input too: the results
+-- refresh as the player looks.
+function KeySearch.watch(window)
+    if window and window.HookScript then
+        -- A frame only hears the mouse coming in when it takes mouse input.
+        if window.EnableMouse and not (window.IsMouseEnabled and window:IsMouseEnabled()) then
+            window:EnableMouse(true)
+        end
+        window:HookScript("OnEnter", onInput)
+    end
 end
 
 function KeySearch.isReady()

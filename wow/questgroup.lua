@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Log = ns.Log
 
 -- A group's quests after it formed: a questing group's quest, or the
@@ -224,9 +226,9 @@ local function describe(progress)
     if not progress then
         return "-"
     elseif progress.turnedIn then
-        return "done"
+        return L["done"]
     elseif progress.complete then
-        return "ready to turn in"
+        return L["ready to turn in"]
     elseif progress.total > 0 then
         return progress.done .. "/" .. progress.total
     end
@@ -250,7 +252,7 @@ function QuestGroup.rows()
     local rows = {}
     for _, id in ipairs(context.quests) do
         local mine = context.turnedIn[id] and { turnedIn = true } or progressOf(id)
-        local lines = { { name = "You", text = describe(mine) } }
+        local lines = { { name = L["You"], text = describe(mine) } }
         for _, member in ipairs(members) do
             local report = reports[member.name]
             lines[#lines + 1] = { name = member.name, text = report and describe(report[id]) or "?" }
@@ -275,9 +277,9 @@ local function checkDone()
     end
     context.asked = true
     StaticPopupDialogs[POPUP] = {
-        text = "Your shared quests are done. Leave the group?",
-        button1 = "Leave group",
-        button2 = "Stay",
+        text = L["Your shared quests are done. Leave the group?"],
+        button1 = L["Leave group"],
+        button2 = L["Stay"],
         OnAccept = leaveGroup,
         timeout = 0,
         whileDead = true,

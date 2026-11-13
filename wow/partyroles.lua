@@ -16,11 +16,11 @@ end
 -- "party role", "class" or "invited": where the roles came from, for the window.
 function PartyRoles.sourceOf(member)
     if ns.RoleSync.expected(member.name) or member.wowRole then
-        return "party role"
+        return ns.Locale.mark("party role")
     elseif ns.Filler.roleOf(member.name) then
-        return "invited"
+        return ns.Locale.mark("invited")
     end
-    return "any role of the class"
+    return ns.Locale.mark("any role of the class")
 end
 
 ns.PartyRoles = PartyRoles

@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Dungeons = ns.Dungeons
 local Widgets = ns.Widgets
 local Log = ns.Log
@@ -7,7 +9,8 @@ local Log = ns.Log
 -- Follows a dungeon run: which bosses are down, and how many bosses the
 -- dungeon has (learned from earlier runs: the most ever killed in one run).
 -- When a player leaves the full group before every boss is down, the leader
--- is asked whether to queue the group for a replacement.
+-- is asked whether to queue the group for a replacement (or it happens by
+-- itself, setting autoReplace).
 local Run = {}
 
 local POPUP = "DUNGEONQUEUE_REPLACEMENT"
@@ -143,9 +146,9 @@ end
 -- "3/8 bosses", or "3 bosses down" while the total is not known.
 function Run.describe(info)
     if info.total then
-        return string.format("%d/%d bosses", math.min(info.kills, info.total), info.total)
+        return string.format(L["%d/%d bosses"], math.min(info.kills, info.total), info.total)
     end
-    return string.format("%d boss%s down", info.kills, info.kills == 1 and "" or "es")
+    return ns.Locale.count(info.kills, "%d boss down", "%d bosses down")
 end
 
 local function finished(info)
@@ -246,14 +249,16 @@ local function onEncounterEnd(encounterId, encounterName, _, _, success)
 end
 
 
--- Queues the party for the roles the leaver left open: Forever Groups players
--- and WoW's Group Finder both look, as with Find group. From a click only.
-function Run.findReplacement()
-    local dungeon = run and run.dungeon or ns.GroupView.dungeon()
+-- Queues the party for its open roles: Forever Groups players and WoW's
+-- Group Finder both look, as with Find group. Only a click may search the
+-- Group Finder; otherwise the next key press refreshes it. Returns the
+-- dungeon and the open roles, or nil.
+local function queueGroup(fromClick)
+    local dungeon = run and run.dungeon or ns.GroupView.trackedDungeon()
     local composition = ns.GroupView.composition()
     local open = composition.open
     if not dungeon or open == "" or ns.Party.state() ~= "leader" then
-        return false
+        return nil
     end
     local members, names = {}, {}
     for _, member in ipairs(composition.members) do
@@ -271,17 +276,27 @@ function Run.findReplacement()
     if lastLeaver then
         names[#names + 1] = lastLeaver
     end
-    ns.LfgList.search()
+    if fromClick then
+        ns.LfgList.search()
+    end
     if ns.engine and not ns.engine.myEntry then
         ns.join(members, { dungeon })
     end
     if ns.Features.fill() then
         ns.Filler.start({ dungeon = dungeon, missing = open, members = names })
     end
+    return dungeon, open
+end
+
+function Run.findReplacement(fromClick)
+    local dungeon, open = queueGroup(fromClick)
+    if not dungeon then
+        return false
+    end
     Log.info("Looking for a replacement %s for %s.", Widgets.describeRoles(open), Dungeons.name(dungeon))
     local lockdown = C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()
     if not ns.db.noPartyAnnounce and not lockdown then
-        local text = ns.Messages.text("partyReplacement", { role = Widgets.describeRoles(open) })
+        local text = ns.Messages.text("partyReplacement", { role = Widgets.describeRolesEnglish(open) })
         if text then
             pcall(C_ChatInfo.SendChatMessage or SendChatMessage, text, "PARTY")
         end
@@ -289,15 +304,29 @@ function Run.findReplacement()
     return true
 end
 
+-- Fills the open places of a group the player just took the lead of.
+function Run.fillGroup()
+    local dungeon, open = queueGroup(false)
+    if not dungeon then
+        return false
+    end
+    Log.info("You lead now; looking for %s for %s.", Widgets.describeRoles(open), Dungeons.name(dungeon))
+    return true
+end
+
 local function ask(leaver, open, info)
-    local bosses = info and (Run.describe(info) .. (info.total and " down" or "") .. ". ") or ""
+    local bosses = ""
+    if info then
+        bosses = (info.total and string.format(L["%d/%d bosses down"], math.min(info.kills, info.total), info.total)
+            or Run.describe(info)) .. ". "
+    end
     StaticPopupDialogs[POPUP] = {
-        text = string.format("%s left the group. %sQueue the group to find a replacement %s?",
-            leaver or "Someone", bosses, Widgets.describeRoles(open)),
-        button1 = "Find replacement",
-        button2 = "No",
+        text = string.format(L["%s left the group. %sQueue the group to find a replacement %s?"],
+            leaver or L["Someone"], bosses, Widgets.describeRoles(open)),
+        button1 = L["Find replacement"],
+        button2 = L["No"],
         OnAccept = function()
-            Run.findReplacement()
+            Run.findReplacement(true)
         end,
         timeout = 60,
         whileDead = true,
@@ -343,7 +372,12 @@ local function onRosterUpdate()
         ns.RoleSync.forget(leaver)
     end
     local open = ns.GroupView.composition().open
-    if open ~= "" then
+    if open == "" then
+        return
+    end
+    if ns.db.autoReplace then
+        Run.findReplacement(false)
+    else
         ask(leaver, open, info)
     end
 end

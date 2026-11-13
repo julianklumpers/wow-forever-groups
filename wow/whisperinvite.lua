@@ -88,7 +88,7 @@ end
 
 local function inviteForDungeon(name, role)
     local dungeonId = ns.Filler.dungeon() or ns.Filler.dungeonIds()[1]
-    local dungeon = dungeonId and Dungeons.name(dungeonId) or "our dungeon"
+    local dungeon = dungeonId and Dungeons.englishName(dungeonId) or "our dungeon"
     local roleName = Widgets.ROLE_NAMES[role]
     if ns.db.dryRun then
         Log.info("[dry run] Would invite %s, who whispered you, as %s.", name, roleName)
@@ -147,7 +147,7 @@ function WhisperInvite.onWhisper(text, sender)
         return
     end
     -- A leader we asked to invite us is answering that, not asking to join.
-    if ns.Apply.wasAsked(sender) or ns.QuestFinder.wasAsked(sender) then
+    if ns.Apply.wasAsked(sender) or ns.QuestFinder.wasAsked(sender) or ns.BgFinder.wasAsked(sender) then
         return
     end
     if string.find(text, "^%[Forever Groups%]") or string.find(text, "^%[DungeonQueue%]") then

@@ -4,6 +4,7 @@ ns = ns or {}
 local Config = {
     HEARTBEAT_INTERVAL = 45,
     ENTRY_TIMEOUT = 120,
+    RESTORE_WINDOW = 900,
     WARMUP = 10,
     MATCH_INTERVAL = 5,
     ALIVE_INTERVAL = 10,

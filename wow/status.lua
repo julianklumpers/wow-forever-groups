@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Widgets = ns.Widgets
 local Dungeons = ns.Dungeons
 
@@ -36,7 +38,7 @@ local LEAD = "You lead this group: you invite the players."
 local WAITING = "You are in the queue: a group will be found for you."
 
 local function lead(text, detail, extra)
-    local status = { text = text, detail = detail, lead = true, headline = LEAD }
+    local status = { text = text, detail = detail, lead = true, headline = L[LEAD] }
     for key, value in pairs(extra or {}) do
         status[key] = value
     end
@@ -44,7 +46,7 @@ local function lead(text, detail, extra)
 end
 
 local function waiting(text, detail, extra)
-    local status = { text = text, detail = detail, lead = false, headline = WAITING }
+    local status = { text = text, detail = detail, lead = false, headline = L[WAITING] }
     for key, value in pairs(extra or {}) do
         status[key] = value
     end
@@ -66,13 +68,14 @@ function Status.current(scope)
     local now = GetServerTime()
     local leadsParty = ns.Party.state() == "leader"
     local proposal = openProposal(engine) or (not dungeonsOnly and ns.questEngine and openProposal(ns.questEngine))
+        or (not dungeonsOnly and ns.bgEngine and openProposal(ns.bgEngine))
     if proposal then
         local left = math.max(0, proposal.answerDeadline - now)
         local make = (proposal.leader == ns.selfName) and lead or waiting
         if proposal.answers[ns.selfName] == "Y" then
-            return make(string.format("Accepted, waiting for the others (%d s)", left))
+            return make(string.format(L["Accepted, waiting for the others (%d s)"], left))
         end
-        return make(string.format("Group found! %d s to accept", left), nil, { alert = true })
+        return make(string.format(L["Group found! %d s to accept"], left), nil, { alert = true })
     end
 
     local view = ns.GroupView.status()
@@ -83,9 +86,10 @@ function Status.current(scope)
     end
     if group and group.role == "member" then
         return {
-            text = "Accept the invite from " .. group.leader, detail = "Group for " .. ns.Quests.nameOf(group.dungeon),
+            text = string.format(L["Accept the invite from %s"], group.leader),
+            detail = string.format(L["Group for %s"], ns.Quests.nameOf(group.dungeon)),
             alert = true, lead = false,
-            headline = "A group was found: accept the WoW invite from " .. group.leader .. ".",
+            headline = string.format(L["A group was found: accept the WoW invite from %s."], group.leader),
         }
     end
     -- How the group comes about (asking leaders, inviting from the Group
@@ -94,37 +98,38 @@ function Status.current(scope)
     local applied = ns.Apply.summary()
     if applied and applied.invitedBy and (details or ns.db.noAutoAcceptAsked) then
         return {
-            text = "Accept the invite from " .. applied.invitedBy,
-            detail = "Group for " .. Dungeons.name(applied.dungeon), alert = true, lead = false,
-            headline = applied.invitedBy .. " invited you from WoW's Group Finder: accept the invite.",
+            text = string.format(L["Accept the invite from %s"], applied.invitedBy),
+            detail = string.format(L["Group for %s"], Dungeons.name(applied.dungeon)), alert = true, lead = false,
+            headline = string.format(L["%s invited you from WoW's Group Finder: accept the invite."],
+                applied.invitedBy),
         }
     end
     local fill = ns.Filler.summary()
-    local detail = details and fill and ("Building your own group: " .. fill) or nil
+    local detail = details and fill and string.format(L["Building your own group: %s"], fill) or nil
     if details and applied and applied.asked then
-        detail = string.format("Asking groups to invite you (%d asked)  ·  own group in %s", applied.asked,
+        detail = string.format(L["Asking groups to invite you (%d asked)  ·  own group in %s"], applied.asked,
             Widgets.formatTime(applied.left))
     end
     if group and group.role == "leader" then
-        return lead(string.format("Inviting your group: %d of %d joined", group.joined, group.total), detail,
+        return lead(string.format(L["Inviting your group: %d of %d joined"], group.joined, group.total), detail,
             { slots = slots, progress = group.total > 0 and group.joined / group.total or nil })
     end
 
     local entry = engine.myEntry
     local questEntry = not dungeonsOnly and ns.QuestQueue.entry() or nil
     if entry and questEntry then
-        detail = (detail and (detail .. "  ·  ") or "") .. "Also looking for a questing group"
+        detail = (detail and (detail .. "  ·  ") or "") .. L["Also looking for a questing group"]
     end
     if entry then
         local roles = entry.members[1].roles
-        local text = string.format("In queue %s as %s", Widgets.formatTime(now - entry.joinedAt),
+        local text = string.format(L["In queue %s as %s"], Widgets.formatTime(now - entry.joinedAt),
             Widgets.describeRoles(roles))
         if #entry.members > 1 then
-            text = text .. string.format(" (party of %d)", #entry.members)
+            text = text .. " " .. string.format(L["(party of %d)"], #entry.members)
         end
         if leadsParty or fill then
             local status = lead(text, detail, { roles = roles })
-            status.headline = "You lead this group and are in the queue: the queue and you both look for players."
+            status.headline = L["You lead this group and are in the queue: the queue and you both look for players."]
             return status
         end
         return waiting(text, detail, { roles = roles })
@@ -134,26 +139,27 @@ function Status.current(scope)
         local finder = ns.QuestFinder.summary()
         local parts = { ns.QuestQueue.describe(questEntry.dungeons) }
         if details and finder.invited > 0 then
-            parts[#parts + 1] = string.format("invited %d from the Group Finder", finder.invited)
+            parts[#parts + 1] = string.format(L["invited %d from the Group Finder"], finder.invited)
         end
         if details and finder.asked > 0 then
-            parts[#parts + 1] = string.format("asked %d group%s", finder.asked, finder.asked == 1 and "" or "s")
+            parts[#parts + 1] = ns.Locale.count(finder.asked, "asked %d group", "asked %d groups")
         end
         if details and ns.Listing.isOurs() then
-            parts[#parts + 1] = "listed in the Group Finder"
+            parts[#parts + 1] = L["listed in the Group Finder"]
         end
-        return waiting(string.format("Looking for a questing group %s as %s",
+        return waiting(string.format(L["Looking for a questing group %s as %s"],
             Widgets.formatTime(now - questEntry.joinedAt), Widgets.describeRoles(roles)),
             table.concat(parts, "  ·  "), { roles = roles })
     end
     if fill then
-        return lead(details and ("Group Finder: " .. fill) or "Group forming", view and view.text, { slots = slots })
+        return lead(details and string.format(L["Group Finder: %s"], fill) or L["Group forming"], view and view.text,
+            { slots = slots })
     end
 
     if view then
-        local headline = view.complete and (view.inside and "Your group is in the dungeon. Have fun!"
+        local headline = L[view.complete and (view.inside and "Your group is in the dungeon. Have fun!"
             or "Your group is complete. Have fun!")
-            or (leadsParty and LEAD or "The leader is completing your group.")
+            or (leadsParty and LEAD or "The leader is completing your group.")]
         return { text = view.text, slots = slots, lead = leadsParty, headline = headline, done = view.complete,
             group = view, progress = view.progress }
     end
@@ -163,24 +169,25 @@ function Status.current(scope)
         for i, id in ipairs(ns.QuestGroup.current().quests) do
             titles[i] = ns.Quests.titleOf(id)
         end
-        return { text = "Questing: " .. table.concat(titles, ", "), lead = leadsParty, done = true,
-            headline = "Your questing group." }
+        return { text = string.format(L["Questing: %s"], table.concat(titles, ", ")), lead = leadsParty,
+            done = true, headline = L["Your questing group."] }
     end
 
     local party = ns.PartyStatus.current()
     if party then
-        local headline = party.leader .. " leads your party and searches; you don't need to do anything."
+        local headline = string.format(L["%s leads your party and searches; you don't need to do anything."],
+            party.leader)
         if party.phase == "proposal" then
-            return { text = party.leader .. " is answering a group proposal", alert = true, lead = false,
-                headline = headline, detail = "For " .. Dungeons.name(party.dungeon) }
+            return { text = string.format(L["%s is answering a group proposal"], party.leader), alert = true,
+                lead = false, headline = headline, detail = string.format(L["For %s"], Dungeons.name(party.dungeon)) }
         elseif party.phase == "formed" then
-            return { text = "Group formed for " .. Dungeons.name(party.dungeon), lead = false, headline = headline,
-                detail = "Leader: " .. party.leader }
+            return { text = string.format(L["Group formed for %s"], Dungeons.name(party.dungeon)), lead = false,
+                headline = headline, detail = string.format(L["Leader: %s"], party.leader) }
         end
-        local text = string.format("Your party is queued by %s (%s)", party.leader,
+        local text = string.format(L["Your party is queued by %s (%s)"], party.leader,
             Widgets.formatTime(now - party.joinedAt))
         return { text = text, lead = false, headline = headline, roles = party.roles,
-            detail = party.roles and ("You: " .. Widgets.describeRoles(party.roles)) or nil }
+            detail = party.roles and string.format(L["You: %s"], Widgets.describeRoles(party.roles)) or nil }
     end
 
     if completeText and now <= completeUntil then
@@ -236,7 +243,7 @@ local function iconButton(key, title, onClick, describe)
     button:SetScript("OnEnter", function(self)
         if GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            GameTooltip:SetText(title, 1, 0.82, 0)
+            GameTooltip:SetText(L[title], 1, 0.82, 0)
             GameTooltip:AddLine(describe(), 1, 1, 1, true)
             GameTooltip:Show()
         end
@@ -297,17 +304,17 @@ local function build()
         ns.QuestShare.shareMine(ns.GroupView.trackedDungeon())
     end, function()
         local info = ns.QuestShare.summary(ns.GroupView.trackedDungeon())
-        local lines = { "Shares your quests for this dungeon with the group, one at a time." }
+        local lines = { L["Shares your quests for this dungeon with the group, one at a time."] }
         if info and #info.theyHave > 0 then
-            lines[#lines + 1] = "Others have, you don't: " .. table.concat(info.theyHave, ", ")
+            lines[#lines + 1] = L["Others have, you don't:"] .. " " .. table.concat(info.theyHave, ", ")
         end
         return table.concat(lines, "\n")
     end)
     ui.progress = iconButton("progress", "Quest progress", function()
         ns.ProgressWindow.toggle()
     end, function()
-        return ns.ProgressWindow.isExpanded() and "Click to fold the quest progress in."
-            or "Click to fold out how far everyone is with the group's quests."
+        return L[ns.ProgressWindow.isExpanded() and "Click to fold the quest progress in."
+            or "Click to fold out how far everyone is with the group's quests."]
     end)
     ui.text = Widgets.text(frame, "GameFontHighlightSmall")
     ui.text:SetWordWrap(false)
@@ -324,11 +331,12 @@ local function build()
                 GameTooltip:AddLine(status.detail, 0.8, 0.8, 0.8, true)
             end
             local connection = ns.Comm.connection()
-            GameTooltip:AddLine("Channel: " .. connection.text .. " - " .. connection.detail, 0.6, 0.8, 1, true)
+            GameTooltip:AddLine(string.format(L["Channel: %s"], L[connection.text]) .. " - " .. L[connection.detail],
+                0.6, 0.8, 1, true)
             if ns.Filler.wantsSearch(30) then
-                GameTooltip:AddLine("Click to search the Group Finder for more players.", 0.3, 1, 0.3)
+                GameTooltip:AddLine(L["Click to search the Group Finder for more players."], 0.3, 1, 0.3)
             else
-                GameTooltip:AddLine("Click to open, drag to move.", 0.5, 0.5, 0.5)
+                GameTooltip:AddLine(L["Click to open, drag to move."], 0.5, 0.5, 0.5)
             end
             GameTooltip:Show()
         end
@@ -356,7 +364,7 @@ function Status.refresh()
     end
     local text = status.detail and (status.text .. "  -  " .. status.detail) or status.text
     if ns.Filler.wantsSearch(30) and not ns.KeySearch.isReady() then
-        text = text .. "  (click to search)"
+        text = text .. "  (" .. L["click to search"] .. ")"
     end
     ui.text:SetText(text)
     local color = (status.done and GREEN) or (status.alert and GOLD) or WHITE

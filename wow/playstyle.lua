@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Playstyles = ns.Playstyles
 local Log = ns.Log
 
@@ -14,13 +16,13 @@ local ANY = Playstyles.ANY
 Playstyle.DEFAULT = ANY
 Playstyle.ORDER = { ANY, 2, 1, 3, 4 }
 
-Playstyle.DESCRIPTIONS = {
+Playstyle.DESCRIPTIONS = ns.Locale.mark({
     [ANY] = "No preference: grouped with every playstyle.",
     [1] = "New to the dungeon; explanations are welcome.",
     [2] = "No rush, time for quests.",
     [3] = "Focused and efficient.",
     [4] = "You know the dungeon well and can carry others through it.",
-}
+})
 
 local function isSecret(value)
     if canaccessvalue ~= nil then
@@ -55,7 +57,7 @@ end
 -- WoW's own word for it, so it reads like the Group Finder.
 function Playstyle.word(id)
     if id == ANY then
-        return "Any"
+        return L["Any"]
     end
     local style = Playstyles.LIST[id]
     if not style then
@@ -85,13 +87,13 @@ end
 -- The line under the choice: who the player is grouped with.
 function Playstyle.partnersText(id)
     if id == ANY then
-        return "Grouped with everyone."
+        return L["Grouped with everyone."]
     end
     local words = { Playstyle.word(id) }
     for _, other in ipairs(Playstyles.partners(id)) do
         words[#words + 1] = Playstyle.word(other)
     end
-    return "Grouped with " .. table.concat(words, " and ") .. " players."
+    return string.format(L["Grouped with %s players."], table.concat(words, " " .. L["and"] .. " "))
 end
 
 function Playstyle.mine()

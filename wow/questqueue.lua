@@ -3,29 +3,17 @@ local _, ns = ...
 local Log = ns.Log
 
 -- The questing queue: a second engine next to the dungeon one, with its own
--- messages (Protocol.QUESTS) and matchmaker (core/questmatch.lua). A player
--- can wait in both; while one of them has a group proposal for the player,
--- the other steps out, and once a group forms the other one is left.
+-- messages (Protocol.QUESTS) and matchmaker (core/questmatch.lua); how it
+-- goes along with the other queues is in wow/queues.lua.
 local QuestQueue = {}
-
--- A proposal that ended this way leaves the other queue held: accepted means
--- a group follows, superseded means another proposal for the player follows.
-local KEEPS_HOLD = { accepted = true, superseded = true }
 
 local function engine()
     return ns.questEngine
 end
 
-local function other()
-    return ns.engine
-end
-
 local handlers = {
     proposal = function(view)
         view.queue = "quests"
-        if other() then
-            other():setHeld(true)
-        end
         ns.Popup.show(view, engine())
     end,
     proposalUpdated = function(view)
@@ -33,9 +21,6 @@ local handlers = {
     end,
     proposalEnded = function(data)
         ns.Popup.hide(engine())
-        if not KEEPS_HOLD[data.result] and other() then
-            other():setHeld(false)
-        end
         if data.result == "removed" and data.reason == "declined" then
             Log.info("You declined and left the questing queue.")
         elseif data.result == "removed" and data.reason == "timeout" then
@@ -48,14 +33,6 @@ local handlers = {
         view.queue = "quests"
         ns.Filler.stop(true)
         ns.QuestGroup.start(view)
-        local dungeons = other()
-        if dungeons then
-            if dungeons.myEntry then
-                dungeons:leave("auto")
-                Log.info("A questing group formed, so you left the dungeon queue.")
-            end
-            dungeons:setHeld(false)
-        end
         ns.Group.formed(view)
     end,
     queueLeft = function(data)
@@ -90,6 +67,7 @@ local function onEvent(event, data)
     if handlers[event] then
         handlers[event](data)
     end
+    ns.Queues.onEvent(engine(), event, data)
     if PERSISTED[event] then
         QuestQueue.persist()
     end
@@ -112,26 +90,6 @@ function QuestQueue.start(selfName)
         config = { PARTIAL_GROUPS = false },
     })
     ns.questEngine:start(false)
-end
-
--- The dungeon queue's events call this: a dungeon proposal for the player
--- holds the questing queue, a formed dungeon group ends it.
-function QuestQueue.onDungeonEvent(event, data)
-    local quests = engine()
-    if not quests then
-        return
-    end
-    if event == "proposal" then
-        quests:setHeld(true)
-    elseif event == "proposalEnded" and not KEEPS_HOLD[data.result] then
-        quests:setHeld(false)
-    elseif event == "groupFormed" then
-        if quests.myEntry then
-            quests:leave("auto")
-            Log.info("A dungeon group formed, so you left the questing queue.")
-        end
-        quests:setHeld(false)
-    end
 end
 
 function QuestQueue.isQueued()
@@ -197,12 +155,14 @@ end
 
 local RESTORE_TRIES, RESTORE_RETRY = 4, 3
 
--- After a /reload: back at the old place, if the party is still the same.
+-- After a /reload or disconnect: back in the queue if the party is still the
+-- same; at the old place only after a short break.
 -- While party member names are still loading it tries again shortly.
 function QuestQueue.restore(attempt)
     attempt = attempt or 1
     local saved = ns.charDb.questQueue
-    if not saved or not saved.members or GetServerTime() - (saved.savedAt or 0) > ns.Config.ENTRY_TIMEOUT then
+    local away = saved and GetServerTime() - (saved.savedAt or 0)
+    if not saved or not saved.members or away > ns.Config.RESTORE_WINDOW then
         ns.charDb.questQueue = nil
         return
     end
@@ -227,7 +187,9 @@ function QuestQueue.restore(attempt)
             return
         end
     end
-    if QuestQueue.join(saved.keys, saved.members, saved.joinedAt) then
+    if away > ns.Config.ENTRY_TIMEOUT then
+        QuestQueue.join(saved.keys, saved.members)
+    elseif QuestQueue.join(saved.keys, saved.members, saved.joinedAt) then
         Log.info("Back in the questing queue; your place was kept.")
     end
 end
@@ -243,7 +205,7 @@ end
 -- leading, ends the questing queue.
 local function onRosterUpdate()
     local entry = QuestQueue.entry()
-    if not entry then
+    if not entry or ns.BgFinder.isRecruiting() then
         return
     end
     local state = ns.Party.state()

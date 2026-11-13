@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Widgets = ns.Widgets
 
 -- A round button on the edge of the minimap: left-click opens the window,
@@ -46,16 +48,16 @@ local function showTooltip(self)
     GameTooltip:SetText("Forever Groups")
     local status = ns.Status.current()
     if status then
-        GameTooltip:AddLine(status.text, 1, 1, 1, true)
+        GameTooltip:AddLine(L[status.text], 1, 1, 1, true)
         if status.detail then
-            GameTooltip:AddLine(status.detail, 0.8, 0.8, 0.8, true)
+            GameTooltip:AddLine(L[status.detail], 0.8, 0.8, 0.8, true)
         end
     else
-        GameTooltip:AddLine("Not in the queue.", 1, 1, 1)
+        GameTooltip:AddLine(L["Not in the queue."], 1, 1, 1)
     end
     local connection = ns.Comm.connection()
-    GameTooltip:AddLine("Channel: " .. connection.text, 0.6, 0.8, 1)
-    GameTooltip:AddLine("Left-click: open. Right-click: settings. Drag: move.", 0.5, 0.5, 0.5)
+    GameTooltip:AddLine(string.format(L["Channel: %s"], L[connection.text]), 0.6, 0.8, 1)
+    GameTooltip:AddLine(L["Left-click: open. Right-click: settings. Drag: move."], 0.5, 0.5, 0.5)
     GameTooltip:Show()
 end
 

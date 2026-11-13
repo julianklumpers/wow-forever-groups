@@ -26,9 +26,18 @@ Messages.LIST = {
     { id = "questAsk", label = "Asking a group leader to invite you (quest)",
         default = "Level {level} {spec} ({role}) here, could you invite me for {quest}?",
         keys = { "level", "spec", "role", "quest" } },
+    { id = "bgAsk", label = "Asking a group leader to invite you (battleground)",
+        default = "Hi! Level {level} {spec} ({role}) here, could you invite me for {battleground}?",
+        keys = { "level", "spec", "role", "battleground" }, markAtEnd = true },
+    { id = "bgInvite", label = "Inviting a player for a battleground group",
+        default = "Hi! Making a {battleground} group of {size}, inviting you now.",
+        keys = { "battleground", "size" } },
     { id = "askAnswer", label = "Answer to an asked leader's question (level, class, spec)",
         default = "Level {level} {spec}, {role}.",
         keys = { "level", "spec", "role" }, markAtEnd = true },
+    { id = "askLead", label = "Asking a leader without Forever Groups to make you leader",
+        default = "Hi! Could you make me leader? Forever Groups will fill the group for us ({roles} needed).",
+        keys = { "roles", "dungeon" }, markAtEnd = true },
     { id = "whisperYes", label = "Answer: inviting a player who whispered you",
         default = "Inviting you as {role} for {dungeon}.",
         keys = { "role", "dungeon" } },
@@ -46,7 +55,7 @@ Messages.LIST = {
         keys = { "role" } },
 }
 
-Messages.PLACEHOLDERS = { "dungeon", "quest", "zone", "size", "role", "roles", "spec", "level" }
+Messages.PLACEHOLDERS = { "dungeon", "quest", "zone", "size", "role", "roles", "spec", "level", "battleground" }
 
 local byId, known = {}, {}
 for _, message in ipairs(Messages.LIST) do
@@ -147,6 +156,7 @@ function Messages.sample(id)
     return Messages.text(id, {
         dungeon = "The Deadmines", quest = "Hogger", zone = "Elwynn Forest", size = 3, role = "healer",
         roles = "Healer, DPS", spec = spec ~= nil and spec or "Enhancement Shaman", level = UnitLevel("player"),
+        battleground = "Warsong Gulch",
     })
 end
 

@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local W = ns.WindowParts
 local Widgets = ns.Widgets
 local Dungeons = ns.Dungeons
@@ -20,7 +22,8 @@ local ROW_WIDTH = W.ROW_WIDTH
 local COUNT_SIZE = W.COUNT_SIZE
 local RANGE_X = W.RANGE_X
 local COUNTS_X = W.COUNTS_X
-local ROLE_WORDS = W.ROLE_WORDS
+local ROLE_COUNTS = W.ROLE_COUNTS
+local GOLD, GREEN = { 1, 0.82, 0 }, { 0.4, 1, 0.4 }
 local TILE_GAP = W.TILE_GAP
 local TILE_WIDTH = W.TILE_WIDTH
 local PARTY_ROW_HEIGHT = W.PARTY_ROW_HEIGHT
@@ -95,49 +98,47 @@ end
 function W.refreshRoles(queued)
     local myClass = Party.playerClass()
     ns.charDb.lastRoles = Classes.filter(W.selectedRoles(), myClass)
+    local current = ns.Spec.current()
     for role, tile in pairs(roleToggles) do
         local allowed = Classes.canPlay(myClass, role)
         tile.reason = not allowed and CLASS_REASON or nil
+        Widgets.setTileLook(tile, allowed and ns.Specs.forRole(myClass, role, current and current.index) or nil)
         Widgets.paintTile(tile, W.hasRole(W.selectedRoles(), role), not queued and allowed)
     end
 end
 
--- The line under the role tiles: with several roles ticked, the one the
--- player will most likely get (the fewest players looking per open slot);
--- otherwise a tip. Always one line, so ticking a role never moves the layout.
-function W.roleHint()
-    local roles = W.selectedRoles()
-    if not roles then
-        return "Tick every role you can play."
-    end
-    if #roles < 2 then
-        return "Can you play another role too? Tick it: groups form sooner."
-    end
-    local general = "Forever Groups picks the role a group needs most."
+-- The role with the fewest players looking per place in a group, among
+-- the roles the player's class can play, for the ticked dungeons; nil on a
+-- tie or with nobody looking. Also returns a tooltip line.
+function W.neededRole()
     if not ns.Features.countsKnown() then
-        return general
+        return nil
     end
     local counts = ns.QueueWindow.lookingCounts(ns.QueueWindow.wantedDungeons())
-    local perGroup = ns.Config.SLOTS
+    if counts.T + counts.H + counts.D == 0 then
+        return nil
+    end
+    local myClass = Party.playerClass()
     local best, bestRatio, tie
-    local parts = {}
     for _, role in ipairs(Widgets.ROLES) do
-        if W.hasRole(roles, role) then
-            local ratio = counts[role] / perGroup[role]
+        if Classes.canPlay(myClass, role) then
+            local ratio = counts[role] / ns.Config.SLOTS[role]
             if not best or ratio < bestRatio then
                 best, bestRatio, tie = role, ratio, false
             elseif ratio == bestRatio then
                 tie = true
             end
-            local words = ROLE_WORDS[role]
-            parts[#parts + 1] = string.format("%d %s", counts[role], counts[role] == 1 and words[1] or words[2])
         end
     end
-    if tie then
-        return general
+    if not best or tie then
+        return nil
     end
-    return string.format("You will most likely play %s: %s looking.", Widgets.ROLE_NAMES[best],
-        table.concat(parts, ", "))
+    local parts = {}
+    for _, role in ipairs(Widgets.ROLES) do
+        local words = ROLE_COUNTS[role]
+        parts[#parts + 1] = ns.Locale.count(counts[role], words[1], words[2])
+    end
+    return best, string.format(L["Needed most right now: %s looking for your dungeons."], table.concat(parts, ", "))
 end
 
 function W.refreshParty(members)
@@ -163,7 +164,7 @@ function W.refreshParty(members)
             end
             row.roles:ClearAllPoints()
             row.roles:SetPoint("LEFT", row, "LEFT", 206 + x, 0)
-            row.roles:SetText(Widgets.describeRoles(roles) .. "  (" .. ns.PartyRoles.sourceOf(member) .. ")")
+            row.roles:SetText(Widgets.describeRoles(roles) .. "  (" .. L[ns.PartyRoles.sourceOf(member)] .. ")")
             row:Show()
             shown = shown + 1
         else
@@ -190,8 +191,7 @@ function W.refreshDungeons()
             count = count + 1
         end
     end
-    ui.dungeonHeader:SetText("Dungeons for level " .. UnitLevel("player")
-        .. string.format("  ·  %d selected", count))
+    ui.dungeonHeader:SetText(string.format(L["Dungeons for level %d  ·  %d selected"], UnitLevel("player"), count))
     Widgets.paintExpander(ui.otherToggle, W.showOthers, string.format("(%d)", others))
     ui.otherToggle:SetShown(others > 0)
     for i, cell in ipairs(dungeonCells) do
@@ -199,7 +199,7 @@ function W.refreshDungeons()
         local detailed = W.isDetailed(i <= #levelList and #levelList or #otherList)
         cell.dungeon = dungeon
         if dungeon then
-            cell.label:SetText(dungeon.name)
+            cell.label:SetText(Dungeons.name(dungeon.id))
             cell.label:SetTextColor(Widgets.levelColor(UnitLevel("player"), dungeon.min, dungeon.max))
             cell.range:SetText(Dungeons.rangeText(dungeon))
             cell.range:ClearAllPoints()
@@ -211,7 +211,6 @@ function W.refreshDungeons()
                 cell.hover:SetPoint("BOTTOMRIGHT", cell, "BOTTOMLEFT", ROW_WIDTH, -1)
                 local known = ns.Features.countsKnown()
                 Widgets.setRoleCounts(cell.counts, known and ns.QueueWindow.lookingCounts({ [dungeon.id] = true }))
-                W.paintGroupsNeeding(cell.groups, dungeon.id)
             else
                 cell.range:SetPoint("LEFT", cell.label, "RIGHT", 6, 0)
                 Widgets.fitClickArea(cell, cell.range)
@@ -221,7 +220,10 @@ function W.refreshDungeons()
             cell.groups:SetShown(detailed)
             local quests = #ns.Quests.forDungeon(dungeon.id)
             cell.quests:SetShown(detailed and quests > 0)
-            cell.quests:SetText(string.format("%d quest%s", quests, quests == 1 and "" or "s"))
+            cell.quests:SetText(ns.Locale.count(quests, "%d quest", "%d quests"))
+            if detailed then
+                W.paintDemand(cell.groups, dungeon.id)
+            end
             cell.chosen:SetShown(selected[dungeon.id] == true)
             cell:SetChecked(selected[dungeon.id] == true)
             cell:Show()
@@ -267,35 +269,74 @@ end
 -- new y.
 -- "5 groups" after a dungeon's counts: listed groups that need one of the
 -- player's roles; empty when none.
-function W.paintGroupsNeeding(text, dungeonId)
-    local count = #ns.QueueWindow.groupsNeedingMe({ [dungeonId] = true })
-    text:SetText(count > 0 and string.format("%d group%s", count, count == 1 and "" or "s") or "")
+-- How much the player's roles are wanted for a dungeon right now: listed
+-- groups that need them, and one of their roles too few others looking can
+-- play; "quiet" when neither and nobody looks. Returns the text, its color, a
+-- tooltip line, or nil.
+function W.demand(dungeonId)
+    local wanted = { [dungeonId] = true }
+    local count = #ns.QueueWindow.groupsNeedingMe(wanted)
+    local groups = count > 0 and ns.Locale.count(count, "%d group", "%d groups")
+    local roles = W.selectedRoles()
+    local counts = roles and ns.LfgList.isSearched(dungeonId) and ns.QueueWindow.lookingCounts(wanted)
+    if counts and not groups and counts.T + counts.H + counts.D == 0 then
+        return L["quiet"], { 0.6, 0.6, 0.6 }, L["Nobody else is looking for this dungeon right now."]
+    end
+    local role
+    if counts then
+        local slots = ns.engine and ns.engine.config.SLOTS or ns.Config.SLOTS
+        for _, letter in ipairs({ "T", "H", "D" }) do
+            if not role and W.hasRole(roles, letter) and counts[letter] < slots[letter] then
+                role = letter
+            end
+        end
+    end
+    if not role then
+        return groups or nil, GOLD
+    end
+    local name, n = Widgets.roleName(role), counts[role]
+    local tip = n == 0
+        and string.format(L["%s needed: nobody else who can play it is looking for it right now."], name)
+        or string.format(L["%s needed: only %d others who can play it are looking for it right now."], name, n)
+    if n == 1 then
+        tip = string.format(L["%s needed: only one other player who can play it is looking for it right now."], name)
+    end
+    local needed = string.format(L["%s needed"], name)
+    if not groups then
+        return needed, GREEN, tip
+    end
+    local green = string.format("|cff%02x%02x%02x", GREEN[1] * 255, GREEN[2] * 255, GREEN[3] * 255)
+    return string.format("%s  ·  %s%s|r", groups, green, needed), GOLD, tip
+end
+
+function W.paintDemand(text, dungeonId)
+    local label, color = W.demand(dungeonId)
+    text:SetText(label or "")
+    if color then
+        text:SetTextColor(color[1], color[2], color[3])
+    end
 end
 
 -- The roles, shared by both tabs, and the playstyle (dungeons only);
 -- returns the new y.
 function W.layoutChoices(y, withPlaystyle)
-    ui.rolesHeader:Show()
-    if ui.rolesHeader.line then
-        ui.rolesHeader.line:Show()
-    end
     for _, role in ipairs(Widgets.ROLES) do
         roleToggles[role]:Show()
     end
-    W.place(ui.rolesHeader, PAD, y)
-    -- Alone, the wish to lead sits on the right of the header line, like the
-    -- links of the dungeon list; a party already has its leader. The
-    -- playstyle (dungeons only) is a dropdown left of it.
-    local solo = Party.state() == "solo"
-    ui.leadCheck:SetShown(solo)
-    local right = WIDTH - PAD
-    if solo then
-        ui.leadCheck:SetChecked(W.wantsLead(withPlaystyle and "dungeons" or "quests"))
-        local labelWidth = ui.leadCheck.label:GetStringWidth() or 0
-        right = right - labelWidth - LEAD_BOX - 1
-        W.place(ui.leadCheck, right, y + 4)
-        right = right - 16
+    y = y - 6
+    for i, role in ipairs(Widgets.ROLES) do
+        W.place(roleToggles[role], PAD + (i - 1) * (TILE_WIDTH + TILE_GAP), y)
     end
+    local needed, neededTip
+    if withPlaystyle and not (ns.engine and ns.engine.myEntry) then
+        needed, neededTip = W.neededRole()
+    end
+    for _, role in ipairs(Widgets.ROLES) do
+        Widgets.paintNeeded(roleToggles[role], role == needed and neededTip or nil)
+    end
+    y = y - Widgets.TILE_HEIGHT - 10
+    -- Under the tiles: the playstyle (dungeons only) on the left, the wish
+    -- to lead on the right (alone only; a party already has its leader).
     ui.playstyleButton:SetShown(withPlaystyle)
     ui.playstyleLabel:SetShown(withPlaystyle)
     if withPlaystyle then
@@ -308,29 +349,28 @@ function W.layoutChoices(y, withPlaystyle)
             button.measure:SetText(ns.Playstyle.word(id))
             longest = math.max(longest, button.measure:GetStringWidth() or 0)
         end
-        local width = BOX_PAD + longest + 6 + ARROW_SIZE + 3
-        button:SetWidth(width)
-        W.place(button, right - width, y + 4 + (BOX_HEIGHT - LEAD_BOX) / 2)
+        button:SetWidth(BOX_PAD + longest + 6 + ARROW_SIZE + 3)
+        W.place(button, PAD + (ui.playstyleLabel:GetStringWidth() or 0) + 6, y)
         ui.playstyleLabel:ClearAllPoints()
         ui.playstyleLabel:SetPoint("RIGHT", ui.playstyleButton, "LEFT", -6, 0)
     else
         W.hidePlaystyleMenu()
     end
-    y = y - W.HEADER_STEP
-    for i, role in ipairs(Widgets.ROLES) do
-        W.place(roleToggles[role], PAD + (i - 1) * (TILE_WIDTH + TILE_GAP), y)
+    local solo = Party.state() == "solo"
+    ui.leadCheck:SetShown(solo)
+    if solo then
+        ui.leadCheck:SetChecked(W.wantsLead(W.currentTab()))
+        local labelWidth = ui.leadCheck.label:GetStringWidth() or 0
+        W.place(ui.leadCheck, WIDTH - PAD - labelWidth - LEAD_BOX - 1, y - (BOX_HEIGHT - LEAD_BOX) / 2)
     end
-    y = y - 76 - 10
-    if withPlaystyle then
-        ui.roleHint:SetText(W.roleHint())
-    else
-        ui.roleHint:SetText(W.selectedRoles()
-            and "Questing groups: at most one tank and one healer."
-            or "Tick every role you can play.")
+    W.placeBattlegroundSize(PAD, y)
+    local hint = W.currentTab() == "quests" and L["Questing groups: at most one tank and one healer."] or nil
+    ui.roleHint:SetShown(hint ~= nil)
+    if hint then
+        ui.roleHint:SetText(hint)
+        W.place(ui.roleHint, PAD, y - 5)
     end
-    ui.roleHint:Show()
-    W.place(ui.roleHint, PAD, y)
-    return y - 26
+    return y - BOX_HEIGHT - 10
 end
 
 -- Places dungeon cells first .. first + count - 1 from y down; returns the
@@ -382,9 +422,10 @@ end
 -- The dungeons searched for, laid out like the table you picked them from.
 function W.layoutQueued(y, entry)
     local count = #entry.dungeons
-    local header = string.format("Searching %d dungeon%s", count, count == 1 and "" or "s")
+    local header = ns.Locale.count(count, "Searching %d dungeon", "Searching %d dungeons")
     local styles = entry.playstyle and entry.playstyle ~= ns.Playstyles.ANY
-        and ns.Playstyle.describe({ entry.playstyle, unpack(ns.Playstyles.partners(entry.playstyle)) }, " or ")
+        and ns.Playstyle.describe({ entry.playstyle, unpack(ns.Playstyles.partners(entry.playstyle)) },
+            " " .. L["or"] .. " ")
     ui.queueHeader:SetText(styles and (header .. "  ·  " .. styles) or header)
     W.place(ui.queueHeader, PAD, y)
     y = y - W.HEADER_STEP
@@ -393,11 +434,11 @@ function W.layoutQueued(y, entry)
     for i, row in ipairs(queueRows) do
         local dungeon = i <= shown and Dungeons.get(entry.dungeons[i])
         if dungeon then
-            row.name:SetText(dungeon.name)
+            row.name:SetText(Dungeons.name(dungeon.id))
             row.name:SetTextColor(Widgets.levelColor(UnitLevel("player"), dungeon.min, dungeon.max))
             row.range:SetText(Dungeons.rangeText(dungeon))
             Widgets.setRoleCounts(row.counts, known and ns.QueueWindow.lookingCounts({ [dungeon.id] = true }))
-            W.paintGroupsNeeding(row.groups, dungeon.id)
+            W.paintDemand(row.groups, dungeon.id)
             W.place(row, PAD - CHECK_INSET, y)
             row:Show()
             y = y - QUEUE_ROW_HEIGHT
@@ -407,7 +448,7 @@ function W.layoutQueued(y, entry)
     end
     ui.queueMore:SetShown(count > shown)
     if count > shown then
-        ui.queueMore:SetText(string.format("and %d more: %s", count - shown,
+        ui.queueMore:SetText(string.format(L["and %d more: %s"], count - shown,
             W.shortNames({ unpack(entry.dungeons, shown + 1) })))
         W.place(ui.queueMore, PAD, y - 4)
         y = y - QUEUE_ROW_HEIGHT
@@ -451,7 +492,6 @@ function W.selectVisible(value)
 end
 
 function W.buildRoles()
-    ui.rolesHeader = Widgets.header(W.frame, "Your roles", PAD, W.HEADER_GAP)
     ui.roleHint = Widgets.text(W.frame, "GameFontHighlightSmall")
     ui.roleHint:SetWidth(WIDTH - 2 * PAD)
     ui.roleHint:SetTextColor(0.85, 0.85, 0.85)
@@ -468,6 +508,7 @@ function W.buildRoles()
     for _, role in ipairs(Widgets.ROLES) do
         roleToggles[role] = Widgets.roleTile(W.frame, role, TILE_WIDTH, function(self)
             ns.charDb.lastRoles = Widgets.toggleRole(W.selectedRoles(), role, self:GetChecked())
+            ns.LfgList.syncRoles(ns.charDb.lastRoles)
             W.setHint("")
             ns.Window.refresh()
         end)
@@ -494,7 +535,7 @@ local function setupMenu(button)
             if radio and radio.SetTooltip then
                 radio:SetTooltip(function(tooltip)
                     tooltip:SetText(ns.Playstyle.word(id), 1, 0.82, 0)
-                    tooltip:AddLine(ns.Playstyle.DESCRIPTIONS[id], 1, 1, 1, true)
+                    tooltip:AddLine(L[ns.Playstyle.DESCRIPTIONS[id]], 1, 1, 1, true)
                     tooltip:AddLine(ns.Playstyle.partnersText(id), 0.8, 0.8, 0.8, true)
                 end)
             end
@@ -639,22 +680,26 @@ function W.buildDungeons()
         cell:SetScript("OnEnter", function(self)
             if self.dungeon and GameTooltip then
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(self.dungeon.name)
-                GameTooltip:AddLine("Level " .. Dungeons.rangeText(self.dungeon), 1, 1, 1)
+                GameTooltip:SetText(Dungeons.name(self.dungeon.id))
+                GameTooltip:AddLine(string.format(L["Level %s"], Dungeons.rangeText(self.dungeon)), 1, 1, 1)
                 local groups = ns.QueueWindow.groupsNeedingMe({ [self.dungeon.id] = true })
                 if #groups > 0 then
-                    GameTooltip:AddLine("Groups in WoW's Group Finder that need you:", 1, 0.82, 0)
+                    GameTooltip:AddLine(L["Groups in WoW's Group Finder that need you:"], 1, 0.82, 0)
                     for n, group in ipairs(groups) do
                         if n > 6 then
-                            GameTooltip:AddLine(string.format("  and %d more", #groups - 6), 1, 1, 1)
+                            GameTooltip:AddLine("  " .. string.format(L["and %d more"], #groups - 6), 1, 1, 1)
                             break
                         end
                         GameTooltip:AddLine(string.format("  %s (%d/5)", group.leader, group.members or 1), 1, 1, 1)
                     end
                 end
+                local _, _, demandTip = W.demand(self.dungeon.id)
+                if demandTip then
+                    GameTooltip:AddLine(demandTip, 1, 1, 1, true)
+                end
                 local quests = ns.Quests.forDungeon(self.dungeon.id)
                 if #quests > 0 then
-                    GameTooltip:AddLine("Your quests here:", 1, 0.82, 0)
+                    GameTooltip:AddLine(L["Your quests here:"], 1, 0.82, 0)
                     for _, title in ipairs(quests) do
                         GameTooltip:AddLine("  " .. title, 1, 1, 1)
                     end
@@ -670,5 +715,5 @@ function W.buildDungeons()
         dungeonCells[i] = cell
     end
     ui.empty = Widgets.text(W.frame, "GameFontDisableSmall")
-    ui.empty:SetText("No dungeons fit your level. Open 'Other dungeons' to pick one anyway.")
+    ui.empty:SetText(L["No dungeons fit your level. Open 'Other dungeons' to pick one anyway."])
 end

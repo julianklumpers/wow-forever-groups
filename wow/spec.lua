@@ -101,27 +101,68 @@ function Spec.code()
     return Specs.encode(classToken(), spec and spec.index)
 end
 
+local function englishClass(token)
+    return token and (token:sub(1, 1) .. token:sub(2):lower()) or nil
+end
+
+-- In the player's language, for the screen.
 local function className(token)
     if not token then
         return nil
     end
     local names = LOCALIZED_CLASS_NAMES_MALE
-    return (names and names[token]) or (token:sub(1, 1) .. token:sub(2):lower())
+    return (names and names[token]) or englishClass(token)
 end
 
--- "Enhancement Shaman" from a spec code, or the class name alone.
+-- "Enhancement Shaman" from a spec code, or the class name alone; English,
+-- for whispers.
 function Spec.label(code)
     local token, index = Specs.decode(code)
     if not token then
         return nil
     end
     local tree = Specs.tree(token, index)
-    return tree and (tree.name .. " " .. className(token)) or className(token)
+    return tree and (tree.name .. " " .. englishClass(token)) or englishClass(token)
+end
+
+-- A spec code's label as played in a role: the spec itself when it plays
+-- the role, else the tree the class plays the role with (a Feral druid
+-- healing is a Restoration Druid), the class alone when several could.
+-- For the player's own screen: the spec's name in their language.
+function Spec.labelInRole(code, role)
+    local token, index = Specs.decode(code)
+    local look = token and role and Specs.forRole(token, role, index)
+    local name = look and look.name
+    if not look then
+        local tree = token and Specs.tree(token, index)
+        name = tree and tree.name
+    end
+    if not token then
+        return nil
+    end
+    return name and (ns.L[name] .. " " .. className(token)) or className(token)
 end
 
 -- "Enhancement Shaman", the class alone, or nil when even that is unknown.
-function Spec.myLabel()
-    return Spec.label(Spec.code()) or className(classToken())
+-- With roles ("H", "HD"): when the current spec plays none of them, the spec
+-- the player plays the first one in (a Feral druid looking as healer is a
+-- Restoration Druid), or the class alone when the class has several.
+function Spec.myLabel(roles)
+    local current = Spec.current()
+    local fits = false
+    for letter in string.gmatch(type(roles) == "string" and roles or "", "[THD]") do
+        fits = fits or (current ~= nil and string.find(current.roles, letter, 1, true) ~= nil)
+    end
+    if type(roles) == "string" and roles ~= "" and not fits then
+        local token = classToken()
+        for letter in string.gmatch(roles, "[THD]") do
+            local spec = Specs.forRole(token, letter, current and current.index)
+            if spec then
+                return spec.name and (spec.name .. " " .. englishClass(token)) or englishClass(token)
+            end
+        end
+    end
+    return Spec.label(Spec.code()) or englishClass(classToken())
 end
 
 
@@ -131,6 +172,20 @@ function Spec.remember(view)
             known[member.name] = member.spec
         end
     end
+end
+
+-- The tree number of a player's spec (the player's own or one learned), or nil.
+function Spec.indexOf(name)
+    if name == ns.selfName then
+        local spec = Spec.current()
+        return spec and spec.index
+    end
+    local _, index = Specs.decode(known[name])
+    return index
+end
+
+function Spec.className(token)
+    return className(token)
 end
 
 -- The tree name for a group card slot ("Enhancement"), or nil.
@@ -148,7 +203,7 @@ end
 -- after that the player's own ticks stay.
 local function onTalentsChanged()
     dirty = true
-    for _, engine in ipairs({ ns.engine, ns.questEngine }) do
+    for _, engine in ipairs(ns.Queues.engines()) do
         engine:setSpec(Spec.code())
     end
     local spec = Spec.current()

@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Widgets = ns.Widgets
 local Messages = ns.Messages
 
@@ -24,7 +26,7 @@ local function paint(row)
         row.edit:SetCursorPosition(0)
     end
     local preview = Messages.sample(id)
-    row.preview:SetText(preview and ("Sends: " .. preview) or "Turned off: nothing is sent.")
+    row.preview:SetText(preview and string.format(L["Sends: %s"], preview) or L["Turned off: nothing is sent."])
 end
 
 local function buildRow(content, width, message, y)
@@ -72,7 +74,7 @@ function MessagesWindow.build(page, width, y)
     local intro = Widgets.text(page, "GameFontHighlightSmall")
     intro:SetPoint("TOPLEFT", 20, y - 24)
     intro:SetWidth(width - 40)
-    intro:SetText(INTRO)
+    intro:SetText(L[INTRO])
     local scroll = CreateFrame("ScrollFrame", nil, page, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 16, y - 80)
     scroll:SetPoint("BOTTOMRIGHT", -34, 4)

@@ -24,6 +24,61 @@ Specs.TREES = {
     DRUID = { { "Balance", "D" }, { "Feral", "TD" }, { "Restoration", "H" } },
 }
 
+-- Per tree: the retail spec art (atlas spec-thumbnail-<class>-<name>).
+-- Feral as a tank shows the guardian (bear) art.
+Specs.ART = {
+    WARRIOR = { "arms", "fury", "protection" },
+    PALADIN = { "holy", "protection", "retribution" },
+    HUNTER = { "beastmastery", "marksmanship", "survival" },
+    ROGUE = { "assassination", "outlaw", "subtlety" },
+    PRIEST = { "discipline", "holy", "shadow" },
+    SHAMAN = { "elemental", "enhancement", "restoration" },
+    MAGE = { "arcane", "fire", "frost" },
+    WARLOCK = { "affliction", "demonology", "destruction" },
+    DRUID = { "balance", "feral", "restoration" },
+}
+Specs.TANK_ART = { DRUID = "guardian" }
+-- How a class looks in a role: the tree it plays the role with (the current
+-- one if it fits, else the first that does), its art and name. The
+-- name only when that tree is certain: the current one, or the only one for
+-- the role. nil when the class cannot play the role.
+function Specs.forRole(classToken, role, current)
+    local trees = Specs.TREES[classToken]
+    if not trees then
+        return nil
+    end
+    local index, count = nil, 0
+    for i, tree in ipairs(trees) do
+        if string.find(tree[2], role, 1, true) then
+            count = count + 1
+            index = index or i
+        end
+    end
+    if not index then
+        return nil
+    end
+    if current and trees[current] and string.find(trees[current][2], role, 1, true) then
+        index = current
+    end
+    return {
+        index = index,
+        atlas = Specs.artFor(classToken, index, role),
+        name = (count == 1 or index == current) and trees[index][1] or nil,
+    }
+end
+
+-- The spec art atlas of a class's tree, as played in a role (Feral as a
+-- tank shows the guardian art), or nil.
+function Specs.artFor(classToken, index, role)
+    local names = Specs.ART[classToken]
+    if not names or not names[index] then
+        return nil
+    end
+    local tank = role == "T" and string.find(Specs.TREES[classToken][index][2], "T", 1, true)
+    local art = tank and Specs.TANK_ART[classToken] or names[index]
+    return "spec-thumbnail-" .. string.lower(classToken) .. "-" .. art
+end
+
 function Specs.treeForX(x)
     if type(x) ~= "number" then
         return nil

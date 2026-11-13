@@ -1,7 +1,69 @@
 # Changelog
 
-## 0.26.0 (2026-11-13)
+## 0.26.0 (2026-11-14)
 
+- Forever Groups speaks German, Spanish and Russian: the window, tooltips, settings and the chat
+  lines for you follow your WoW client's language (English otherwise). Dungeon and battleground
+  names come from the client in your language. Whispers and party messages stay English, as the
+  player reading them may speak any language. Settings → Display → Language picks one yourself
+  (Automatic follows WoW); it shows everywhere after a /reload, which it offers.
+- A new logo: the party with the crowned leader in gold on leather, in a ring with stars and
+  a ribbon reading "Forever Groups". The icon in game (title bar, status bar, addon list) is
+  the same party on a round gold-rimmed coin.
+- The role you chose wins over your spec: queued only as healer with a Feral (tank) spec, you
+  became the tank a few seconds after the group formed (Deadly Boss Mods sets the role from the
+  spec), and Forever Groups went along and looked for another healer. Now Deadly Boss Mods'
+  role check is skipped while Forever Groups holds your role, and any other change is set back
+  at once; only with several roles ticked may it pick between them. This holds after a /reload
+  too.
+- Filling a group from the Group Finder no longer stalls on "Your party is full": WoW keeps an
+  unanswered invite open for a minute and it takes a place in the party, so the filler waits for
+  that place instead of inviting players WoW refuses. The group card shows it: an open place
+  holds the player invited for it with the time left ("invited 0:18"), or, once given up on, when
+  WoW frees the place ("frees in 0:24"). It also whispers first and invites
+  a moment later, so a player who is away (AFK, DND) is passed over instead of invited.
+- WoW's Group Finder gives at most 100 results per search, and five dungeons together already
+  reached that, so groups for the dungeons you ticked could be missing. Now the dungeons you
+  ticked (or queued for) are searched on their own, and the other dungeons of your level just
+  after, for the numbers in the window (the very first search covers them all at once, so the
+  numbers show right away). WoW allows about two searches per five seconds: Forever Groups keeps
+  to that, so its searches are no longer refused, and one that has to wait (or that WoW refused
+  anyway) goes out on your next key press or click a few seconds later instead of at the next
+  refresh. A player listed for several dungeons counts once. Besides key presses and clicks in
+  the world, zooming the camera, using an action button and moving the mouse onto the window
+  now refresh the results too. Looking alone with one role, the search asks WoW only
+  for groups with a place for that role.
+- Ticking roles also sets your roles in WoW's Group Finder.
+- On a trial account a message at login says that other Forever Groups players can't see you
+  in the queue (WoW doesn't let trial accounts send addon messages); the Group Finder still
+  works.
+- An ask to a group's leader offers one role, no longer "Healer/DPS": the scarcest the group
+  still needs of your roles (tank, then healer, then DPS; when the open places are not known,
+  healer, then DPS, then tank), and you join with that role. A leader's "what spec?" gets the
+  same role back. The leader's invite whispers name the spec of the role they play.
+- Whispers name the spec that fits the role you look for: a Feral druid looking only as healer
+  asks as "Restoration Druid (Healer)", no longer as "Feral Druid (Healer)".
+- The group card shows every member in their own role: two tanks no longer show one of them as
+  the healer.
+- The "Filling from the Group Finder" window is gone: filling simply happens (`/fg debug on`
+  shows it).
+- A Battlegrounds tab next to Dungeons and Quests: the battlegrounds for your level bracket
+  (Warsong Gulch from 10, Arathi Basin from 20, Darkspear Islands from 30) with who is looking
+  for them: Forever Groups players, and in WoW's Group Finder (only Warsong Gulch is listed
+  there) solo players by role and the groups that still have room. Who is looking shows them
+  too. Find group there puts you in a new Forever Groups battleground queue, where players
+  with the addon form a party (two are enough), and at the same time asks a listed group's
+  leader to invite you (and joins); after a minute without either it builds your own group
+  from listed players: a party of five or a premade of ten,
+  which becomes a raid past five. A premade gets at least two healers (a party one; you count
+  when you ticked Healer): those places stay open until healers are found, and the card says
+  how many it still looks for. Leaving that group stops it. Then sign it up at a battlemaster;
+  the card shows the battleground queue (signed up, wait, ready to enter). A party formed in
+  the Forever Groups queue fills on from the Group Finder the same way, and while other Forever
+  Groups players wait for the same battleground, places stay open for them. You can wait for a
+  dungeon, a quest and a battleground at once: once one forms a group, the others are left,
+  also when Find group builds your battleground group from the Group Finder. While it looks,
+  the roles and battlegrounds it looks with can't be changed (Stop first).
 - Finding a group now simply happens: no more chat lines about asking leaders, inviting players
   from the Group Finder or building your own group, and no "Asking groups to invite you (1
   asked) · own group in 0:24" in the status. You see "In queue" / "Looking for a group", then
@@ -18,6 +80,36 @@
   if you have that): it opens the Forever Groups window.
 - `/fg debug on` shows all of it again in chat and in the status (`/fg debug off` hides it);
   everything is always in the saved log for `/fg bugreport`.
+- In a group whose leader has no Forever Groups and that still has open places, a "Make me
+  leader" button whispers the leader to promote you; once you lead, Forever Groups fills the
+  group for you.
+- When someone leaves your group, you still get the "Find replacement" popup; new setting
+  (Settings → Groups → In the group): "Find a replacement by itself when someone leaves". While
+  the run goes on, the window shows the group card with a "Find replacement" button for the open
+  place (also after "No" in the popup), no longer the roles, party and dungeon list of a new
+  search.
+- Back within 15 minutes after a disconnect, you're in the queue again (at the end; within 2
+  minutes you keep your place, as before).
+- Each dungeon in the list says how much your role is wanted right now: "Tank needed" when
+  fewer other tanks are looking than a group needs, next to the groups that need you
+  ("3 groups · Healer needed"), or "quiet" when nobody looks; also for the dungeons you didn't
+  tick, so you can see where you're wanted. The window is a little wider for it.
+- The role tile of the role needed most right now (of those your class can play) says
+  "Needed most".
+- The group card shows every member with their spec's art (or their class's emblem while the
+  spec is not known) and class and spec on one line ("Druid Feral"). A spec that does not play
+  the member's role gives way to the one that does: a Feral druid healing shows as Restoration,
+  on the card and in the group popup. While the popup asks for your answer the main window
+  steps aside, and comes back afterwards if it was open.
+- The role tiles show your class: the art of the spec you play each role with (a druid's tank
+  tile shows the bear, a priest's healer tile Holy or Discipline), with the role and the spec's
+  name at the bottom.
+- Playstyle and "I'd like to lead" moved to the line under the role tiles, in place of the tips
+  that were there ("Can you play another role too?", "You will most likely play ...").
+- The "Your roles" heading is gone: the role tiles come first, right under the tabs.
+- The chosen tab (Dungeons or Quests) shows the art of WoW's own Group Finder, and its picture
+  runs on into the page below it and fades out. The tab runs into the gold line with rounded
+  corners, and that line now is the top edge of the page.
 
 ## 0.25.2 (2026-11-13)
 

@@ -26,6 +26,8 @@ local over, promisedAt = {}, {}
 -- The Group Finder result each asked leader was asked from, and the
 -- leaders whose question was answered.
 local askedIds, answered = {}, {}
+-- The one role offered to each asked leader, joined with on their invite.
+local askedRoles = {}
 -- Everyone invited while this queue entry lasts: a player who let the
 -- invite run out is not invited again.
 local tried = {}
@@ -125,10 +127,7 @@ end
 
 -- Returns whether the whisper went out.
 local function whisper(name, text)
-    if not text or ns.db.noWhisper or (C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()) then
-        return false
-    end
-    return (ns.Whispers.send(name, text))
+    return ns.Whispers.sendIfAllowed(name, text)
 end
 
 local function invite(listing, key, role, quest)
@@ -158,13 +157,15 @@ end
 local function ask(listing, quest)
     asked[listing.leader] = GetTime()
     askedIds[listing.leader] = listing.id
+    local role = ns.LfgPick.askRole(entry().members[1].roles, listing.remaining)
+    askedRoles[listing.leader] = role
     if ns.db.dryRun then
         Log.info("Dry run: would ask %s, who leads a group in %s, to invite you.", listing.leader, quest.zone)
         return
     end
     local sent = whisper(listing.leader, ns.Messages.text("questAsk", {
-        level = UnitLevel("player"), spec = ns.Spec.myLabel(),
-        role = ns.Widgets.describeRoles(entry().members[1].roles), quest = quest.title,
+        level = UnitLevel("player"), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
+        quest = quest.title,
     }))
     if not sent then
         return
@@ -381,13 +382,15 @@ function QuestFinder.request(listing, roles, wanted)
     end
     subject = subject or (listing.zones and listing.zones[1]) or "your group"
     asked[listing.leader] = GetTime()
+    local role = ns.LfgPick.askRole(roles or "D", listing.remaining)
+    askedRoles[listing.leader] = role
     if ns.db.dryRun then
         Log.info("Dry run: would ask %s to invite you for %s.", listing.leader, subject)
         return
     end
     whisper(listing.leader, ns.Messages.text("questAsk", {
-        level = UnitLevel("player"), spec = ns.Spec.myLabel(),
-        role = ns.Widgets.describeRoles(roles or "D"), quest = subject,
+        level = UnitLevel("player"), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
+        quest = subject,
     }))
     Log.info("Asked %s to invite you for %s.", listing.leader, subject)
 end
@@ -419,7 +422,7 @@ function QuestFinder.onWhisper(text, sender)
     end
     if not answered[sender] and ns.Replies.isQuestion(text) then
         answered[sender] = true
-        ns.Apply.answerQuestion(sender)
+        ns.Apply.answerQuestion(sender, askedRoles[sender])
     end
 end
 
@@ -478,11 +481,14 @@ function QuestFinder.onInvite(inviter, tank, healer, dps)
             remaining = listing.remaining
         end
     end
-    local role = ns.LfgPick.joinRole(current.members[1].roles,
-        remaining or ns.LfgPick.inviteRoles(tank == true, healer == true, dps == true))
+    local invitedRoles = ns.LfgPick.inviteRoles(tank == true, healer == true, dps == true)
+    local role = askedRoles[inviter]
+    if not role or (invitedRoles and invitedRoles[role] == 0) then
+        role = ns.LfgPick.joinRole(current.members[1].roles, remaining or invitedRoles)
+    end
     if ns.Group.acceptInvite(role) then
         ns.Whispers.stopQuiet(inviter)
-        Log.info("Questing group found: you're the %s.", ns.Widgets.ROLE_NAMES[role] or "?")
+        Log.info("Questing group found: you're the %s.", ns.Widgets.roleName(role) or "?")
         Log.detail("Joined %s's group.", inviter)
     end
 end

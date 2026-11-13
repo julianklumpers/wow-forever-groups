@@ -171,6 +171,10 @@ local function syncEntry()
         unpark()
         return
     end
+    if ns.BgFinder.isRecruiting() then
+        -- Its recruits are for a battleground; Find group leaves this queue.
+        return
+    end
     local state = Party.state()
     if state == "member" or state == "raid" then
         leaveQueue("You are no longer the party leader, so you left the queue.")
@@ -277,7 +281,7 @@ local function onEngineEvent(event, data)
     if handler then
         handler(data)
     end
-    ns.QuestQueue.onDungeonEvent(event, data)
+    ns.Queues.onEvent(ns.engine, event, data)
     Window.refresh()
     Status.refresh()
 end
@@ -285,10 +289,11 @@ end
 local function restoreQueue()
     local saved = ns.charDb.queue
     ns.charDb.queue = nil
-    if not saved or not saved.members or not saved.members[1].roles
-        or GetServerTime() - saved.savedAt > Config.ENTRY_TIMEOUT then
+    local away = saved and GetServerTime() - (saved.savedAt or 0)
+    if not saved or not saved.members or not saved.members[1].roles or away > Config.RESTORE_WINDOW then
         return
     end
+    local keepPlace = away <= Config.ENTRY_TIMEOUT
     saved.members[1].name = ns.selfName
     saved.members[1].roles = ns.Classes.filter(saved.members[1].roles, Party.playerClass())
     if not saved.members[1].roles then
@@ -296,6 +301,12 @@ local function restoreQueue()
     end
     local state = Party.state()
     if state == "member" or state == "raid" or not partyMatchesEntry(saved) then
+        return
+    end
+    if not keepPlace then
+        if ns.join(saved.members, saved.dungeons) then
+            Log.info("Back in the queue.")
+        end
         return
     end
     for name, role in pairs(saved.invited or {}) do
@@ -326,10 +337,13 @@ local function onReady(selfName)
     })
     ns.engine:start(false)
     ns.QuestQueue.start(selfName)
+    ns.BgQueue.start(selfName)
     restoreQueue()
     ns.QuestQueue.restore()
+    ns.BgQueue.restore()
     ns.QuestGroup.restore()
     ns.GroupView.restore()
+    ns.RoleSync.apply()
     PartyStatus.onReady()
     ns.Version.onReady()
     ns.Presence.start()
@@ -343,17 +357,14 @@ local function onMessage(sender, text)
     if string.find(text, "^v%d+|S|") then
         ns.Presence.newcomer()
     end
-    for _, engine in ipairs({ ns.engine, ns.questEngine }) do
+    for _, engine in ipairs(ns.Queues.engines()) do
         engine.queue:touch(sender, engine:now())
     end
     if ns.Version.onMessage(sender, text) or ns.Entrances.onMessage(sender, text) then
         return
     end
-    if ns.engine then
-        ns.engine:receive(sender, text)
-    end
-    if ns.questEngine then
-        ns.questEngine:receive(sender, text)
+    for _, engine in ipairs(ns.Queues.engines()) do
+        engine:receive(sender, text)
     end
 end
 
@@ -364,6 +375,8 @@ local function tick()
         ns.engine:tick()
     end
     ns.QuestQueue.tick()
+    ns.BgQueue.tick()
+    ns.BgFinder.tick()
     if syncPending then
         syncEntry()
     end
@@ -431,11 +444,8 @@ ns.on("ADDON_LOADED", function(name)
             PartyStatus.onMessage(sender, text)
         end
     end, function(sender)
-        if ns.engine then
-            ns.engine:forget(sender)
-        end
-        if ns.questEngine then
-            ns.questEngine:forget(sender)
+        for _, engine in ipairs(ns.Queues.engines()) do
+            engine:forget(sender)
         end
     end)
     ns.Whispers.init()
@@ -462,7 +472,9 @@ ns.on("ADDON_LOADED", function(name)
     ns.Quests.init()
     ns.QuestShare.init()
     ns.QuestQueue.init()
+    ns.BgQueue.init()
     ns.QuestFinder.init()
+    ns.BgFinder.init()
     ns.Spec.init()
     ns.Diagnostics.init()
     ns.QuestGroup.init()
@@ -470,14 +482,26 @@ ns.on("ADDON_LOADED", function(name)
     ns.GroupPlaces.init()
     ns.InspectSpec.init()
     ns.Run.init()
+    ns.TakeLead.init()
     ns.Slash.init()
 end)
 
 ns.on("PLAYER_LOGIN", function()
+    -- After a /reload the group is already there: follow it and hold the
+    -- player's role right away, before WoW's role from the spec sticks.
+    ns.GroupView.restore(true)
+    ns.RoleSync.apply()
     ns.LfgList.loadLevelRanges()
     ns.LfgList.loadZones()
     ns.Entrances.loadFromWoW()
     ns.KeySearch.init()
+    -- Since Forever 1.60.1 trial accounts can't send addon messages.
+    local trial = (type(IsTrialAccount) == "function" and IsTrialAccount())
+        or (type(IsVeteranTrialAccount) == "function" and IsVeteranTrialAccount())
+    if trial then
+        Log.warn("On a trial account WoW doesn't let addons talk to each other, so other Forever Groups players "
+            .. "can't see you in the queue. Finding a group through WoW's Group Finder still works.")
+    end
     ns.Settings.register()
     ns.MinimapButton.refresh()
     Comm.start()
@@ -487,11 +511,15 @@ end)
 ns.on("PLAYER_LOGOUT", function()
     persistQueue()
     ns.QuestQueue.persist()
+    ns.BgQueue.persist()
     if ns.engine and ns.engine.myEntry then
         Comm.sendNow(ns.Protocol.encode({ kind = "leave" }))
     end
     if ns.questEngine and ns.questEngine.myEntry then
         Comm.sendNow(ns.Protocol.encode({ kind = "leave" }, ns.Protocol.QUESTS))
+    end
+    if ns.bgEngine and ns.bgEngine.myEntry then
+        Comm.sendNow(ns.Protocol.encode({ kind = "leave" }, ns.Protocol.BATTLEGROUNDS))
     end
 end)
 

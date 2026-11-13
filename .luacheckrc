@@ -49,11 +49,13 @@ local wow_read_globals = {
     "UNKNOWNOBJECT",
     "UnitClass",
     "UnitExists",
+    "UnitIsUnit",
     "UnitGUID",
     "UnitIsPlayer",
     "UnitIsVisible",
     "NotifyInspect",
     "hooksecurefunc",
+    "debugstack",
     "WorldFrame",
     "CanInspect",
     "CheckInteractDistance",
@@ -73,6 +75,9 @@ local wow_read_globals = {
     "InviteUnit",
     "IsInGroup",
     "IsInInstance",
+    "GetBattlefieldStatus",
+    "GetMaxBattlefieldID", "ERR_GROUP_FULL", "C_PvP", "IsTrialAccount", "IsVeteranTrialAccount",
+    "GetBattlefieldEstimatedWaitTime",
     "JoinChannelByName",
     "JoinTemporaryChannel",
     "Minimap",
@@ -92,6 +97,7 @@ local wow_read_globals = {
     "CreateColor",
     "StaticPopup_Visible",
     "StaticPopup_Show",
+    "ReloadUI",
     "LeaveParty",
     "UnitFullName",
     "UnitInParty",
@@ -145,4 +151,8 @@ files["probe/"] = {
 
 files["tests/helpers/wowmock.lua"] = {
     read_globals = { "setfenv", "unpack" },
+}
+
+files["locales/"] = {
+    max_line_length = false,
 }

@@ -149,8 +149,10 @@ function Diagnostics.report()
         spec and (", " .. spec.name) or "", ns.Party.state(), ns.db.debug and "on" or "off")
     local dungeons = ns.engine and ns.engine.myEntry
     local quests = ns.questEngine and ns.questEngine.myEntry
-    add("Queues: dungeons %s | quests %s", dungeons and table.concat(dungeons.dungeons, ",") or "no",
-        quests and table.concat(quests.dungeons, ",") or "no")
+    local battlegrounds = ns.bgEngine and ns.bgEngine.myEntry
+    add("Queues: dungeons %s | quests %s | battlegrounds %s", dungeons and table.concat(dungeons.dungeons, ",") or "no",
+        quests and table.concat(quests.dungeons, ",") or "no",
+        battlegrounds and table.concat(battlegrounds.dungeons, ",") or "no")
     add("")
     add("Self-test:")
     for _, result in ipairs(Diagnostics.selftest()) do

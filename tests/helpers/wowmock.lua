@@ -391,6 +391,15 @@ function Client:press(key)
     end
 end
 
+-- The player moves the mouse onto a window: WoW counts that as input.
+function Client:hover(frame)
+    self.inClick = true
+    for _, fn in ipairs(frame.hooks and frame.hooks.OnEnter or {}) do
+        fn(frame)
+    end
+    self.inClick = false
+end
+
 -- Answers the last StaticPopup this client showed.
 function Client:acceptStaticPopup()
     local which = assert(self.popups[#self.popups], self.name .. " has no popup")
@@ -494,7 +503,15 @@ local function buildEnv(world, client)
             return client.name
         end
         local index = tonumber(string.match(unit, "^party(%d)$"))
-        return index and client.party[index]
+        if index then
+            return client.party[index]
+        end
+        -- In a raid, raid1 .. raidN: the player first, then the others.
+        local raid = client.inRaid and tonumber(string.match(unit, "^raid(%d+)$"))
+        if raid then
+            return raid == 1 and client.name or client.party[raid - 1]
+        end
+        return nil
     end
     env.UnitLevel = function()
         return client.level
@@ -689,10 +706,13 @@ local function buildEnv(world, client)
         return "1.60.1", "70888", "Nov 1 2026", 16001
     end
     env.GetLocale = function()
-        return "enUS"
+        return client.locale or "enUS"
     end
     env.IsInRaid = function()
         return client.inRaid == true
+    end
+    env.GetNumGroupMembers = function()
+        return #client.party > 0 and #client.party + 1 or 0
     end
     env.UnitIsGroupLeader = function(unit)
         if unit == nil or unit == "player" then
@@ -723,6 +743,19 @@ local function buildEnv(world, client)
             end)
         else
             client.roles[name] = role
+        end
+    end
+    -- Runs the hook after the named global function, as WoW does.
+    env.hooksecurefunc = function(first, second, third)
+        local owner, key, hook = env, first, second
+        if type(first) == "table" then
+            owner, key, hook = first, second, third
+        end
+        local original = owner[key]
+        owner[key] = function(...)
+            local results = { original(...) }
+            hook(...)
+            return unpack(results)
         end
     end
     env.UnitInParty = function()
@@ -857,6 +890,9 @@ local function buildEnv(world, client)
     function methods.SetAlpha(widget, value)
         widget.alpha = value
     end
+    function methods.SetColorTexture(widget, r, g, b, a)
+        widget.color = { r, g, b, a }
+    end
     function methods.SetTexCoord(widget, ...)
         widget.texCoord = { ... }
     end
@@ -902,6 +938,23 @@ local function buildEnv(world, client)
             end
             client.frames[#client.frames + 1] = close
             frame.CloseButton = close
+            if template == "ButtonFrameTemplate" and client.withInset then
+                local inset = newWidget("Frame", nil, frame)
+                inset.points = {
+                    { "TOPLEFT", frame, "TOPLEFT", 4, -60 }, { "BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 26 },
+                }
+                inset.GetNumPoints = function()
+                    return #inset.points
+                end
+                inset.GetPoint = function(_, i)
+                    return unpack(inset.points[i])
+                end
+                inset.NineSlice = {}
+                for _, key in ipairs({ "TopEdge", "TopLeftCorner", "TopRightCorner", "LeftEdge" }) do
+                    inset.NineSlice[key] = newWidget("Texture", nil, inset)
+                end
+                frame.Inset = inset
+            end
         end
         return frame
     end
@@ -1039,6 +1092,13 @@ local function buildEnv(world, client)
         end,
     }
     env.C_PartyInfo = {
+        ConvertToRaid = function()
+            client.raidConversions = (client.raidConversions or 0) + 1
+            world:schedule(client, 1, function()
+                client.inRaid = true
+                client:fire("GROUP_ROSTER_UPDATE")
+            end)
+        end,
         LeaveParty = function()
             client.party = {}
             client.leftParty = true
@@ -1052,8 +1112,24 @@ local function buildEnv(world, client)
             end
         end,
     }
+    client.groupFinderRoles = { tank = false, healer = false, dps = true }
+    env.C_LFGListRoles = {
+        GetRoles = function()
+            local roles = client.groupFinderRoles
+            return { tank = roles.tank, healer = roles.healer, dps = roles.dps }
+        end,
+        SetRoles = function(roles)
+            client.groupFinderRoles = { tank = roles.tank, healer = roles.healer, dps = roles.dps }
+        end,
+    }
+    env.IsTrialAccount = function()
+        return client.trial == true
+    end
+    env.IsVeteranTrialAccount = function()
+        return false
+    end
     env.C_LFGList = {
-        Search = function(_, _, _, languages, _, _, activities)
+        Search = function(_, _, _, languages, _, advanced, activities)
             client.searchLanguages = languages
             if not client.inClick then
                 client.blockedSearches = client.blockedSearches + 1
@@ -1064,12 +1140,20 @@ local function buildEnv(world, client)
                 error("bad argument #7 to 'Search'")
             end
             client.searches = client.searches + 1
+            client.advancedFilter = advanced
             client.searchFilter = nil
             if activities then
                 client.searchFilter = {}
                 for _, id in ipairs(activities) do
                     client.searchFilter[id] = true
                 end
+            end
+            if client.throttle and client.throttle > 0 then
+                client.throttle = client.throttle - 1
+                world:schedule(client, 0.2, function()
+                    client:fire("LFG_LIST_SEARCH_FAILED", "throttled")
+                end)
+                return
             end
             world:schedule(client, 0.5, function()
                 client:fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
@@ -1139,8 +1223,15 @@ local function buildEnv(world, client)
             end
             local levels = client.activityLevels[activity]
             if levels then
-                return { minLevelSuggestion = levels[1], maxLevelSuggestion = levels[2] }
+                return { minLevelSuggestion = levels[1], maxLevelSuggestion = levels[2],
+                    groupFinderActivityGroupID = 1000 + activity }
             end
+            return { groupFinderActivityGroupID = 1000 + activity }
+        end,
+        GetAdvancedFilter = function()
+            return client.savedAdvancedFilter or { activities = { 285 }, needsTank = false, needsHealer = false,
+                needsDamage = false, needsMyClass = false, hasTank = false, hasHealer = false, minimumRating = 0,
+                generalPlaystyle1 = false }
         end,
         GetSearchResultMemberCounts = function(id)
             local r = world.listings[id].remaining
@@ -1150,10 +1241,16 @@ local function buildEnv(world, client)
         end,
         GetSearchResults = function()
             local ids = {}
+            local needs = client.advancedFilter
+            local needed = needs and ((needs.needsTank and "T") or (needs.needsHealer and "H")
+                or (needs.needsDamage and "D"))
             for _, listing in ipairs(world.listings) do
                 local wanted = not client.searchFilter
                 for _, activity in ipairs(listing.activityIDs) do
                     wanted = wanted or client.searchFilter[activity]
+                end
+                if needed and listing.remaining and (listing.remaining[needed] or 0) == 0 then
+                    wanted = false
                 end
                 if wanted then
                     ids[#ids + 1] = listing.id
@@ -1176,6 +1273,7 @@ local function buildEnv(world, client)
         end,
     }
     env.ERR_DECLINE_GROUP_S = "%s declines your group invitation."
+    env.ERR_GROUP_FULL = "Your party is full."
     env.ERR_ALREADY_IN_GROUP_S = "%s is already in a group."
     env.ERR_BAD_PLAYER_NAME_S = "Cannot find player '%s'."
     env.JoinTemporaryChannel = function(name)
@@ -1221,11 +1319,12 @@ function World:addClient(name, opts)
         searches = 0, blockedSearches = 0, roles = {}, roleSets = {}, notices = {},
         applicants = {}, applicantInvites = {},
         noEyeTemplate = opts.noEyeTemplate, noDropdownButton = opts.noDropdownButton, chatFilters = {},
-        version = opts.version, talents = opts.talents,
+        version = opts.version, talents = opts.talents, trial = opts.trial, locale = opts.locale,
         questLog = opts.questLog or {}, positions = {}, visible = {}, popups = {}, pushed = {},
         inspectTalents = {}, inspects = {}, farAway = {},
         activityLevels = opts.activityLevels or World.ACTIVITY_LEVELS, journalEntrances = opts.journalEntrances or {},
         journalBosses = opts.journalBosses or {}, journalMaps = opts.journalMaps or {},
+        withInset = opts.withInset,
         atlases = opts.atlases or {
             ["groupfinder-icon-role-large-tank"] = true, ["UI-LFG-RoleIcon-Tank"] = true,
         },

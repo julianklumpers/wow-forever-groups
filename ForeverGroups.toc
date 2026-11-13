@@ -6,12 +6,16 @@
 ## X-Website: https://github.com/julianklumpers/wow-forever-groups
 ## X-Curse-Project-ID: 1800072
 ## X-Wago-ID: rNkgV8Na
-## Version: 0.25.2
+## Version: 0.26.0
 ## IconTexture: Interface\AddOns\ForeverGroups\media\icon
 ## AddonCompartmentFunc: ForeverGroups_OnAddonCompartmentClick
 ## SavedVariables: ForeverGroupsDB
 ## SavedVariablesPerCharacter: ForeverGroupsCharDB
 
+core\locale.lua
+locales\deDE.lua
+locales\esES.lua
+locales\ruRU.lua
 core\config.lua
 core\roles.lua
 core\playstyles.lua
@@ -19,6 +23,7 @@ core\specs.lua
 core\protocol.lua
 core\matchmaker.lua
 core\questmatch.lua
+core\bgmatch.lua
 core\queue.lua
 core\election.lua
 core\proposal.lua
@@ -26,6 +31,7 @@ core\engine.lua
 core\outbox.lua
 core\ratelimit.lua
 core\dungeons.lua
+core\battlegrounds.lua
 core\classes.lua
 core\fill.lua
 core\lfgpick.lua
@@ -63,15 +69,20 @@ wow\lfgapply.lua
 wow\lfglisting.lua
 wow\whisperinvite.lua
 wow\run.lua
+wow\takelead.lua
 wow\questqueue.lua
 wow\questgroup.lua
 wow\questfinder.lua
+wow\bgfinder.lua
+wow\bgqueue.lua
+wow\queues.lua
 wow\partystatus.lua
 wow\status.lua
 wow\ui\window\shared.lua
 wow\ui\window\card.lua
 wow\ui\window\setup.lua
 wow\ui\window\quests.lua
+wow\ui\window\battlegrounds.lua
 wow\ui\window\tabs.lua
 wow\ui\window.lua
 wow\ui\progresswindow.lua

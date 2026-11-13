@@ -49,11 +49,28 @@ describe("Choosing groups to apply to", function()
         assert.is_nil(LfgPick.joinRole("", { D = 1 }))
     end)
 
-    it("offers only the roles a group still needs", function()
-        local picks = LfgPick.groupsToApply({ group(1, "4", 1, 0, 1) }, { roles = "THD", dungeons = wanted })
-        assert.is_true(picks[1].tank)
-        assert.is_false(picks[1].healer)
-        assert.is_true(picks[1].dps)
+    it("offers one role: the scarcest the group still needs", function()
+        local picks = LfgPick.groupsToApply({ group(1, "4", 1, 0, 1), group(2, "4", 0, 1, 1), group(3, "4", 0, 0, 2) },
+            { roles = "THD", dungeons = wanted })
+        local byId = {}
+        for _, pick in ipairs(picks) do
+            byId[pick.id] = pick
+        end
+        assert.are.equal("T", byId[1].role)
+        assert.is_true(byId[1].tank)
+        assert.is_false(byId[1].dps)
+        assert.are.equal("H", byId[2].role)
+        assert.is_false(byId[2].dps)
+        assert.are.equal("D", byId[3].role)
+    end)
+
+    it("asks as healer when the open places are unknown and the player heals", function()
+        assert.are.equal("H", LfgPick.askRole("HD", nil))
+        assert.are.equal("D", LfgPick.askRole("TD", nil))
+        assert.are.equal("T", LfgPick.askRole("T", nil))
+        assert.are.equal("D", LfgPick.askRole("HD", { T = 0, H = 0, D = 1 }))
+        assert.are.equal("H", LfgPick.askRole("HD", { T = 1, H = 0, D = 0 }))
+        assert.is_nil(LfgPick.askRole("", nil))
     end)
 end)
 

@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local W = ns.WindowParts
 local Widgets = ns.Widgets
 local Dungeons = ns.Dungeons
@@ -65,7 +67,7 @@ function W.cardContent(state)
         if state == "raid" then
             subtitle = "You are in a raid: leave it to queue."
         end
-        return { title = string.format("Your party: %d/5", size), subtitle = subtitle, color = GOLD,
+        return { title = string.format(L["Your party: %d/5"], size), subtitle = subtitle, color = GOLD,
             lead = state == "leader" }
     end
     return { color = GOLD }
@@ -81,18 +83,18 @@ function W.questCardContent(state)
     local proposal = ns.questEngine.myProposalKey and ns.questEngine.proposals[ns.questEngine.myProposalKey]
     if proposal and not proposal.outcome then
         local left = math.max(0, proposal.answerDeadline - GetServerTime())
-        return { title = string.format("Group found for %s! %d s to accept", ns.Quests.nameOf(proposal.dungeon),
+        return { title = string.format(L["Group found for %s! %d s to accept"], ns.Quests.nameOf(proposal.dungeon),
             left), color = GREEN, lead = proposal.leader == ns.selfName }
     end
     local invites = ns.Group.status()
     if invites and ns.QuestMatch.parse(invites.dungeon) then
         local name = ns.Quests.nameOf(invites.dungeon)
         if invites.role == "member" then
-            return { title = "Accept the invite from " .. invites.leader, color = GREEN,
-                subtitle = "A questing group for " .. name .. " was found." }
+            return { title = string.format(L["Accept the invite from %s"], invites.leader), color = GREEN,
+                subtitle = string.format(L["A questing group for %s was found."], name) }
         end
-        return { title = string.format("Inviting your group: %d of %d joined", invites.joined, invites.total),
-            color = GREEN, lead = true, subtitle = "Questing group for " .. name }
+        return { title = string.format(L["Inviting your group: %d of %d joined"], invites.joined, invites.total),
+            color = GREEN, lead = true, subtitle = string.format(L["Questing group for %s"], name) }
     end
     local group = ns.QuestGroup.isQuesting() and ns.QuestGroup.current()
     if group and state ~= "solo" then
@@ -100,7 +102,8 @@ function W.questCardContent(state)
         for i, id in ipairs(group.quests) do
             titles[i] = ns.Quests.titleOf(id)
         end
-        return { title = "Questing group: " .. table.concat(titles, ", "), color = GREEN, lead = state == "leader",
+        return { title = string.format(L["Questing group: %s"], table.concat(titles, ", ")), color = GREEN,
+            lead = state == "leader",
             subtitle = "Everyone's progress folds out under the status bar (/fg progress)." }
     end
     local entry = ns.QuestQueue.entry()
@@ -108,16 +111,16 @@ function W.questCardContent(state)
         local finder = ns.QuestFinder.summary()
         local parts = { ns.QuestQueue.describe(entry.dungeons) }
         if finder.invited > 0 then
-            parts[#parts + 1] = string.format("invited %d from the Group Finder", finder.invited)
+            parts[#parts + 1] = string.format(L["invited %d from the Group Finder"], finder.invited)
         end
         if finder.asked > 0 then
-            parts[#parts + 1] = string.format("asked %d group%s", finder.asked, finder.asked == 1 and "" or "s")
+            parts[#parts + 1] = ns.Locale.count(finder.asked, "asked %d group", "asked %d groups")
         end
         if ns.Listing.isOurs() then
-            parts[#parts + 1] = "listed in the Group Finder"
+            parts[#parts + 1] = L["listed in the Group Finder"]
         end
         return {
-            title = string.format("Looking for a questing group %s as %s",
+            title = string.format(L["Looking for a questing group %s as %s"],
                 Widgets.formatTime(GetServerTime() - entry.joinedAt), Widgets.describeRoles(entry.members[1].roles)),
             subtitle = table.concat(parts, "  ·  "), color = GOLD, lead = #entry.members > 1,
         }
@@ -133,14 +136,15 @@ function W.refreshConnection()
     local connection = ns.Comm.connection()
     local newer = ns.Version.newer()
     if newer then
-        connection.text = connection.text .. " · update available"
-        connection.detail = connection.detail .. "\nForever Groups " .. newer.version .. " is out; you have "
-            .. tostring(ns.Version.mine()) .. ". Please update."
+        connection.text = L[connection.text] .. " · " .. L["update available"]
+        connection.detail = L[connection.detail] .. "\n"
+            .. string.format(L["Forever Groups %s is out; you have %s. Please update."], newer.version,
+                tostring(ns.Version.mine()))
     end
     local color = CONNECTION_COLORS[connection.state]
     Widgets.paintDot(card.dot, color)
     local plain = connection.state == "connected" and not newer
-    card.connection:SetText(plain and "" or connection.text)
+    card.connection:SetText(plain and "" or L[connection.text])
     card.connection:SetTextColor(color[1], color[2], color[3])
     card.connectionInfo = connection
     -- The dot pulses while connecting, so the window shows it is on its way.
@@ -185,12 +189,21 @@ end
 
 -- Fills the card and returns its height. full: the party is complete, so the
 -- queue numbers are left out.
--- tab: "dungeons" or "quests"; the card shows that tab's status.
+-- tab: "dungeons", "quests" or "battlegrounds"; the card shows that tab's
+-- status.
 function W.refreshCard(state, full, tab)
     local card = ui.card
     W.refreshConnection()
     local questTab = tab == "quests"
-    local content = questTab and W.questCardContent(state) or W.cardContent(state)
+    local battlegroundTab = tab == "battlegrounds"
+    -- The group's dungeon, its picture, places and actions belong to the
+    -- Dungeons tab only.
+    local otherTab = questTab or battlegroundTab
+    local content = (questTab and W.questCardContent(state))
+        or (battlegroundTab and W.battlegroundCardContent(state)) or W.cardContent(state)
+    if W.preview then
+        content = { title = "Preview: The Deadmines", color = GOLD }
+    end
     local y = -10
     card.crown:SetShown(content.lead == true)
     card.progressLink:SetShown(questTab and ns.QuestGroup.current() ~= nil and #ns.QuestGroup.rows() > 0)
@@ -199,7 +212,7 @@ function W.refreshCard(state, full, tab)
     if content.title then
         card.title:ClearAllPoints()
         card.title:SetPoint("TOPLEFT", card, "TOPLEFT", x, y)
-        card.title:SetText(content.title)
+        card.title:SetText(L[content.title])
         card.title:SetTextColor(content.color[1], content.color[2], content.color[3])
         y = y - 22
     end
@@ -210,7 +223,7 @@ function W.refreshCard(state, full, tab)
         elseif content[field] then
             text:ClearAllPoints()
             text:SetPoint("TOPLEFT", card, "TOPLEFT", 12, y)
-            text:SetText(content[field])
+            text:SetText(L[content[field]])
             text:Show()
             local height = text:GetStringHeight()
             y = y - math.max(16, (type(height) == "number" and height or 0) + 3)
@@ -218,17 +231,20 @@ function W.refreshCard(state, full, tab)
             text:Hide()
         end
     end
-    local banner = W.paintBanner(content.group and not questTab and ns.GroupView.trackedDungeon())
+    local bannerDungeon = (W.preview and "5") or (content.group and not otherTab and ns.GroupView.trackedDungeon())
+    local banner = W.paintBanner(bannerDungeon)
     local composition
-    if questTab then
+    if W.preview then
+        composition = W.previewComposition()
+    elseif otherTab then
         composition = nil
     elseif IsInGroup() or ns.GroupView.isTracking() then
         composition = ns.GroupView.composition()
     elseif ns.engine and ns.engine.myEntry then
         composition = W.queuedComposition(ns.engine.myEntry)
     end
-    local groupDungeon = not questTab and ns.GroupView.trackedDungeon()
-    local entranceFor = not questTab and ns.GroupView.dungeon()
+    local groupDungeon = not otherTab and ns.GroupView.trackedDungeon()
+    local entranceFor = not otherTab and ns.GroupView.dungeon()
     local entrance = entranceFor and not IsInInstance() and ns.Entrances.get(entranceFor)
     local quests = groupDungeon and ns.QuestShare.summary(groupDungeon)
     local inside = IsInInstance() and true or false
@@ -243,10 +259,21 @@ function W.refreshCard(state, full, tab)
             end
         end
         local rows, layout = {}, { spec = false, distance = places and true or false, quests = quests and true }
+        local invites = W.preview and W.previewInvites() or ns.Filler.invites()
         for i, data in ipairs(composition.slots) do
             local row = { role = data.role, name = data.name, classToken = data.classToken }
+            if not data.name then
+                for n, invite in ipairs(invites) do
+                    if invite.role == data.role then
+                        row.invite = table.remove(invites, n)
+                        layout.spec = true
+                        break
+                    end
+                end
+            end
             if data.name then
-                row.spec = ns.Spec.treeOf(data.name)
+                row.spec = data.spec or ns.Spec.treeOf(data.name)
+                row.specIndex = data.specIndex or ns.Spec.indexOf(data.name)
                 row.quests = counts[data.name]
                 if places then
                     local place = ns.GroupPlaces.of(data.name, data.unit, groupDungeon)
@@ -263,7 +290,7 @@ function W.refreshCard(state, full, tab)
                     end
                 end
             end
-            layout.spec = layout.spec or row.spec ~= nil
+            layout.spec = layout.spec or row.spec ~= nil or (data.name ~= nil and data.classToken ~= nil)
             rows[i] = row
         end
         -- Everyone inside: the line under the title says so, the places
@@ -272,21 +299,21 @@ function W.refreshCard(state, full, tab)
             layout.distance = false
         end
         if content.group then
-            local parts = { content.group.complete and "Group complete"
-                or string.format("%d/5, open: %s", content.group.count, content.group.openText) }
+            local parts = { content.group.complete and L["Group complete"]
+                or string.format(L["%d/5, open: %s"], content.group.count, content.group.openText) }
             local styles = ns.Playstyle.describe(content.group.playstyles, " / ")
             if styles then
                 parts[#parts + 1] = styles
             end
             if content.lead then
-                parts[#parts + 1] = "you lead"
+                parts[#parts + 1] = L["you lead"]
             end
             if inside then
-                parts[#parts + 1] = string.format("%d of %d inside", insideCount, content.group.count)
+                parts[#parts + 1] = string.format(L["%d of %d inside"], insideCount, content.group.count)
             elseif places then
-                parts[#parts + 1] = string.format("%d of %d at the entrance", atEntrance, content.group.count)
+                parts[#parts + 1] = string.format(L["%d of %d at the entrance"], atEntrance, content.group.count)
                 if insideCount > 0 then
-                    parts[#parts + 1] = string.format("%d inside", insideCount)
+                    parts[#parts + 1] = string.format(L["%d inside"], insideCount)
                 end
             end
             if content.group.run then
@@ -341,27 +368,71 @@ function W.refreshCard(state, full, tab)
         end
         y = y - 30
     end
+    local leader = not full and not otherTab and ns.TakeLead.leader()
+    card.takeLead:SetShown(leader and true or false)
     if not full then
         y = y - 4
+        if leader then
+            local asked = ns.TakeLead.isAsked()
+            card.takeLead:SetText(L[asked and "Asked to lead" or "Make me leader"])
+            Widgets.setEnabled(card.takeLead, not asked)
+            card.takeLead:ClearAllPoints()
+            card.takeLead:SetPoint("TOPRIGHT", card, "TOPRIGHT", -12, y + 3)
+        end
         card.lookingLabel:ClearAllPoints()
         card.lookingLabel:SetPoint("TOPLEFT", card, "TOPLEFT", 12, y - 2)
         card.looking:ClearAllPoints()
         card.looking:SetPoint("LEFT", card.lookingLabel, "RIGHT", 10, 0)
-        local subject = questTab and "quests" or "dungeons"
-        local wanted = questTab and ns.QueueWindow.wantedQuests() or ns.QueueWindow.wantedDungeons()
-        local known = questTab and ns.QueueWindow.questCountsKnown() or (not questTab and ns.Features.countsKnown())
+        local subject, wanted, known
+        if questTab then
+            subject, wanted, known = "quests", ns.QueueWindow.wantedQuests(), ns.QueueWindow.questCountsKnown()
+        elseif battlegroundTab then
+            subject, wanted = "battlegrounds", ns.QueueWindow.wantedBattlegrounds()
+            known = ns.LfgList.battlegroundsSearched()
+        else
+            subject, wanted, known = "dungeons", ns.QueueWindow.wantedDungeons(), ns.Features.countsKnown()
+        end
         Widgets.setRoleCounts(card.looking, known and ns.QueueWindow.lookingCounts(wanted, subject))
         local needing = #ns.QueueWindow.groupsNeedingMe(wanted, subject)
         card.lookingGroups:ClearAllPoints()
         card.lookingGroups:SetPoint("LEFT", card.looking, "RIGHT", 6, 0)
-        local plural = needing ~= 1
         card.lookingGroups:SetText(needing > 0
-            and string.format("·  %d group%s need%s you", needing, plural and "s" or "", plural and "" or "s") or "")
+            and ("·  " .. ns.Locale.count(needing, "%d group needs you", "%d groups need you")) or "")
         y = y - 20
     end
     local height = -(y - 6)
     card:SetHeight(height)
     return height
+end
+
+-- /fg preview: the card with a sample group, to see how members look
+-- without being in a group. The player plus four others, two of them with a
+-- known spec.
+function W.previewComposition()
+    local sample = {
+        { role = "T", name = "Sample Tank", classToken = "WARRIOR" },
+        { role = "H", name = "Sample Healer", classToken = "PRIEST", spec = "Holy", specIndex = 2 },
+        { role = "D", name = ns.selfName or "You", classToken = select(2, UnitClass("player")) },
+        { role = "D" },
+        { role = "D" },
+    }
+    local members = {}
+    for _, slot in ipairs(sample) do
+        if slot.name then
+            members[#members + 1] = slot
+        end
+    end
+    return { slots = sample, members = members, open = "DD" }
+end
+
+-- The preview's two open places: a player just invited, and one given up on
+-- whose invite WoW still holds; the seconds run down while it shows.
+function W.previewInvites()
+    local passed = (GetTime() - (W.previewAt or GetTime())) % 30
+    return {
+        { name = "Sample Rogue", role = "D", left = 30 - passed },
+        { name = "Sample Mage", role = "D", held = true, left = 30 - passed },
+    }
 end
 
 -- dungeon: the group's dungeon id, or nil for no banner.
@@ -469,25 +540,26 @@ function W.buildCard()
         local info = card.connectionInfo
         if info and GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
-            GameTooltip:SetText("Forever Groups channel: " .. info.text)
-            GameTooltip:AddLine(info.detail, 1, 1, 1, true)
+            GameTooltip:SetText(string.format(L["Forever Groups channel: %s"], L[info.text]))
+            GameTooltip:AddLine(L[info.detail], 1, 1, 1, true)
             if ns.engine then
                 local others = ns.Presence.others()
-                GameTooltip:AddLine(string.format("Players with Forever Groups online: %d", #others + 1), 1, 0.82, 0)
-                local shown = { "you" }
+                GameTooltip:AddLine(string.format(L["Players with Forever Groups online: %d"], #others + 1), 1, 0.82,
+                    0)
+                local shown = { L["you"] }
                 for i = 1, math.min(8, #others) do
                     shown[#shown + 1] = others[i]
                 end
                 if #others > 8 then
-                    shown[#shown + 1] = string.format("and %d more", #others - 8)
+                    shown[#shown + 1] = string.format(L["and %d more"], #others - 8)
                 end
                 GameTooltip:AddLine(table.concat(shown, ", "), 1, 1, 1, true)
                 local quests = ns.questEngine and #ns.questEngine:snapshot().entries or 0
-                GameTooltip:AddLine(string.format("In the dungeon queue: %d  ·  questing queue: %d",
+                GameTooltip:AddLine(string.format(L["In the dungeon queue: %d  ·  questing queue: %d"],
                     #ns.engine:snapshot().entries, quests), 0.8, 0.8, 0.8)
                 local matchmaker = ns.engine:snapshot().matchmaker
                 if matchmaker then
-                    GameTooltip:AddLine("Matchmaker: " .. matchmaker, 0.8, 0.8, 0.8)
+                    GameTooltip:AddLine(string.format(L["Matchmaker: %s"], matchmaker), 0.8, 0.8, 0.8)
                 end
             end
             GameTooltip:Show()
@@ -507,7 +579,7 @@ function W.buildCard()
     card.detail:SetWidth(WIDTH - 52)
     card.detail:SetTextColor(0.8, 0.8, 0.8)
     card.lookingLabel = Widgets.text(card, "GameFontNormalSmall")
-    card.lookingLabel:SetText("Looking now:")
+    card.lookingLabel:SetText(L["Looking now:"])
     card.looking = Widgets.roleCounts(card, 14)
     card.looking:EnableMouse(true)
     card.lookingGroups = Widgets.text(card, "GameFontNormalSmall")
@@ -529,6 +601,14 @@ function W.buildCard()
         card.actions[#card.actions + 1] = button
         card.actions[key] = button
     end
+    card.takeLead = Widgets.button(card, "Make me leader", 140)
+    card.takeLead:SetHeight(22)
+    card.takeLead:SetScript("OnClick", function()
+        ns.TakeLead.ask()
+        ns.Window.refresh()
+    end)
+    Widgets.tooltip(card.takeLead, "Make me leader", "Your leader has no Forever Groups. This whispers them to "
+        .. "make you leader; once you lead, Forever Groups fills the open places.")
     card.actions = {}
     action("waypoint", "Waypoint to entrance", function()
         local dungeon = ns.GroupView.dungeon()
@@ -544,11 +624,11 @@ function W.buildCard()
             return
         end
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("Share my quests", 1, 0.82, 0)
-        GameTooltip:AddLine("Shares your quests for this dungeon with the group, one at a time. Under each "
-            .. "player: their quests for it (? without Forever Groups).", 1, 1, 1, true)
+        GameTooltip:SetText(L["Share my quests"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["Shares your quests for this dungeon with the group, one at a time. Under each "
+            .. "player: their quests for it (? without Forever Groups)."], 1, 1, 1, true)
         if #info.theyHave > 0 then
-            GameTooltip:AddLine("Others have, you don't:", 1, 0.82, 0)
+            GameTooltip:AddLine(L["Others have, you don't:"], 1, 0.82, 0)
             for _, title in ipairs(info.theyHave) do
                 GameTooltip:AddLine("  " .. title, 1, 1, 1)
             end

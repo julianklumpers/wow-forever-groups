@@ -115,7 +115,7 @@ end
 -- Answers the open proposal of either queue.
 local function cmdRespond(accept)
     local answered = false
-    for _, engine in ipairs({ ns.engine, ns.questEngine }) do
+    for _, engine in ipairs(ns.Queues.engines()) do
         answered = answered or engine:respond(accept) == true
     end
     if not answered then
@@ -168,6 +168,16 @@ local function cmdDungeons(rest)
     end
 end
 
+local function cmdPreview()
+    local W = ns.WindowParts
+    W.preview = not W.preview or nil
+    W.previewAt = GetTime()
+    ns.Window.show()
+    ns.Window.refresh()
+    Log.info(W.preview and "Showing the group card with a sample group; /fg preview again hides it."
+        or "Sample group hidden.")
+end
+
 local function cmdDebug(rest)
     local word = string.lower(trim(rest or ""))
     if word == "on" then
@@ -177,8 +187,11 @@ local function cmdDebug(rest)
     else
         ns.db.debug = not ns.db.debug
     end
-    Log.info("Debug %s: %s.", ns.db.debug and "on" or "off", ns.db.debug
-        and "what Forever Groups does (asking, inviting, whispers) shows in chat" or "only the results show")
+    if ns.db.debug then
+        Log.info("Debug on: what Forever Groups does (asking, inviting, whispers) shows in chat.")
+    else
+        Log.info("Debug off: only the results show.")
+    end
 end
 
 local function cmdSlots(rest)
@@ -267,8 +280,11 @@ local function cmdFake(rest)
         return
     elseif word == "decline" or word == "afk" then
         engine:setFakeBehavior(word)
-        Log.info("The first fake player in the next proposal will %s.",
-            word == "decline" and "decline" or "not answer")
+        if word == "decline" then
+            Log.info("The first fake player in the next proposal will decline.")
+        else
+            Log.info("The first fake player in the next proposal will not answer.")
+        end
         return
     end
     local count, roleText = string.match(word, "^(%d+)%s*(.-)$")
@@ -364,8 +380,11 @@ end
 
 local function cmdDryRun()
     ns.db.dryRun = not ns.db.dryRun
-    Log.info("Dry run %s: Group Finder players are %s.", ns.db.dryRun and "on" or "off",
-        ns.db.dryRun and "only listed in chat, not invited" or "whispered and invited")
+    if ns.db.dryRun then
+        Log.info("Dry run on: Group Finder players are only listed in chat, not invited.")
+    else
+        Log.info("Dry run off: Group Finder players are whispered and invited.")
+    end
 end
 
 local function cmdLog(rest)
@@ -406,6 +425,7 @@ local COMMANDS = {
     { "dungeons", "[all] list dungeons for your level", cmdDungeons },
     { "invite", "send the group invites again (leader)", Group.inviteAll },
     { "debug", "[on | off]  show what Forever Groups does (asking, inviting, whispers, messages)", cmdDebug },
+    { "preview", "show the group card with a sample group (again to hide it)", cmdPreview },
     { "slots", "<t> <h> <d> | reset  test with a smaller group", cmdSlots },
     { "log", "[n] show the last n log lines", cmdLog },
     { "queue", "show who is looking (queue and Group Finder)", function() ns.QueueWindow.show() end },
@@ -413,10 +433,18 @@ local COMMANDS = {
     { "fill", "[stop]  fill your group's open roles from WoW's Group Finder", cmdFill },
     { "dryrun", "toggle: show Group Finder picks without inviting", cmdDryRun },
     { "autosearch", "turn refreshing the Group Finder on your key presses on/off", function()
-        Log.info("Automatic Group Finder refresh %s.", ns.KeySearch.toggle() and "on" or "off")
+        if ns.KeySearch.toggle() then
+            Log.info("Automatic Group Finder refresh on.")
+        else
+            Log.info("Automatic Group Finder refresh off.")
+        end
     end },
     { "minimap", "show or hide the minimap button", function()
-        Log.info("Minimap button %s.", ns.MinimapButton.toggle() and "shown" or "hidden")
+        if ns.MinimapButton.toggle() then
+            Log.info("Minimap button shown.")
+        else
+            Log.info("Minimap button hidden.")
+        end
     end },
     { "fake", "<n> [roles] | decline | afk | clear  fake players for testing", cmdFake },
 }
@@ -424,7 +452,7 @@ local COMMANDS = {
 function Slash.help()
     Log.info("Commands:")
     for _, command in ipairs(COMMANDS) do
-        print(string.format("  /fg %s %s", command[1], command[2]))
+        print(string.format("  /fg %s %s", command[1], ns.L[command[2]]))
     end
 end
 

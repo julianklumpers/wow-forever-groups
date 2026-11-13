@@ -29,23 +29,46 @@ local function shared(group, wanted)
     return nil
 end
 
+local ASK_ORDER = { "T", "H", "D" }
+
+-- Without known open places: the role groups lack most, and a tank last, as
+-- battleground and questing groups have little use for one.
+local UNKNOWN_ORDER = { "H", "D", "T" }
+
+-- The one role to offer a group: of the player's roles ("HD"), the scarcest
+-- it still needs (tank, then healer, then DPS); with its open places
+-- unknown (or none of them fitting), healer, then DPS, then tank. The player
+-- then joins with that role.
+function LfgPick.askRole(roles, remaining)
+    roles = roles or ""
+    for _, role in ipairs(remaining and ASK_ORDER or {}) do
+        if Roles.has(roles, role) and (remaining[role] or 0) > 0 then
+            return role
+        end
+    end
+    for _, role in ipairs(UNKNOWN_ORDER) do
+        if Roles.has(roles, role) then
+            return role
+        end
+    end
+    return nil
+end
+
 -- opts: roles ("D", "TD"), dungeons (set of ids), exclude (set of group ids),
--- max. Returns up to max { id, tank, healer, dps }: the groups that need one
--- of the roles; listings up for half an hour or more last; then the nearest
--- to full first (they start soonest), then the most recently listed. The
--- flags offer only roles the group still needs.
+-- max. Returns up to max { id, role, tank, healer, dps }: the groups that
+-- need one of the roles; listings up for half an hour or more last; then the
+-- nearest to full first (they start soonest), then the most recently listed.
+-- role (and the one flag set) is the one role offered (LfgPick.askRole).
 function LfgPick.groupsToApply(groups, opts)
     local exclude = opts.exclude or {}
     local candidates = {}
     for _, group in ipairs(groups) do
         local dungeon = not exclude[group.id] and shared(group, opts.dungeons)
         if dungeon then
-            local offer = {}
-            for _, role in ipairs(Roles.ORDER) do
-                offer[role] = Roles.has(opts.roles, role) and group.remaining[role] > 0
-            end
-            if offer.T or offer.H or offer.D then
-                candidates[#candidates + 1] = { group = group, offer = offer, dungeon = dungeon }
+            local role = LfgPick.askRole(opts.roles, group.remaining)
+            if role and group.remaining[role] > 0 then
+                candidates[#candidates + 1] = { group = group, role = role, offer = { [role] = true },
+                    dungeon = dungeon }
             end
         end
     end
@@ -66,8 +89,8 @@ function LfgPick.groupsToApply(groups, opts)
     local result = {}
     for i = 1, math.min(opts.max or #candidates, #candidates) do
         local c = candidates[i]
-        result[i] = { id = c.group.id, leader = c.group.leader, dungeon = c.dungeon,
-            tank = c.offer.T, healer = c.offer.H, dps = c.offer.D }
+        result[i] = { id = c.group.id, leader = c.group.leader, dungeon = c.dungeon, role = c.role,
+            tank = c.offer.T == true, healer = c.offer.H == true, dps = c.offer.D == true }
     end
     return result
 end

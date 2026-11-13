@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Widgets = ns.Widgets
 local Log = ns.Log
 
@@ -42,13 +44,13 @@ local function actions(name, opts)
     opts = opts or {}
     local list = {}
     if opts.first then
-        list[1] = opts.first
+        list[1] = { label = L[opts.first.label], run = opts.first.run }
     end
-    list[#list + 1] = { label = opts.whisperLabel or "Whisper", run = function()
+    list[#list + 1] = { label = L[opts.whisperLabel or "Whisper"], run = function()
         PlayerMenu.whisper(name)
     end }
     if not opts.noInvite and canInvite() then
-        list[#list + 1] = { label = "Invite to group", run = function()
+        list[#list + 1] = { label = L["Invite to group"], run = function()
             PlayerMenu.invite(name)
         end }
     end

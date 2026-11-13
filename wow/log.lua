@@ -54,10 +54,10 @@ function Log.escape(text)
     return escape(text)
 end
 
+-- The chat shows the player's language; the saved log stays English.
 function Log.info(fmt, ...)
-    local msg = format(fmt, ...)
-    print(PREFIX .. msg)
-    store("INFO", msg)
+    print(PREFIX .. format(ns.L[fmt], ...))
+    store("INFO", format(fmt, ...))
 end
 
 -- How Forever Groups gets a group (asking leaders, inviting from the Group
@@ -72,9 +72,8 @@ function Log.detail(fmt, ...)
 end
 
 function Log.warn(fmt, ...)
-    local msg = format(fmt, ...)
-    print(PREFIX .. "|cffffd040" .. msg .. "|r")
-    store("WARN", msg)
+    print(PREFIX .. "|cffffd040" .. format(ns.L[fmt], ...) .. "|r")
+    store("WARN", format(fmt, ...))
 end
 
 function Log.debug(fmt, ...)

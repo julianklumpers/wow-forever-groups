@@ -118,7 +118,7 @@ local function handshake()
     end
     handshakeAttempts = handshakeAttempts + 1
     if handshakeAttempts > HANDSHAKE_ATTEMPTS then
-        failure = "no answer on the channel; try /reload"
+        failure = ns.Locale.mark("no answer on the channel; try /reload")
         Log.warn("Could not reach the Forever Groups channel. Try /reload.")
         return
     end
@@ -142,7 +142,7 @@ local function pollJoined(attempt)
     end
     if attempt >= JOIN_POLL_ATTEMPTS then
         joining = false
-        failure = "could not join the channel (too many chat channels?)"
+        failure = ns.Locale.mark("could not join the channel (too many chat channels?)")
         Log.warn("Could not join the Forever Groups channel (too many chat channels?). Trying again in a minute.")
         C_Timer.After(60, Comm.join)
         return
@@ -168,7 +168,7 @@ function Comm.join()
     local ok, err = pcall(JoinTemporaryChannel, Comm.CHANNEL)
     if not ok then
         joining = false
-        failure = "joining the channel failed"
+        failure = ns.Locale.mark("joining the channel failed")
         Log.warn("Joining the channel failed: %s", tostring(err))
         return
     end
@@ -245,13 +245,14 @@ function Comm.connection()
     if not channelId or not Comm.selfName then
         return { state = "connecting", text = "Connecting...", detail = "Joining the Forever Groups channel." }
     end
-    local detail = "Channel /" .. channelId .. " (" .. Comm.CHANNEL .. ")"
+    local detail = string.format(ns.L["Channel /%s (%s)"], tostring(channelId), Comm.CHANNEL)
     if C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
         return { state = "paused", text = "Paused", detail = "WoW blocks addon messages right now; they go out later." }
     end
     local waiting = Comm.outbox and Comm.outbox:size() or 0
     if waiting > 3 then
-        return { state = "sending", text = "Sending...", detail = waiting .. " messages wait for the server's limit." }
+        return { state = "sending", text = "Sending...",
+            detail = string.format(ns.L["%d messages wait for the server's limit."], waiting) }
     end
     return { state = "connected", text = "Connected", detail = detail }
 end

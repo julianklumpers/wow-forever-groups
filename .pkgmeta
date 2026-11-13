@@ -7,12 +7,14 @@ manual-changelog:
 ignore:
   - tests
   - scripts
+  - tools
   - probe
   - dist
   - .busted
   - .luacheckrc
   - media/logo-1024.png
   - media/logo-400.png
+  - media/source
   - docs
   - CHANGELOG.md
   - media/screenshots

@@ -14,6 +14,15 @@ local Log = ns.Log
 local Filler = {}
 
 local INVITE_TIMEOUT = 30
+-- Every open invite takes a place in the party, also one we gave up on: WoW
+-- keeps an invite open for INVITE_LIFETIME s. Inviting past that gets "Your
+-- party is full", after which nobody is invited for FULL_WAIT s. The invite
+-- follows the whisper after AWAY_CHECK s, so an away player's automatic reply
+-- (AFK, DND) comes first and they are passed over.
+local INVITE_LIFETIME = 60
+local FULL_WAIT = 10
+local AWAY_CHECK = 1.5
+local PARTY_SIZE = 5
 -- How long a role is left to a waiting Forever Groups player before the
 -- Group Finder fills it after all (the matchmaker may not group them, e.g.
 -- when their level does not fit the dungeon).
@@ -24,8 +33,6 @@ local STALE_RESULTS = 300
 local DECLINE_MESSAGES = { "ERR_DECLINE_GROUP_S", "ERR_ALREADY_IN_GROUP_S", "ERR_BAD_PLAYER_NAME_S" }
 
 local state
-local frame
-local ui = {}
 local changeListeners = {}
 
 local function changed()
@@ -63,54 +70,50 @@ local function stillNeeded()
     return needed
 end
 
-local function render()
-    if not frame then
-        return
+-- What the filler waits for, in the saved log (and chat with /fg debug on)
+-- when it changes.
+local function setMessage(text)
+    if text and text ~= state.message then
+        Log.detail(text)
     end
-    if not state then
-        frame:Hide()
-        return
-    end
-    local lines = {}
-    lines[#lines + 1] = state.dungeon and ("For " .. Dungeons.name(state.dungeon)) or "Choosing a dungeon..."
-    lines[#lines + 1] = "Still open: " .. (state.open ~= "" and describeLetters(state.open) or "nothing")
-    for name, pending in pairs(state.pending) do
-        lines[#lines + 1] = string.format("Invited %s as %s, waiting...", name, Widgets.ROLE_NAMES[pending.role])
-    end
-    if state.message then
-        lines[#lines + 1] = state.message
-    end
-    ui.text:SetText(table.concat(lines, "\n"))
-    frame:Show()
-end
-
-local function build()
-    frame = Widgets.window("ForeverGroupsFillFrame", "Filling from the Group Finder", 340, 170, false)
-    frame:ClearAllPoints()
-    frame:SetPoint("TOPRIGHT", -40, -200)
-    ui.text = Widgets.text(frame, "GameFontHighlightSmall")
-    ui.text:SetPoint("TOPLEFT", 16, -30)
-    ui.text:SetWidth(308)
-    ui.search = Widgets.button(frame, "Search again", 130)
-    ui.search:SetPoint("BOTTOMLEFT", 16, 12)
-    ui.search:SetScript("OnClick", function()
-        Filler.searchAgain()
-    end)
-    ui.stop = Widgets.button(frame, "Stop", 100)
-    ui.stop:SetPoint("BOTTOMRIGHT", -16, 12)
-    ui.stop:SetScript("OnClick", function()
-        Filler.stop()
-    end)
+    state.message = text
 end
 
 local function whisper(name, text)
-    if not text or ns.db.noWhisper then
+    return ns.Whispers.sendIfAllowed(name, text)
+end
+
+local function sendInvite(name)
+    local pending = state and state.pending[name]
+    if not pending or pending.sentAt then
         return
     end
-    if C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
-        return
+    pending.sentAt = GetTime()
+    local ok, err = pcall(C_PartyInfo.InviteUnit, name)
+    if not ok then
+        Log.debug("invite %s failed: %s", name, tostring(err))
     end
-    ns.Whispers.send(name, text)
+    Log.detail("Invited %s from the Group Finder as %s.", name, Widgets.ROLE_NAMES[pending.role])
+end
+
+-- Places left in the party for new invites: the members, the invites on
+-- their way and those still open in WoW take theirs; none for a while after
+-- WoW said it is full.
+local function freePlaces()
+    local now = GetTime()
+    if now - (state.fullAt or -math.huge) < FULL_WAIT then
+        return 0
+    end
+    local taken = IsInGroup() and math.max(1, GetNumGroupMembers() or 1) or 1
+    for _ in pairs(state.pending) do
+        taken = taken + 1
+    end
+    for _, late in pairs(state.late) do
+        if now - late.at < INVITE_LIFETIME then
+            taken = taken + 1
+        end
+    end
+    return PARTY_SIZE - taken
 end
 
 local function invite(pick)
@@ -124,14 +127,17 @@ local function invite(pick)
     state.pending[pick.name] = { role = pick.role, at = GetTime() }
     state.invited[pick.name] = pick.role
     ns.RoleSync.expect(pick.name, pick.role)
-    whisper(pick.name, ns.Messages.text("fillInvite", {
-        dungeon = Dungeons.name(state.dungeon), role = string.lower(role), spec = ns.Spec.myLabel(),
+    local whispered = whisper(pick.name, ns.Messages.text("fillInvite", {
+        dungeon = Dungeons.englishName(state.dungeon), role = string.lower(role),
+        spec = ns.Spec.myLabel(ns.RoleSync.expected(ns.selfName)),
     }))
-    local ok, err = pcall(C_PartyInfo.InviteUnit, pick.name)
-    if not ok then
-        Log.debug("invite %s failed: %s", pick.name, tostring(err))
+    if not whispered then
+        sendInvite(pick.name)
+        return
     end
-    Log.detail("Invited %s from the Group Finder as %s.", pick.name, role)
+    C_Timer.After(AWAY_CHECK, function()
+        sendInvite(pick.name)
+    end)
 end
 
 local function finish(text)
@@ -139,20 +145,13 @@ local function finish(text)
         Log.detail(text)
     end
     state = nil
-    render()
     changed()
 end
 
-local function proposalOpen(engine)
-    local key = engine and engine.myProposalKey
-    local proposal = key and engine.proposals[key]
-    return proposal ~= nil and not proposal.outcome
-end
-
--- A group proposal in either queue (or the dungeon queue held for one in
--- the questing queue): no inviting until it is answered.
+-- A group proposal in any queue (or the dungeon queue held for one in
+-- another queue): no inviting until it is answered.
 local function queueProposalOpen()
-    return proposalOpen(ns.engine) or proposalOpen(ns.questEngine) or (ns.engine ~= nil and ns.engine.held == true)
+    return ns.Queues.anyProposalOpen() or (ns.engine ~= nil and ns.engine.held == true)
 end
 
 local function wantsDungeon(entry, dungeons)
@@ -211,7 +210,6 @@ function Filler.step()
     end
     local needed = stillNeeded()
     if needed == "" then
-        render()
         return
     end
     -- Forever Groups players first: their roles wait for the matchmaker.
@@ -226,30 +224,26 @@ function Filler.step()
                 needed = removeLetter(needed, letter)
             end
             leaving = "Leaving " .. describeLetters(forAddon) .. " to Forever Groups players in the queue."
-            state.message = leaving
+            setMessage(leaving)
             if needed == "" then
-                render()
                 return
             end
         end
     end
     if queueProposalOpen() then
-        state.message = "Waiting for the queue's group proposal before inviting more."
-        render()
+        setMessage("Waiting for the queue's group proposal before inviting more.")
         return
     end
     if ns.QuestFinder.summary().invited > 0 then
-        state.message = "Waiting for the players invited for your questing group."
-        render()
+        setMessage("Waiting for the players invited for your questing group.")
         return
     end
     local listings, updatedAt = LfgList.listings()
     listings = ns.Playstyle.filter(listings, ns.Playstyle.forGroup())
     if not updatedAt or GetTime() - updatedAt > STALE_RESULTS then
-        state.message = ns.KeySearch.isReady() and "Refreshing the Group Finder while you play..."
-            or "Group Finder results are too old. Click the Forever Groups bar to search again."
+        setMessage(ns.KeySearch.isReady() and "Refreshing the Group Finder while you play..."
+            or "Group Finder results are too old. Click the Forever Groups bar to search again.")
         state.needSearch = true
-        render()
         return
     end
     local picks, open
@@ -271,28 +265,33 @@ function Filler.step()
             ns.GroupView.track(plan.dungeon)
         end
     end
-    for _, pick in ipairs(picks) do
-        invite(pick)
+    local room = freePlaces()
+    if #picks > 0 and room <= 0 then
+        state.waitingForPlace = true
+        setMessage("Waiting for a place: earlier invites are still open in WoW.")
+        return
+    end
+    state.waitingForPlace = nil
+    for i, pick in ipairs(picks) do
+        if i <= room then
+            invite(pick)
+        end
     end
     if #picks > 0 then
         changed()
     end
-    state.message = open ~= "" and ("Nobody listed for: " .. describeLetters(open) .. ". Searching again soon.")
-        or leaving
+    setMessage(open ~= "" and ("Nobody listed for: " .. describeLetters(open) .. ". Searching again soon.")
+        or leaving)
     state.needSearch = open ~= ""
     if state.open == "" and next(state.pending) == nil then
         Filler.step()
         return
     end
-    render()
 end
 
 -- opts: missing ("HD"), dungeon (fixed) or dungeons (to choose from),
 -- members (names already in or joining the group).
 function Filler.start(opts)
-    if not frame then
-        build()
-    end
     local exclude = { [ns.selfName] = true }
     for _, name in ipairs(opts.members or {}) do
         exclude[name] = true
@@ -312,7 +311,10 @@ end
 
 -- Only from a click or typed command (the Group Finder search is protected).
 function Filler.searchAgain()
-    if not LfgList.search() then
+    local ok, why = LfgList.search()
+    if why == "wait" then
+        Log.detail("The Group Finder is searched again in a moment.")
+    elseif not ok then
         Log.warn("WoW did not allow the Group Finder search.")
     end
 end
@@ -325,6 +327,32 @@ end
 
 function Filler.isActive()
     return state ~= nil
+end
+
+-- The invites for the group card's open places: { name, role, held, left }
+-- per player invited (left: seconds until the filler moves on), and per
+-- player given up on whose invite WoW still holds open (held = true, left:
+-- seconds until that place is free), oldest first.
+function Filler.invites()
+    local list = {}
+    if not state then
+        return list
+    end
+    local now = GetTime()
+    for name, pending in pairs(state.pending) do
+        list[#list + 1] = { name = name, role = pending.role, at = pending.at,
+            left = math.max(0, INVITE_TIMEOUT - (now - pending.at)) }
+    end
+    for name, late in pairs(state.late) do
+        local left = INVITE_LIFETIME - (now - late.at)
+        if left > 0 then
+            list[#list + 1] = { name = name, role = late.role, at = late.at, held = true, left = left }
+        end
+    end
+    table.sort(list, function(a, b)
+        return a.at < b.at
+    end)
+    return list
 end
 
 function Filler.stillNeeded()
@@ -346,7 +374,6 @@ function Filler.trackInvite(name, role)
     state.invited[name] = role
     ns.RoleSync.expect(name, role)
     changed()
-    render()
     return true
 end
 
@@ -520,7 +547,8 @@ local function checkJoins()
             Log.detail("%s joined as %s.", name, Widgets.ROLE_NAMES[pending.role])
         end
     end
-    for name, role in pairs(state.late) do
+    for name, late in pairs(state.late) do
+        local role = late.role
         if inParty[name] then
             state.late[name] = nil
             found = true
@@ -578,8 +606,31 @@ function Filler.declinedName(text)
     return nil
 end
 
+-- "Your party is full" right after one of our invites: that one did not go
+-- out after all.
+local function onPartyFull()
+    local newest, at
+    for name, pending in pairs(state.pending) do
+        if pending.sentAt and GetTime() - pending.sentAt < 1 and (not at or pending.sentAt > at) then
+            newest, at = name, pending.sentAt
+        end
+    end
+    state.fullAt = GetTime()
+    if newest then
+        state.pending[newest] = nil
+        state.exclude[newest] = nil
+        ns.RoleSync.forget(newest)
+    end
+    Log.detail("WoW says the party is full: earlier invites are still open. Waiting a moment.")
+    changed()
+end
+
 local function onSystemMessage(text)
     if not state or type(text) ~= "string" then
+        return
+    end
+    if type(ERR_GROUP_FULL) == "string" and text == ERR_GROUP_FULL then
+        onPartyFull()
         return
     end
     for _, pattern in ipairs(patterns()) do
@@ -595,9 +646,34 @@ local function onSystemMessage(text)
     end
 end
 
+-- An automatic away reply (AFK, DND) to the whisper before the invite: that
+-- player is passed over, and before the invite went out not invited at all.
+local function onAway(_, sender)
+    local name = state and ns.Whispers.find(state.pending, sender)
+    if not name then
+        return
+    end
+    local pending = state.pending[name]
+    state.pending[name] = nil
+    ns.RoleSync.forget(name)
+    if pending.sentAt then
+        state.late[name] = { role = pending.role, at = pending.sentAt }
+    end
+    Log.detail("%s is away; inviting someone else.", name)
+    changed()
+    Filler.step()
+end
+
 function Filler.tick()
     if not state then
         return
+    end
+    if (state.fullAt and GetTime() - state.fullAt >= FULL_WAIT) or (state.waitingForPlace and freePlaces() > 0) then
+        state.fullAt = nil
+        Filler.step()
+        if not state then
+            return
+        end
     end
     if checkJoins() then
         if state then
@@ -610,7 +686,7 @@ function Filler.tick()
     for name, pending in pairs(state.pending) do
         if now - pending.at > INVITE_TIMEOUT then
             state.pending[name] = nil
-            state.late[name] = pending.role
+            state.late[name] = { role = pending.role, at = pending.sentAt or pending.at }
             ns.RoleSync.forget(name)
             expired = true
             Log.detail("%s did not answer the invite; trying someone else.", name)
@@ -647,6 +723,8 @@ end
 function Filler.init()
     ns.on("GROUP_ROSTER_UPDATE", onRosterUpdate)
     ns.on("CHAT_MSG_SYSTEM", onSystemMessage)
+    ns.on("CHAT_MSG_AFK", onAway)
+    ns.on("CHAT_MSG_DND", onAway)
     LfgList.onUpdate(Filler.step)
 end
 

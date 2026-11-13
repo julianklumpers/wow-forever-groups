@@ -48,12 +48,6 @@ local function freshResults()
     return updatedAt ~= nil and seekingStartedAt ~= nil and updatedAt >= seekingStartedAt
 end
 
-local function proposalOpen()
-    local engine = ns.engine
-    local proposal = engine and engine.myProposalKey and engine.proposals[engine.myProposalKey]
-    return proposal ~= nil and not proposal.outcome
-end
-
 -- The automatic asks; the player's own requests (Who is looking) do not
 -- count against them.
 local function askCount()
@@ -199,15 +193,16 @@ function Apply.stopSeeking()
 end
 
 local function askText(pick)
-    local roles = {}
+    local roles, letters = {}, ""
     for _, role in ipairs({ "T", "H", "D" }) do
         if (role == "T" and pick.tank) or (role == "H" and pick.healer) or (role == "D" and pick.dps) then
             roles[#roles + 1] = Widgets.ROLE_NAMES[role]
+            letters = letters .. role
         end
     end
     return ns.Messages.text("applyAsk", {
-        level = UnitLevel("player"), spec = ns.Spec.myLabel(), role = table.concat(roles, "/"),
-        dungeon = Dungeons.name(pick.dungeon),
+        level = UnitLevel("player"), spec = ns.Spec.myLabel(letters), role = table.concat(roles, "/"),
+        dungeon = Dungeons.englishName(pick.dungeon),
     })
 end
 
@@ -221,10 +216,9 @@ function Apply.request(listing, roles, dungeon)
         Log.info("WoW blocks whispers right now (a boss fight?); try again in a moment.")
         return
     end
-    roles = roles or ""
-    ask({ leader = listing.leader, dungeon = dungeon, request = true,
-        tank = string.find(roles, "T", 1, true) ~= nil, healer = string.find(roles, "H", 1, true) ~= nil,
-        dps = string.find(roles, "D", 1, true) ~= nil })
+    local role = LfgPick.askRole(roles, listing.remaining)
+    ask({ leader = listing.leader, dungeon = dungeon, request = true, role = role,
+        tank = role == "T", healer = role == "H", dps = role == "D" })
 end
 
 function ask(pick)
@@ -251,7 +245,7 @@ function ask(pick)
         ns.Whispers.expectReplies(pick.leader, REPLY_QUIET)
     end
     asks[pick.leader] = { dungeon = pick.dungeon, at = GetServerTime(), askedAt = GetTime(), request = pick.request,
-        listingId = pick.id }
+        listingId = pick.id, role = pick.role }
     -- The player's own "Request to join" says it was sent; automatic asks don't.
     local say = pick.request and Log.info or Log.detail
     say("Asked %s to invite you for %s.", pick.leader, Dungeons.name(pick.dungeon))
@@ -297,7 +291,8 @@ function Apply.tick()
     end
     local entry = ns.engine.myEntry
     settleAsks(entry.members[1].roles)
-    if waitingForInvite() or GetTime() - lastAskAt < ASK_SPACING or proposalOpen() or not freshResults() then
+    if waitingForInvite() or GetTime() - lastAskAt < ASK_SPACING or ns.Queues.anyProposalOpen()
+        or not freshResults() then
         return
     end
     local pick = nextPick(entry)
@@ -321,18 +316,29 @@ local function joinRole(inviter, tank, healer, dps)
     return LfgPick.joinRole(roles, remaining or LfgPick.inviteRoles(tank, healer, dps))
 end
 
+-- The role the player offered, unless the invite asks for other roles.
+local function offeredRole(a, tank, healer, dps)
+    local invited = LfgPick.inviteRoles(tank, healer, dps)
+    if a.role and (not invited or invited[a.role] > 0) then
+        return a.role
+    end
+    return nil
+end
+
 -- An invite from a leader we asked is joined at once, while still looking
--- (or for a request the player clicked), unless switched off.
+-- (or for a request the player clicked), unless switched off; with the role
+-- the player offered.
 local function onInviteRequest(inviter, tank, healer, dps)
     local a = asks[inviter]
     if not a then
         return
     end
     a.invitedAt = GetServerTime()
-    local role = joinRole(inviter, tank == true, healer == true, dps == true)
+    local role = offeredRole(a, tank == true, healer == true, dps == true)
+        or joinRole(inviter, tank == true, healer == true, dps == true)
     if not ns.db.noAutoAcceptAsked and (a.request or Apply.isSeeker()) and ns.Group.acceptInvite(role) then
         ns.Whispers.stopQuiet(inviter)
-        Log.info("Group found for %s: you're the %s.", Dungeons.name(a.dungeon), Widgets.ROLE_NAMES[role] or "?")
+        Log.info("Group found for %s: you're the %s.", Dungeons.name(a.dungeon), Widgets.roleName(role) or "?")
         Log.detail("Joined %s's group.", inviter)
         return
     end
@@ -374,12 +380,14 @@ end
 -- A whisper from a leader we asked: a clear no moves on to the next group
 -- at once, a clear yes holds off asking others while the invite comes.
 -- A question from an asked leader ("lvl?", "what spec?") gets the player's
--- level, spec and role, as unseen as the question.
-function Apply.answerQuestion(leader)
+-- level, spec and role, as unseen as the question. role: the one role the
+-- quest or battleground ask offered; a dungeon ask's is known here.
+function Apply.answerQuestion(leader, role)
     local entry = ns.engine and ns.engine.myEntry
-    local roles = entry and entry.members[1].roles or ns.charDb.lastRoles or ""
+    local roles = role or (asks[leader] and asks[leader].role) or (entry and entry.members[1].roles)
+        or ns.charDb.lastRoles or ""
     local text = ns.Messages.text("askAnswer", {
-        level = UnitLevel("player"), spec = ns.Spec.myLabel() or "", role = Widgets.describeRoles(roles),
+        level = UnitLevel("player"), spec = ns.Spec.myLabel(roles) or "", role = Widgets.describeRolesEnglish(roles),
     })
     if text and not (C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()) then
         ns.Whispers.send(leader, text)

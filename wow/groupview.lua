@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Dungeons = ns.Dungeons
 local Party = ns.Party
 local Widgets = ns.Widgets
@@ -59,8 +61,13 @@ function GroupView.trackedDungeon()
 end
 
 -- After loading: picks up the tracked group if the player is still in it.
-function GroupView.restore()
+-- early: right at login, when the group may not be known yet; then only
+-- follows a saved group that is already there, and forgets nothing.
+function GroupView.restore(early)
     local saved = ns.charDb.groupContext
+    if early and not (saved and saved.dungeon and IsInGroup()) then
+        return
+    end
     if not saved or not saved.dungeon or GetServerTime() - (saved.startedAt or 0) > MAX_AGE then
         setContext(nil)
         return
@@ -108,33 +115,51 @@ function GroupView.composition()
             end
         end
     end
-    local slots, used = {}, {}
-    for i, role in ipairs(SLOT_ORDER) do
-        slots[i] = { role = role }
-        for j, member in ipairs(members) do
-            if not used[j] and member.role == role then
-                used[j] = true
-                slots[i].name, slots[i].classToken, slots[i].unit = member.name, member.classToken, member.unit
-                break
-            end
+    -- Every member in the place of their own role (two tanks show as two
+    -- tanks), then the open places: the roles a group of one tank, one
+    -- healer and three DPS still lacks, as far as places are left. A member
+    -- without a known role takes a place that is lacking.
+    local lacking, counts = {}, { T = 0, H = 0, D = 0 }
+    for _, member in ipairs(members) do
+        if counts[member.role] then
+            counts[member.role] = counts[member.role] + 1
         end
     end
-    for j, member in ipairs(members) do
-        if not used[j] then
-            for _, slot in ipairs(slots) do
-                if not slot.name then
-                    slot.name, slot.classToken, slot.unit = member.name, member.classToken, member.unit
-                    used[j] = true
-                    break
-                end
-            end
+    for _, role in ipairs({ "T", "H", "D" }) do
+        for _ = counts[role] + 1, ns.Config.SLOTS[role] do
+            lacking[#lacking + 1] = role
         end
+    end
+    local order = { T = 1, H = 2, D = 3 }
+    local placed = {}
+    for i, member in ipairs(members) do
+        local role = member.role
+        if not order[role] then
+            role = table.remove(lacking, 1) or "D"
+        end
+        placed[#placed + 1] = { role = role, name = member.name, classToken = member.classToken, unit = member.unit,
+            index = i }
+    end
+    table.sort(placed, function(x, y)
+        if order[x.role] ~= order[y.role] then
+            return order[x.role] < order[y.role]
+        end
+        return x.index < y.index
+    end)
+    local slots = {}
+    for _, slot in ipairs(placed) do
+        slots[#slots + 1] = { role = slot.role, name = slot.name, classToken = slot.classToken, unit = slot.unit }
     end
     local open = ""
-    for _, slot in ipairs(slots) do
-        if not slot.name then
-            open = open .. slot.role
+    for _, role in ipairs(lacking) do
+        if #slots < #SLOT_ORDER then
+            slots[#slots + 1] = { role = role }
+            open = open .. role
         end
+    end
+    while #slots < #SLOT_ORDER do
+        slots[#slots + 1] = { role = "D" }
+        open = open .. "D"
     end
     return { members = members, slots = slots, open = open }
 end
@@ -142,7 +167,7 @@ end
 local function describeOpen(open)
     local names = {}
     for letter in string.gmatch(open, ".") do
-        names[#names + 1] = Widgets.ROLE_NAMES[letter]
+        names[#names + 1] = Widgets.roleName(letter)
     end
     return table.concat(names, ", ")
 end
@@ -167,9 +192,9 @@ function GroupView.status()
     -- For the status bar; the window's card spells it out. progress fills
     -- the bar: the bosses down inside, the players found outside.
     if status.complete then
-        status.text = name .. "  ·  " .. (status.run or "group complete")
+        status.text = name .. "  ·  " .. (status.run or L["group complete"])
     else
-        status.text = string.format("%s  ·  %d/5  ·  open: %s", name, count, status.openText)
+        status.text = string.format(L["%s  ·  %d/5  ·  open: %s"], name, count, status.openText)
         if status.run then
             status.text = status.text .. "  ·  " .. status.run
         end
@@ -209,7 +234,7 @@ local function announce()
     end
     local lockdown = C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()
     if Party.state() == "leader" and not ns.db.noPartyAnnounce and not lockdown then
-        local announcement = ns.Messages.text("partyComplete", { dungeon = dungeon })
+        local announcement = ns.Messages.text("partyComplete", { dungeon = Dungeons.englishName(context.dungeon) })
         if announcement then
             pcall(C_ChatInfo.SendChatMessage or SendChatMessage, announcement, "PARTY")
         end

@@ -73,6 +73,15 @@ local TABS = {
                             .. "you didn't ask are never accepted for you." },
                 },
             },
+            {
+                title = "In the group",
+                options = {
+                    { key = "autoReplace",
+                        label = "Find a replacement by itself when someone leaves",
+                        tip = "As leader, when a player leaves before every boss is down, Forever Groups looks "
+                            .. "for a replacement right away instead of asking you first." },
+                },
+            },
         },
     },
     {
@@ -133,6 +142,7 @@ local TABS = {
 local frame
 local checks = {}
 local styleRows = {}
+local languageBoxes = {}
 local tabs, pages = {}, {}
 local baseLines = {}
 
@@ -189,6 +199,67 @@ local function refresh()
     for _, row in ipairs(styleRows) do
         row.selected:SetShown(row.style.key == current)
     end
+    for _, box in ipairs(languageBoxes) do
+        local chosen = ns.db.language == box.code
+        Widgets.paintOutline(box, { 1, 1, 1, chosen and 0.08 or 0.03 },
+            chosen and { 1, 0.82, 0, 1 } or { 1, 1, 1, 0.3 })
+        box.label:SetTextColor(chosen and 1 or 0.8, chosen and 0.82 or 0.8, chosen and 0 or 0.8)
+    end
+end
+
+local RELOAD_POPUP = "FOREVERGROUPS_LANGUAGE_RELOAD"
+
+local function chooseLanguage(code)
+    if ns.db.language == code then
+        return
+    end
+    ns.db.language = code
+    refresh()
+    if StaticPopupDialogs and StaticPopup_Show then
+        StaticPopupDialogs[RELOAD_POPUP] = {
+            text = ns.L["The new language shows everywhere after reloading the interface. Reload now?"],
+            button1 = ns.L["Reload"],
+            button2 = ns.L["Later"],
+            OnAccept = function()
+                ReloadUI()
+            end,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+        }
+        StaticPopup_Show(RELOAD_POPUP)
+    end
+end
+
+-- The language: Automatic (WoW's) or one of the translations, as boxes on
+-- one line.
+local function buildLanguage(page, y)
+    local header = Widgets.header(page, "Language")
+    header:SetPoint("TOPLEFT", 18, y)
+    y = y - 28
+    local x = 22
+    local choices = { { name = ns.L["Automatic"] } }
+    for _, choice in ipairs(ns.Locale.CHOICES) do
+        choices[#choices + 1] = choice
+    end
+    for _, choice in ipairs(choices) do
+        local box = Widgets.backdropFrame("Button", page)
+        box:SetHeight(24)
+        Widgets.addOutline(box)
+        box.code = choice.code
+        box.label = Widgets.text(box, "GameFontHighlightSmall", "CENTER")
+        box.label:SetPoint("CENTER")
+        box.label:SetText(choice.name)
+        local width = (box.label:GetStringWidth() or 60) + 20
+        box:SetWidth(width)
+        box:SetPoint("TOPLEFT", x, y)
+        box:SetScript("OnClick", function()
+            chooseLanguage(choice.code)
+        end)
+        x = x + width + 8
+        languageBoxes[#languageBoxes + 1] = box
+    end
+    return y - 34
 end
 
 -- The chosen tab's page shows; the base line runs under the other tabs.
@@ -228,7 +299,7 @@ local function buildStyleRow(parent, style, y)
     end
     local label = Widgets.text(row, "GameFontHighlight")
     label:SetPoint("LEFT", 112, 0)
-    label:SetText(style.label)
+    label:SetText(ns.L[style.label])
     row:SetScript("OnClick", function()
         Widgets.setRoleStyle(style.key)
         refresh()
@@ -281,7 +352,7 @@ local function buildExtras(page, y)
             y = y - 34
         end
     end
-    y = y - 8
+    y = buildLanguage(page, y - 8)
     local reset = Widgets.button(page, "Reset status bar position", 200)
     reset:SetPoint("TOPLEFT", 22, y)
     reset:SetScript("OnClick", function()

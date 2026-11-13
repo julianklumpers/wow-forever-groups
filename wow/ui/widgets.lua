@@ -2,17 +2,34 @@ local addonName, ns = ...
 
 local Widgets = {}
 
-Widgets.ROLE_NAMES = { T = "Tank", H = "Healer", D = "DPS" }
+-- English, for whispers and party messages; Widgets.roleName for the player.
+Widgets.ROLE_NAMES = ns.Locale.mark({ T = "Tank", H = "Healer", D = "DPS" })
 Widgets.ROLES = { "T", "H", "D" }
 
-function Widgets.describeRoles(roles)
+function Widgets.roleName(letter)
+    return Widgets.ROLE_NAMES[letter] and ns.L[Widgets.ROLE_NAMES[letter]] or nil
+end
+
+local function describe(roles, name)
     local names = {}
     for _, role in ipairs(Widgets.ROLES) do
         if roles and string.find(roles, role, 1, true) then
-            names[#names + 1] = Widgets.ROLE_NAMES[role]
+            names[#names + 1] = name(role)
         end
     end
     return table.concat(names, "/")
+end
+
+-- "Healer/DPS" in the player's language.
+function Widgets.describeRoles(roles)
+    return describe(roles, Widgets.roleName)
+end
+
+-- "Healer/DPS" in English, for whispers and party messages.
+function Widgets.describeRolesEnglish(roles)
+    return describe(roles, function(role)
+        return Widgets.ROLE_NAMES[role]
+    end)
 end
 
 -- Adds or removes one role; returns nil when no role is left.
@@ -146,6 +163,7 @@ end
 -- WoW's panel frame with the gold metal border, like most Blizzard windows
 -- (without its big portrait). icon: a small round icon in the title bar.
 function Widgets.window(name, title, width, height, escapable, plain, icon)
+    title = title and ns.L[title]
     local ok, frame, gold = false, nil, false
     if not plain then
         ok, frame = pcall(CreateFrame, "Frame", name, UIParent, "ButtonFrameTemplate")
@@ -230,7 +248,7 @@ end
 function Widgets.button(parent, label, width)
     local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     button:SetSize(width or 100, 22)
-    button:SetText(label)
+    button:SetText(ns.L[label])
     return button
 end
 
@@ -249,7 +267,7 @@ function Widgets.check(parent, label, onClick)
     check:SetSize(22, 22)
     local text = check:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     text:SetPoint("LEFT", check, "RIGHT", 1, 0)
-    text:SetText(label or "")
+    text:SetText(label and ns.L[label] or "")
     check.label = text
     Widgets.fitClickArea(check)
     if onClick then
@@ -258,7 +276,7 @@ function Widgets.check(parent, label, onClick)
     check:SetScript("OnEnter", function(self)
         if self.reason and GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(self.reason)
+            GameTooltip:SetText(ns.L[self.reason])
             GameTooltip:Show()
         end
     end)
@@ -276,9 +294,9 @@ function Widgets.tooltip(frame, title, text)
     frame:SetScript("OnEnter", function(self)
         if GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(title, 1, 0.82, 0)
+            GameTooltip:SetText(ns.L[title], 1, 0.82, 0)
             if text then
-                GameTooltip:AddLine(text, 1, 1, 1, true)
+                GameTooltip:AddLine(ns.L[text], 1, 1, 1, true)
             end
             GameTooltip:Show()
         end
@@ -329,7 +347,7 @@ end
 -- gap: room between the text and the line under it (3 px by default).
 function Widgets.header(parent, text, right, gap)
     local label = Widgets.text(parent, "GameFontNormal")
-    label:SetText(text)
+    label:SetText(ns.L[text])
     local line = parent:CreateTexture(nil, "ARTWORK")
     line:SetHeight(1)
     line:SetColorTexture(1, 0.82, 0, 0.25)
@@ -355,14 +373,14 @@ function Widgets.roleToggle(parent, role, size, font, onClick)
     toggle.mark:SetPoint("CENTER", toggle.icon, "BOTTOMRIGHT", 0, size * 0.1)
     toggle.label = toggle:CreateFontString(nil, "OVERLAY", font or "GameFontHighlight")
     toggle.label:SetPoint("LEFT", toggle.icon, "RIGHT", size * 0.35 + 6, 0)
-    toggle.label:SetText(Widgets.ROLE_NAMES[role])
+    toggle.label:SetText(Widgets.roleName(role))
     toggle:SetWidth(size + size * 0.35 + 10 + math.ceil(toggle.label:GetStringWidth() or 60))
     toggle:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     toggle:SetScript("OnClick", onClick)
     toggle:SetScript("OnEnter", function(self)
         if self.reason and GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(self.reason)
+            GameTooltip:SetText(ns.L[self.reason])
             GameTooltip:Show()
         end
     end)
@@ -450,17 +468,56 @@ Widgets.addOutline = addOutline
 Widgets.paintOutline = paintOutline
 Widgets.backdropFrame = backdropFrame
 
+-- Art in a rounded box runs up to its border and follows the round corners
+-- through a mask (Interface\Common\common-iconmask, a rounded square).
+-- Without masks it stays further in, so its square corners do not stick out.
+local MASKED_INSET, UNMASKED_INSET = 2, 5
+
+-- Places art inside a rounded box and returns how far in it starts.
+function Widgets.roundArt(box, texture, shade)
+    local inset = UNMASKED_INSET
+    if type(box.CreateMaskTexture) == "function" then
+        local ok, mask = pcall(box.CreateMaskTexture, box)
+        if ok and mask and pcall(mask.SetTexture, mask, "Interface\\Common\\common-iconmask",
+            "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE") then
+            inset = MASKED_INSET
+            mask:SetPoint("TOPLEFT", inset, -inset)
+            mask:SetPoint("BOTTOMRIGHT", -inset, inset)
+            texture:AddMaskTexture(mask)
+            if shade then
+                shade:AddMaskTexture(mask)
+            end
+        end
+    end
+    texture:SetPoint("TOPLEFT", inset, -inset)
+    texture:SetPoint("BOTTOMRIGHT", -inset, inset)
+    return inset
+end
+
+Widgets.TILE_HEIGHT = 88
+local TILE_INSET = 4
+
 function Widgets.roleTile(parent, role, width, onClick)
     local tile = backdropFrame("CheckButton", parent)
-    tile:SetSize(width, 76)
+    tile:SetSize(width, Widgets.TILE_HEIGHT)
     tile.role = role
     addOutline(tile)
+    tile.art = tile:CreateTexture(nil, "BACKGROUND", nil, 1)
+    tile.art:Hide()
+    tile.shade = tile:CreateTexture(nil, "BACKGROUND", nil, 2)
+    tile.artInset = Widgets.roundArt(tile, tile.art, tile.shade)
+    tile.shade:SetAllPoints(tile.art)
+    if not (type(CreateColor) == "function" and pcall(tile.shade.SetColorTexture, tile.shade, 1, 1, 1, 1)
+        and pcall(tile.shade.SetGradient, tile.shade, "VERTICAL", CreateColor(0, 0, 0, 0.85),
+            CreateColor(0, 0, 0, 0))) then
+        tile.shade:SetColorTexture(0, 0, 0, 0.45)
+    end
+    tile.shade:Hide()
     local hover = tile:CreateTexture(nil, "HIGHLIGHT")
-    hover:SetPoint("TOPLEFT", 4, -4)
-    hover:SetPoint("BOTTOMRIGHT", -4, 4)
+    hover:SetPoint("TOPLEFT", TILE_INSET, -TILE_INSET)
+    hover:SetPoint("BOTTOMRIGHT", -TILE_INSET, TILE_INSET)
     hover:SetColorTexture(1, 1, 1, 0.07)
     tile.icon = Widgets.roleIcon(tile, role, 40)
-    tile.icon:SetPoint("TOP", 0, -8)
     tile.box = tile:CreateTexture(nil, "ARTWORK")
     tile.box:SetTexture("Interface\\Buttons\\UI-CheckBox-Up")
     tile.box:SetSize(24, 24)
@@ -468,16 +525,33 @@ function Widgets.roleTile(parent, role, width, onClick)
     tile.mark = tile:CreateTexture(nil, "OVERLAY")
     tile.mark:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
     tile.mark:SetAllPoints(tile.box)
-    tile.label = Widgets.text(tile, "GameFontHighlight", "CENTER")
-    tile.label:SetPoint("BOTTOM", 0, 8)
-    tile.label:SetText(Widgets.ROLE_NAMES[role])
+    tile.label = Widgets.text(tile, "GameFontHighlight")
+    tile.label:SetText(Widgets.roleName(role))
+    tile.spec = Widgets.text(tile, "GameFontHighlightSmall")
+    tile.spec:SetPoint("BOTTOMLEFT", tile.label, "BOTTOMRIGHT", 6, 1)
+    tile.spec:SetTextColor(0.9, 0.76, 0.45)
+    -- A small rounded label, like the other boxes in the addon.
+    tile.neededBack = backdropFrame("Frame", tile)
+    addOutline(tile.neededBack)
+    paintOutline(tile.neededBack, { 0, 0, 0, 0.65 }, { 0.4, 1, 0.4, 0.35 })
+    tile.needed = Widgets.text(tile.neededBack, "GameFontNormalSmall")
+    tile.needed:SetPoint("TOPLEFT", tile, "TOPLEFT", 13, -11)
+    tile.needed:SetText(ns.L["Needed most"])
+    tile.needed:SetTextColor(0.4, 1, 0.4)
+    tile.neededBack:SetPoint("TOPLEFT", tile.needed, "TOPLEFT", -6, 4)
+    tile.neededBack:SetPoint("BOTTOMRIGHT", tile.needed, "BOTTOMRIGHT", 6, -4)
+    tile.needed:Hide()
+    tile.neededBack:Hide()
     tile:SetScript("OnClick", onClick)
     tile:SetScript("OnEnter", function(self)
         if GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(Widgets.ROLE_NAMES[role], 1, 0.82, 0)
-            GameTooltip:AddLine(self.reason or "Tick every role you can play; Forever Groups picks the one a group "
-                .. "needs most.", 1, 1, 1, true)
+            GameTooltip:SetText(Widgets.roleName(role), 1, 0.82, 0)
+            GameTooltip:AddLine(ns.L[self.reason or "Tick every role you can play; Forever Groups picks the one a "
+                .. "group needs most."], 1, 1, 1, true)
+            if self.neededTip then
+                GameTooltip:AddLine(self.neededTip, 0.4, 1, 0.4, true)
+            end
             GameTooltip:Show()
         end
     end)
@@ -487,6 +561,23 @@ function Widgets.roleTile(parent, role, width, onClick)
         end
     end)
     return tile
+end
+
+-- With spec art: a small role icon at the bottom left with the role and the
+-- spec beside it on one line, so the art stays clear. Without: a large icon
+-- over the role.
+local function layTile(tile, art)
+    tile.icon:ClearAllPoints()
+    tile.label:ClearAllPoints()
+    if art then
+        tile.icon:SetSize(26, 26)
+        tile.icon:SetPoint("BOTTOMLEFT", 11, 11)
+        tile.label:SetPoint("LEFT", tile.icon, "RIGHT", 7, 0)
+    else
+        tile.icon:SetSize(40, 40)
+        tile.icon:SetPoint("TOP", 0, -12)
+        tile.label:SetPoint("BOTTOM", 0, 12)
+    end
 end
 
 function Widgets.paintTile(tile, checked, enabled)
@@ -517,10 +608,70 @@ function Widgets.paintTile(tile, checked, enabled)
         tile.icon:SetAlpha(1)
         tile.label:SetTextColor(0.9, 0.9, 0.9)
     end
+    local art = enabled and tile.look ~= nil
+    tile.art:SetShown(art)
+    tile.shade:SetShown(art)
+    tile.spec:SetShown(art)
+    if art then
+        tile.art:SetDesaturated(not checked)
+        tile.art:SetAlpha(checked and 1 or 0.45)
+    end
+    layTile(tile, art)
     paintOutline(tile, background, borderColor)
     tile.mark:SetShown(checked and enabled and true or false)
     tile.box:SetDesaturated(not enabled)
     tile.box:SetAlpha(enabled and 1 or 0.35)
+end
+
+-- look: { atlas, name } from Specs.forRole for the player's class, or nil
+-- for the plain role icon. The art is cut to the tile's shape around the
+-- upper middle, where the spec art has its figure. Paint the tile after.
+-- Fills a texture of width x height with an atlas, cut to that shape: the
+-- full width and the upper middle when the shape is wider than the picture
+-- (where spec art has its figure), else the middle. Returns false when the
+-- client lacks the atlas.
+function Widgets.coverAtlas(texture, atlas, width, height)
+    local get = C_Texture and C_Texture.GetAtlasInfo
+    local info = atlas and get and get(atlas)
+    if not info then
+        return false
+    end
+    if not (info.file and info.leftTexCoord and type(width) == "number" and type(height) == "number" and height > 0
+        and (info.height or 0) > 0) then
+        texture:SetAtlas(atlas)
+        return true
+    end
+    local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
+    local wanted, own = width / height, info.width / info.height
+    if wanted > own then
+        local part = (b - t) * own / wanted
+        local top = t + ((b - t) - part) * 0.3
+        t, b = top, top + part
+    else
+        local part = (r - l) * wanted / own
+        l = l + ((r - l) - part) / 2
+        r = l + part
+    end
+    texture:SetTexture(info.file)
+    texture:SetTexCoord(l, r, t, b)
+    return true
+end
+
+function Widgets.setTileLook(tile, look)
+    local width, height = tile:GetWidth(), tile:GetHeight()
+    local ok = look and Widgets.coverAtlas(tile.art, look.atlas, (width or 0) - 2 * tile.artInset,
+        (height or 0) - 2 * tile.artInset)
+    tile.look = ok and look or nil
+    if ok then
+        tile.spec:SetText(look.name and ns.L[look.name] or "")
+    end
+end
+
+-- tip: why this role is the one most needed now, or nil to hide the mark.
+function Widgets.paintNeeded(tile, tip)
+    tile.neededTip = tip
+    tile.needed:SetShown(tip ~= nil)
+    tile.neededBack:SetShown(tip ~= nil)
 end
 
 -- A small round status dot: WoW's white circle mask, coloured per state.
@@ -544,8 +695,8 @@ end
 -- lines run between two anchors, the corner pixels sit at one.
 local TAB_OUTLINE = {
     { "TOPLEFT", 3, 0, "TOPRIGHT", -3, 0 },
-    { "TOPLEFT", 0, -3, "BOTTOMLEFT", 0, 0 },
-    { "TOPRIGHT", 0, -3, "BOTTOMRIGHT", 0, 0 },
+    { "TOPLEFT", 0, -3, "BOTTOMLEFT", 0, 3 },
+    { "TOPRIGHT", 0, -3, "BOTTOMRIGHT", 0, 3 },
     { "TOPLEFT", 1, -2 },
     { "TOPLEFT", 2, -1 },
     { "TOPRIGHT", -1, -2 },
@@ -558,6 +709,9 @@ function Widgets.tab(parent, label, width, onClick)
     tab.fill = tab:CreateTexture(nil, "BACKGROUND")
     tab.fill:SetPoint("TOPLEFT", 1, -1)
     tab.fill:SetPoint("BOTTOMRIGHT", -1, 0)
+    tab.art = tab:CreateTexture(nil, "BACKGROUND", nil, 1)
+    tab.art:SetAllPoints(tab.fill)
+    tab.art:Hide()
     tab.outline = {}
     for i, piece in ipairs(TAB_OUTLINE) do
         local line = tab:CreateTexture(nil, "BORDER")
@@ -571,7 +725,8 @@ function Widgets.tab(parent, label, width, onClick)
     local text = tab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("CENTER", 0, -1)
     tab:SetFontString(text)
-    tab:SetText(label)
+    tab:SetPushedTextOffset(0, 0)
+    tab:SetText(ns.L[label])
     tab.label = text
     tab.dot = Widgets.dot(tab)
     tab.dot:SetPoint("LEFT", text, "RIGHT", 7, 0)
@@ -588,6 +743,28 @@ function Widgets.tab(parent, label, width, onClick)
         Widgets.paintTab(self, self.chosen)
     end)
     return tab
+end
+
+-- Shows part of an atlas: u1..u2 and v1..v2 are fractions of the atlas's
+-- picture (0..1 from the top left), after leaving out the margin around it.
+-- Returns false when the client lacks the atlas.
+function Widgets.atlasPart(texture, atlas, u1, u2, v1, v2, margin)
+    local get = C_Texture and C_Texture.GetAtlasInfo
+    local info = get and get(atlas)
+    if not info then
+        return false
+    end
+    if not (info.file and info.leftTexCoord) then
+        texture:SetAtlas(atlas)
+        return true
+    end
+    margin = margin or 0
+    local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
+    local mx, my = (r - l) * margin, (b - t) * margin
+    l, r, t, b = l + mx, r - mx, t + my, b - my
+    texture:SetTexture(info.file)
+    texture:SetTexCoord(l + (r - l) * u1, l + (r - l) * u2, t + (b - t) * v1, t + (b - t) * v2)
+    return true
 end
 
 local TAB_STATUS_COLORS = { queued = { 1, 0.82, 0 }, found = { 0.3, 1, 0.3 }, paused = { 0.6, 0.6, 0.6 } }
@@ -610,7 +787,8 @@ function Widgets.setTabStatus(tab, kind, text)
 end
 
 -- The chosen tab has a gold outline; a tab under the mouse shows the same
--- outline in light grey, so it reads as a tab you can open.
+-- outline in faint grey, so it reads as a tab you can open. The name stays
+-- gold.
 function Widgets.paintTab(tab, chosen)
     tab.chosen = chosen
     local shown = chosen or tab.hovered == true
@@ -620,17 +798,11 @@ function Widgets.paintTab(tab, chosen)
         if chosen then
             line:SetColorTexture(1, 0.82, 0, 0.6)
         else
-            line:SetColorTexture(1, 1, 1, 0.3)
+            line:SetColorTexture(1, 1, 1, 0.22)
         end
         line:SetShown(shown)
     end
-    if chosen then
-        tab.label:SetTextColor(1, 0.82, 0)
-    elseif tab.hovered then
-        tab.label:SetTextColor(0.95, 0.95, 0.95)
-    else
-        tab.label:SetTextColor(0.6, 0.6, 0.6)
-    end
+    tab.label:SetTextColor(1, 0.82, 0)
 end
 
 -- A section toggle: WoW's plus/minus button, a label, a grey count and a
@@ -644,7 +816,7 @@ function Widgets.expander(parent, label, width, onClick)
     local text = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("LEFT", button.icon, "RIGHT", 6, 0)
     button:SetFontString(text)
-    button:SetText(label)
+    button:SetText(ns.L[label])
     button.label = text
     button.count = Widgets.text(button, "GameFontDisableSmall")
     button.count:SetPoint("LEFT", text, "RIGHT", 6, 0)
@@ -677,7 +849,7 @@ function Widgets.link(parent, label, onClick)
     link.label = text
     link:SetNormalFontObject(GameFontNormalSmall)
     link:SetHighlightFontObject(GameFontHighlightSmall)
-    link:SetText(label)
+    link:SetText(ns.L[label])
     link:SetSize(math.ceil(text:GetStringWidth() or 40) + 2, 16)
     link:SetScript("OnClick", onClick)
     return link
@@ -714,27 +886,93 @@ end
 -- last line.
 local SLOT_PADDING = 9
 
+Widgets.SLOT_WIDTH = 106
+
 function Widgets.slot(parent)
     local slot = backdropFrame("Frame", parent)
-    slot:SetSize(100, 50)
+    slot:SetSize(Widgets.SLOT_WIDTH, 50)
     addOutline(slot)
     paintOutline(slot, { 1, 1, 1, 0.05 }, { 1, 1, 1, 0.14 })
+    -- The member's spec art, or their class's emblem while the spec is not
+    -- known, under a shade that keeps the text readable.
+    slot.art = slot:CreateTexture(nil, "BACKGROUND", nil, 1)
+    slot.art:Hide()
+    slot.shade = slot:CreateTexture(nil, "BACKGROUND", nil, 2)
+    slot.artInset = Widgets.roundArt(slot, slot.art, slot.shade)
+    slot.shade:SetAllPoints(slot.art)
+    if not (type(CreateColor) == "function" and pcall(slot.shade.SetColorTexture, slot.shade, 1, 1, 1, 1)
+        and pcall(slot.shade.SetGradient, slot.shade, "VERTICAL", CreateColor(0, 0, 0, 0.85),
+            CreateColor(0, 0, 0, 0.35))) then
+        slot.shade:SetColorTexture(0, 0, 0, 0.55)
+    end
+    slot.shade:Hide()
     slot.icon = Widgets.roleIcon(slot, "D", 20)
     slot.icon:SetPoint("TOP", 0, -SLOT_PADDING)
     slot.name = Widgets.text(slot, "GameFontHighlightSmall", "CENTER")
     slot.name:SetPoint("TOP", slot.icon, "BOTTOM", 0, -3)
-    slot.name:SetWidth(94)
+    slot.name:SetWidth(Widgets.SLOT_WIDTH - 6)
     if slot.name.SetMaxLines then
         pcall(slot.name.SetMaxLines, slot.name, 2)
     end
-    slot.spec = Widgets.text(slot, "GameFontHighlightSmall", "CENTER")
-    slot.spec:SetWidth(94)
+    -- Class and spec on one line, the spec smaller and gold, like the role
+    -- tiles.
+    slot.spec = CreateFrame("Frame", nil, slot)
+    slot.spec:SetSize(Widgets.SLOT_WIDTH - 6, 12)
+    slot.className = Widgets.text(slot.spec, "GameFontHighlightSmall")
+    slot.specName = Widgets.text(slot.spec, "GameFontNormalSmall")
+    slot.specName:SetTextColor(0.9, 0.76, 0.45)
+    slot.spec.SetText = function(_, class, spec)
+        slot.className:SetText(class or "")
+        slot.specName:SetText(spec or "")
+        local gap = (spec and spec ~= "" and class and class ~= "") and 4 or 0
+        local width = (slot.className:GetStringWidth() or 0) + gap + (slot.specName:GetStringWidth() or 0)
+        slot.className:ClearAllPoints()
+        slot.className:SetPoint("LEFT", slot.spec, "CENTER", -math.floor(width / 2), 0)
+        slot.specName:ClearAllPoints()
+        slot.specName:SetPoint("LEFT", slot.className, "RIGHT", gap, 0)
+    end
     slot.distance = Widgets.text(slot, "GameFontDisableSmall", "CENTER")
     slot.distanceDot = Widgets.dot(slot, 7)
     slot.distanceDot:SetPoint("RIGHT", slot.distance, "LEFT", -3, 0)
     slot.quests = Widgets.text(slot, "GameFontDisableSmall", "CENTER")
-    slot.quests:SetWidth(94)
+    slot.quests:SetWidth(Widgets.SLOT_WIDTH - 6)
     return slot
+end
+
+-- How a member looks in their place: their own spec when it plays the
+-- place's role; else the tree their class plays that role with (a Feral
+-- druid healing is Restoration), or nothing when there are several (the
+-- class shows); their own spec in a place their class cannot play. Returns
+-- the art's atlas and the tree's name.
+local function slotLook(data)
+    if not (data.name and data.classToken) then
+        return nil, nil
+    end
+    local look = data.role and ns.Specs.forRole(data.classToken, data.role, data.specIndex)
+    if look then
+        return look.name and look.atlas, look.name
+    end
+    local tree = data.specIndex and ns.Specs.tree(data.classToken, data.specIndex)
+    if tree then
+        return ns.Specs.artFor(data.classToken, data.specIndex, data.role), tree.name
+    end
+    return nil, nil
+end
+
+-- The look above as art when there is one, else the class's emblem, dimmed;
+-- both fill the place. Nothing for an open place.
+local function paintSlotArt(slot, data, height)
+    local width, inner = Widgets.SLOT_WIDTH - 2 * slot.artInset, height - 2 * slot.artInset
+    local atlas = slotLook(data)
+    local art = atlas and Widgets.coverAtlas(slot.art, atlas, width, inner) or false
+    local emblem = false
+    if not art and data.name and data.classToken then
+        emblem = Widgets.coverAtlas(slot.art, "classicon-" .. string.lower(data.classToken), width, inner)
+    end
+    slot.art:SetShown(art or emblem)
+    slot.art:SetAlpha(art and 1 or 0.45)
+    slot.shade:SetShown(art or emblem)
+    slot.emblem = emblem
 end
 
 local NEAR = 1000
@@ -744,22 +982,23 @@ local DISTANCE_COLORS = { here = { 0.3, 1, 0.3 }, near = { 1, 0.82, 0 }, far = {
 -- colour.
 local function describeDistance(yards)
     if yards == "in" then
-        return "inside", DISTANCE_COLORS.here
+        return ns.L["inside"], DISTANCE_COLORS.here
     elseif yards == "?" then
-        return "unknown", DISTANCE_COLORS.far
+        return ns.L["unknown"], DISTANCE_COLORS.far
     elseif yards == "none" then
         return "", DISTANCE_COLORS.far
     elseif yards == false or yards == nil then
-        return "far away", DISTANCE_COLORS.far
+        return ns.L["far away"], DISTANCE_COLORS.far
     elseif yards <= 40 then
-        return "at entrance", DISTANCE_COLORS.here
+        return ns.L["at entrance"], DISTANCE_COLORS.here
     elseif yards < NEAR then
-        return string.format("%d yd", math.floor(yards / 10 + 0.5) * 10), DISTANCE_COLORS.near
+        return string.format(ns.L["%d yd"], math.floor(yards / 10 + 0.5) * 10), DISTANCE_COLORS.near
     end
-    return string.format("%.1fk yd", yards / 1000), DISTANCE_COLORS.far
+    return string.format(ns.L["%.1fk yd"], yards / 1000), DISTANCE_COLORS.far
 end
 
--- data: { role, name, classToken, spec, distance (yards, "in" = inside,
+-- data: { role, name, classToken, spec (its tree's name), specIndex,
+-- distance (yards, "in" = inside,
 -- false = far away, "?" = unknown, "none" = left empty),
 -- quests (a count, or "?") }; layout: which lines the row of slots shows
 -- ({ spec, distance, quests } true/false), so every slot has the same lines
@@ -770,9 +1009,13 @@ function Widgets.paintSlot(slot, data, layout)
         slot.icon:SetAlpha(1)
         slot.name:SetText(data.name)
         slot.name:SetTextColor(Widgets.classColor(data.classToken))
+    elseif data.invite then
+        slot.icon:SetAlpha(0.6)
+        slot.name:SetText(data.invite.name)
+        slot.name:SetTextColor(0.75, 0.75, 0.75)
     else
         slot.icon:SetAlpha(0.3)
-        slot.name:SetText("open")
+        slot.name:SetText(ns.L["open"])
         slot.name:SetTextColor(0.5, 0.5, 0.5)
     end
     local y = -50 - SLOT_PADDING
@@ -785,7 +1028,20 @@ function Widgets.paintSlot(slot, data, layout)
             y = y - 13
         end
     end
-    line(slot.spec, layout.spec, data.spec)
+    slot.spec:SetShown(layout.spec)
+    if layout.spec then
+        slot.spec:ClearAllPoints()
+        slot.spec:SetPoint("TOP", slot, "TOP", 0, y)
+        local _, specName = slotLook(data)
+        if data.invite and not data.name then
+            slot.spec:SetText(ns.L[data.invite.held and "frees in" or "invited"],
+                Widgets.formatTime(data.invite.left))
+        else
+            slot.spec:SetText(data.name and data.classToken and ns.Spec.className(data.classToken) or "",
+                specName and ns.L[specName])
+        end
+        y = y - 13
+    end
     local text, color = describeDistance(data.distance)
     local showDistance = layout.distance and data.name ~= nil and data.distance ~= "none"
     line(slot.distance, layout.distance, showDistance and text or "")
@@ -799,15 +1055,16 @@ function Widgets.paintSlot(slot, data, layout)
     if not data.name or quests == nil then
         questText = ""
     elseif quests == "none" then
-        questText = "no addon"
+        questText = ns.L["no addon"]
     elseif quests == "?" then
         questText = "?"
     else
-        questText = string.format("%d quest%s", quests, quests == 1 and "" or "s")
+        questText = ns.Locale.count(quests, "%d quest", "%d quests")
     end
     line(slot.quests, layout.quests, questText)
     local height = -y + SLOT_PADDING
     slot:SetHeight(height)
+    paintSlotArt(slot, data, height)
     return height
 end
 

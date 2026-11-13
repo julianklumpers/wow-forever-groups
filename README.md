@@ -19,16 +19,27 @@ in the group, with roles set for you.
 
 - **Dungeons** — queue for one or more dungeons that fit your level, solo or with your party.
 - **Group quests** — a Quests tab with the group and elite quests in your quest log.
+- **Battlegrounds** — a Battlegrounds tab for Warsong Gulch, Arathi Basin and Darkspear Islands
+  in your level bracket: who is looking, and Find group to team up with other Forever Groups
+  players, join a group listed in WoW's Group Finder, or build a party of five or a premade of
+  ten (a raid, with at least two healers) from listed players. Sign up at a battlemaster as a
+  group. You can wait for a dungeon, a quest and a battleground at the same time.
 - **Lead if you like** — tick "I'd like to lead" and you become the leader of the group that
   forms; Forever Groups builds it for you.
 - **Playstyle** — "Any" by default, so you're grouped with everyone; pick Learning, Relaxed,
-  Competitive or Carry Offered in the dropdown on the roles header to be grouped with
+  Competitive or Carry Offered in the dropdown under the role tiles to be grouped with
   like-minded players only.
 - **Uses WoW's Group Finder too** — invites solo players listed for your dungeon, asks listed
   groups to invite you (and joins when they do, as the role they still need), lists your own
   group, and invites players who whisper a needed role.
 - **In the group** — a card with the dungeon's picture and every member's role, spec, distance
   to the entrance and dungeon quests; share your quests in one click; a waypoint to the entrance.
+  When someone leaves, one click (or none, a setting) finds a replacement. If your leader doesn't
+  have Forever Groups and the group isn't full yet, "Make me leader" asks them to promote you;
+  then Forever Groups fills the group.
+- **Your role in demand** — each dungeon shows how many listed groups need you, and "Tank needed"
+  when too few others looking can play your role; the role tile needed most says so.
+- **Disconnected?** Back within 15 minutes and you're in the queue again.
 - **Status bar** — boss progress (e.g. 4/7 bosses) and everyone's quest progress, folded out
   under the bar.
 - **Who is looking** — a drawer on the side of the window with the players and groups looking
@@ -37,6 +48,9 @@ in the group, with roles set for you.
   the eye on the window's edge opens and closes it.
 - **Your own words** — every whisper and party message can be rewritten (any language) or
   turned off. The whispers it sends for you stay out of your own chat; answers always show.
+- **In your language** — English, German, Spanish and Russian, following your WoW client (or
+  pick one in Settings → Display).
+  Whispers to other players stay English, so everyone can read them.
 
 <p align="center">
   <img src="media/screenshots/group-card.png" width="420" alt="The group card: every member with role, spec, distance to the entrance and dungeon quests, with buttons for a waypoint, sharing quests and quest progress">

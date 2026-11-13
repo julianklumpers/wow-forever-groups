@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local W = ns.WindowParts
 local Widgets = ns.Widgets
 local WIDTH = W.WIDTH
@@ -47,14 +49,14 @@ function W.showQuestRow(row, key, quest, y, enabled)
     local _, size = ns.QuestMatch.parse(key)
     row.key = key
     row.label:SetText(quest and quest.title or ns.Quests.nameOf(key))
-    row.range:SetText(string.format("%s · group of %d", quest and quest.label or "Group", size or 0))
+    row.range:SetText(string.format(L["%s · group of %d"], L[quest and quest.label or "Group"], size or 0))
     row.zoneName = quest and quest.zone
     row.waitingCount = ns.QuestQueue.waitingFor(key)
     local wanted = { [key] = true }
     Widgets.setRoleCounts(row.counts, ns.QueueWindow.questCountsKnown(row.zoneName)
         and ns.QueueWindow.lookingCounts(wanted, "quest"))
     local groups = #ns.QueueWindow.groupsNeedingMe(wanted, "quest")
-    row.groups:SetText(groups > 0 and string.format("%d group%s", groups, groups == 1 and "" or "s") or "")
+    row.groups:SetText(groups > 0 and ns.Locale.count(groups, "%d group", "%d groups") or "")
     row:SetChecked(not W.questUnticked()[key])
     Widgets.setEnabled(row, enabled)
     W.place(row, PAD - CHECK_INSET, y)
@@ -67,8 +69,8 @@ function W.layoutQuests(y, state)
     W.hideQuestWidgets()
     if entry then
         local count = #entry.dungeons
-        ui.questHeader:SetText(string.format("Looking for a questing group  ·  %d quest%s", count,
-            count == 1 and "" or "s"))
+        ui.questHeader:SetText(L["Looking for a questing group"] .. "  ·  "
+            .. ns.Locale.count(count, "%d quest", "%d quests"))
         W.place(ui.questHeader, PAD, y)
         ui.questHeader:Show()
         ui.questHeader.line:Show()
@@ -82,7 +84,7 @@ function W.layoutQuests(y, state)
         return y - 6
     end
     if state ~= "solo" and state ~= "leader" then
-        ui.questEmpty:SetText("Your party leader looks for questing groups.")
+        ui.questEmpty:SetText(L["Your party leader looks for questing groups."])
         W.place(ui.questEmpty, PAD, y)
         ui.questEmpty:Show()
         return y - 30
@@ -93,7 +95,7 @@ function W.layoutQuests(y, state)
         y = W.cardBelowRoles(y)
     end
     local quests = ns.Quests.groupQuests()
-    ui.questHeader:SetText(string.format("Group and elite quests  ·  %d selected", #W.tickedQuestKeys()))
+    ui.questHeader:SetText(string.format(L["Group and elite quests  ·  %d selected"], #W.tickedQuestKeys()))
     W.place(ui.questHeader, PAD, y)
     ui.questHeader:Show()
     ui.questHeader.line:Show()
@@ -107,7 +109,7 @@ function W.layoutQuests(y, state)
         end
     end
     if #quests == 0 then
-        ui.questEmpty:SetText("No group or elite quests in your quest log. Pick one up and it shows here.")
+        ui.questEmpty:SetText(L["No group or elite quests in your quest log. Pick one up and it shows here."])
         W.place(ui.questEmpty, PAD, y - 4)
         ui.questEmpty:Show()
         y = y - 26
@@ -128,14 +130,14 @@ function W.refreshQuestsTab(y, state)
     local queued = ns.QuestQueue.isQueued()
     local setup = not queued and (state == "solo" or state == "leader")
     local ready = queued or (W.selectedRoles() ~= nil and #W.tickedQuestKeys() > 0)
-    ui.join:SetText(queued and "Stop" or not ns.questEngine and "Connecting..."
-        or (W.leadWord("quests") and "Find questing players" or "Find questing group"))
+    ui.join:SetText(L[queued and "Stop" or not ns.questEngine and "Connecting..."
+        or (W.leadWord("quests") and "Find questing players" or "Find questing group")])
     ui.join:SetShown(queued or setup)
     ui.joinSummary:SetShown(setup and ready)
     if setup and ready then
         local parts = { Widgets.describeRoles(W.selectedRoles()), W.leadWord("quests") }
         local count = #W.tickedQuestKeys()
-        parts[#parts + 1] = string.format("%d quest%s", count, count == 1 and "" or "s")
+        parts[#parts + 1] = ns.Locale.count(count, "%d quest", "%d quests")
         ui.joinSummary:SetText(table.concat(parts, "  ·  "))
     end
     Widgets.setEnabled(ui.join, ns.questEngine ~= nil and ready)
@@ -163,11 +165,11 @@ function W.onQuestJoinClicked()
     end
     local members, membersErr = ns.QuestQueue.members(roles)
     if not members then
-        W.setHint("Could not join: " .. membersErr)
+        W.setHint(string.format(L["Could not join: %s"], L[membersErr]))
         return
     end
     local ok, err = ns.QuestQueue.join(W.tickedQuestKeys(), members)
-    W.setHint(ok and "" or ("Could not join: " .. tostring(err)))
+    W.setHint(ok and "" or string.format(L["Could not join: %s"], L[tostring(err)]))
     if ok then
         ns.QuestFinder.searchNow()
     end
@@ -201,7 +203,8 @@ function W.buildQuests()
                     GameTooltip:AddLine(self.zoneName, 1, 1, 1)
                 end
                 if (self.waitingCount or 0) > 0 then
-                    GameTooltip:AddLine(string.format("%d waiting with Forever Groups", self.waitingCount), 1, 0.82, 0)
+                    GameTooltip:AddLine(string.format(L["%d waiting with Forever Groups"], self.waitingCount),
+                        1, 0.82, 0)
                 end
                 GameTooltip:Show()
             end

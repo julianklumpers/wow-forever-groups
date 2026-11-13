@@ -48,11 +48,6 @@ local function hasPartner(engine, entry)
     return false
 end
 
-local function proposalOpen(engine)
-    local key = engine and engine.myProposalKey
-    local proposal = key and engine.proposals[key]
-    return proposal ~= nil and not proposal.outcome
-end
 
 function AutoFill.tick()
     if not ns.Features.fill() then
@@ -60,7 +55,7 @@ function AutoFill.tick()
     end
     local engine = ns.engine
     local entry = engine and engine.myEntry
-    if not entry or ns.Filler.isActive() or proposalOpen(engine) or engine.held or proposalOpen(ns.questEngine)
+    if not entry or ns.Filler.isActive() or ns.Queues.anyProposalOpen() or engine.held
         or engine:isReserved(entry.id) then
         return
     end

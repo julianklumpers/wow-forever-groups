@@ -113,6 +113,19 @@ function Whispers.send(name, text)
     return ok, err
 end
 
+-- A whisper the addon sends for the player, unless whispers are turned off
+-- or WoW blocks messages right now (a boss fight); true when it went out.
+function Whispers.sendIfAllowed(name, text)
+    if not text or ns.db.noWhisper or (C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()) then
+        return false
+    end
+    local ok, err = Whispers.send(name, text)
+    if not ok then
+        ns.Log.debug("whisper to %s failed: %s", name, tostring(err))
+    end
+    return ok == true
+end
+
 function Whispers.init()
     local add = (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter) or ChatFrame_AddMessageEventFilter
     if type(add) ~= "function" then

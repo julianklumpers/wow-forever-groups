@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Widgets = ns.Widgets
 local Dungeons = ns.Dungeons
 local Playstyles = ns.Playstyles
@@ -58,9 +60,17 @@ end
 
 -- Searches the Group Finder for what the window shows when its results are
 -- older than `age` seconds; only from player input.
--- subject: "dungeons" or "quests"; the window's own by default.
+-- subject: "dungeons", "quests" or "battlegrounds"; the window's own by
+-- default.
 function QueueWindow.searchIfStale(age, subject)
-    if (subject or mode) ~= "quests" then
+    subject = subject or mode
+    if subject == "battlegrounds" then
+        if ns.LfgList.secondsSinceBattlegroundSearch() < age then
+            return false
+        end
+        return ns.LfgList.searchBattlegrounds()
+    end
+    if subject ~= "quests" then
         return ns.LfgList.searchIfStale(age)
     end
     if ns.LfgList.secondsSinceZoneSearch() < age then
@@ -104,9 +114,17 @@ local function shortQuests(keys)
     return #keys > 1 and string.format("%s +%d", first, #keys - 1) or first
 end
 
--- The Dungeons column: dungeons, or for quests the quests (Forever Groups)
--- or the zones (WoW's Group Finder).
-local function areaText(ids, zones)
+-- The Dungeons column: dungeons, for quests the quests (Forever Groups) or
+-- the zones (WoW's Group Finder), for battlegrounds their short names.
+local function areaText(ids, zones, battlegrounds)
+    if mode == "battlegrounds" then
+        local names = {}
+        for i, id in ipairs(battlegrounds or ids or {}) do
+            local battleground = ns.Battlegrounds.get(ns.Battlegrounds.parseKey(id) or id)
+            names[i] = battleground and battleground.short or tostring(id)
+        end
+        return table.concat(names, ", ")
+    end
     if mode ~= "quests" then
         return shortNames(ids or {})
     end
@@ -128,7 +146,17 @@ end
 -- What the Group Finder lists for the window's subject: the dungeon
 -- listings for the wanted dungeons, or the zone listings ("Quests & Zones")
 -- in the zones of the wanted quests. Returns the listings and a match test.
+local function sameBracket(listing)
+    return ns.Battlegrounds.sameBracket(listing.level, UnitLevel("player"))
+end
+
 local function finderSource(subject)
+    if subject == "battlegrounds" then
+        local wanted = QueueWindow.wantedBattlegrounds()
+        return (ns.LfgList.battlegroundListings()), function(listing)
+            return sharesDungeon(listing.battlegrounds, wanted) and sameBracket(listing)
+        end
+    end
     if subject == "quests" then
         local zones = zonesOf(QueueWindow.wantedQuests(), true)
         return (ns.LfgList.zoneListings()), function(listing)
@@ -153,13 +181,23 @@ function QueueWindow.wantedDungeons()
     return wanted
 end
 
+-- The battlegrounds ticked in the main window.
+function QueueWindow.wantedBattlegrounds()
+    local wanted = {}
+    for _, id in ipairs(ns.Window.selectedBattlegroundIds()) do
+        wanted[id] = true
+    end
+    return wanted
+end
+
 local function isQuests(subject)
     return subject == "quests" or subject == "quest"
 end
 
--- Playstyles are for dungeons only; quest listings are never filtered on it.
+-- Playstyles are for dungeons only; quest and battleground listings are
+-- never filtered on it.
 local function styleFits(listing, subject)
-    return isQuests(subject) or ns.Playstyle.fits(listing.playstyle, ns.Playstyle.mine())
+    return isQuests(subject) or subject == "battlegrounds" or ns.Playstyle.fits(listing.playstyle, ns.Playstyle.mine())
 end
 
 -- Listed groups (not solo, not full) for the wanted dungeons (or, with
@@ -185,6 +223,15 @@ end
 -- subject "quests": wanted is a set of quest keys, matched by their zones.
 local function needingMe(wanted, subject, roles)
     local result = {}
+    if subject == "battlegrounds" then
+        for _, listing in ipairs((ns.LfgList.battlegroundListings())) do
+            if not listing.solo and (listing.open or 0) > 0 and listing.leader ~= ns.selfName and sameBracket(listing)
+                and sharesDungeon(listing.battlegrounds, wanted) then
+                result[#result + 1] = listing
+            end
+        end
+        return result
+    end
     local listings, field = ns.LfgList.listings(), "dungeons"
     if isQuests(subject) then
         listings, field, wanted = (ns.LfgList.zoneListings()), "zones", (zonesOf(wanted, subject == "quests"))
@@ -217,7 +264,12 @@ end
 
 function QueueWindow.groupsNeedingMe(wanted, subject)
     local roles = ns.charDb and ns.charDb.lastRoles
-    local leading = ns.charDb[isQuests(subject) and "wantsLeadQuests" or "wantsLead"]
+    local leading = ns.charDb[(isQuests(subject) and "wantsLeadQuests")
+        or (subject == "battlegrounds" and "wantsLeadBattlegrounds") or "wantsLead"]
+    -- A battleground group takes any role.
+    if subject == "battlegrounds" then
+        roles = roles or ""
+    end
     if not roles or not ns.Features.groupFinder() or not ns.Features.apply() or leading then
         return EMPTY
     end
@@ -253,8 +305,9 @@ local countCache, countToken = {}, nil
 function cachedResult(kind, wanted, compute)
     local engine = ns.engine
     local _, zonesAt = ns.LfgList.zoneListings()
-    local token = string.format("%d:%d:%d:%d:%s:%s:%d", ns.LfgList.version(), engine and engine.queue.version or -1,
-        ns.questEngine and ns.questEngine.queue.version or -1, ns.Playstyle.mine(),
+    local token = string.format("%d:%d:%d:%d:%d:%s:%s:%d", ns.LfgList.version(),
+        engine and engine.queue.version or -1, ns.questEngine and ns.questEngine.queue.version or -1,
+        ns.bgEngine and ns.bgEngine.queue.version or -1, ns.Playstyle.mine(),
         tostring(ns.Features.groupFinder()), tostring(zonesAt), UnitLevel("player") or 0)
     if token ~= countToken then
         countCache, countToken = {}, token
@@ -274,6 +327,29 @@ local function countLooking(wanted, subject)
                 counts[role] = counts[role] + 1
             end
         end
+    end
+    if subject == "battlegrounds" then
+        for _, listing in ipairs(ns.Features.groupFinder() and (ns.LfgList.battlegroundListings()) or {}) do
+            if listing.solo and listing.name ~= ns.selfName and sameBracket(listing)
+                and sharesDungeon(listing.battlegrounds, wanted) then
+                add(listing.roles)
+            end
+        end
+        local keys = {}
+        for id in pairs(wanted) do
+            local key = ns.Battlegrounds.key(id, UnitLevel("player"))
+            if key then
+                keys[key] = true
+            end
+        end
+        for _, entry in ipairs(ns.bgEngine and ns.bgEngine.queue:list() or {}) do
+            if entry.id ~= ns.selfName and sharesDungeon(entry.dungeons, keys) then
+                for _, member in ipairs(entry.members) do
+                    add(member.roles)
+                end
+            end
+        end
+        return counts
     end
     local quests = subject == "quests" or subject == "quest"
     local engine = quests and ns.questEngine or ns.engine
@@ -365,7 +441,7 @@ local function buildHeaders(section)
         header.column = column
         header.label = Widgets.text(header, "GameFontNormalSmall", column.right and "RIGHT" or "LEFT")
         header.label:SetAllPoints()
-        header.label:SetText(column.label)
+        header.label:SetText(L[column.label])
         header.arrow = header:CreateTexture(nil, "ARTWORK")
         header.arrow:SetSize(12, 12)
         header.arrow:Hide()
@@ -381,9 +457,8 @@ local function buildHeaders(section)
             header:SetScript("OnEnter", function(self)
                 if GameTooltip then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText("Sort by " .. string.lower(column.sort == "level" and "level"
-                        or self.label:GetText() or ""), 1, 0.82, 0)
-                    GameTooltip:AddLine("Click again to reverse the order.", 1, 1, 1, true)
+                    GameTooltip:SetText(string.format(L["Sort by %s"], self.label:GetText() or ""), 1, 0.82, 0)
+                    GameTooltip:AddLine(L["Click again to reverse the order."], 1, 1, 1, true)
                     GameTooltip:Show()
                 end
             end)
@@ -405,7 +480,8 @@ end
 -- group), groups when you don't (you look for a place in one). A table you
 -- fold or open yourself stays so, separately for leading and not leading.
 local function foldMode()
-    local leading = ns.charDb and ns.charDb[mode == "quests" and "wantsLeadQuests" or "wantsLead"]
+    local leading = ns.charDb and ns.charDb[(mode == "quests" and "wantsLeadQuests")
+        or (mode == "battlegrounds" and "wantsLeadBattlegrounds") or "wantsLead"]
     return leading and "lead" or "join"
 end
 
@@ -440,7 +516,7 @@ local function buildSection(title, rows, key, kind)
         end
     end)
     section.header = Widgets.text(section.caption, "GameFontNormalSmall")
-    section.header:SetText(title)
+    section.header:SetText(L[title])
     section.header:SetPoint("LEFT", section.caption.icon, "RIGHT", 5, 0)
     section.header:SetWordWrap(false)
     section.summary = Widgets.text(section.caption, "GameFontDisableSmall")
@@ -578,15 +654,15 @@ local function summarize(section, items)
             end
         end
     end
-    local words = { T = { "tank", "tanks" }, H = { "healer", "healers" }, D = { "DPS", "DPS" } }
+    local words = ns.WindowParts.ROLE_COUNTS
     if section.kind == "groups" then
-        words = { T = { "need a tank", "need a tank" }, H = { "need a healer", "need a healer" },
-            D = { "need DPS", "need DPS" } }
+        words = ns.Locale.mark({ T = { "%d need a tank", "%d need a tank" },
+            H = { "%d need a healer", "%d need a healer" }, D = { "%d need DPS", "%d need DPS" } })
     end
     local parts = {}
     for _, role in ipairs(Widgets.ROLES) do
         if counts[role] > 0 then
-            parts[#parts + 1] = string.format("%d %s", counts[role], words[role][counts[role] == 1 and 1 or 2])
+            parts[#parts + 1] = ns.Locale.count(counts[role], words[role][1], words[role][2])
         end
     end
     return #parts > 0 and ("·  " .. table.concat(parts, ", ")) or ""
@@ -667,9 +743,9 @@ local function fillSection(section, y, items, empty)
     section.more:ClearAllPoints()
     section.more:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT, y - 2)
     if #items == 0 then
-        section.more:SetText(empty)
+        section.more:SetText(L[empty])
     elseif scrolls then
-        section.more:SetText(string.format("%d-%d of %d, scroll for more", section.offset + 1,
+        section.more:SetText(string.format(L["%d-%d of %d, scroll for more"], section.offset + 1,
             section.offset + visible, #items))
     else
         section.more:SetText("")
@@ -775,7 +851,8 @@ end
 
 local function queueItems()
     local items = {}
-    local engine = mode == "quests" and ns.questEngine or ns.engine
+    local engine = (mode == "quests" and ns.questEngine) or (mode == "dungeons" and ns.engine)
+        or (mode == "battlegrounds" and ns.bgEngine) or nil
     if not engine then
         return items
     end
@@ -791,13 +868,13 @@ local function queueItems()
         roles = roles or ""
         local tags = {}
         if entry.id == ns.selfName then
-            tags[#tags + 1] = "you"
+            tags[#tags + 1] = L["you"]
         end
         if snap.fakes[entry.id] then
-            tags[#tags + 1] = "fake"
+            tags[#tags + 1] = L["fake"]
         end
         if engine:isReserved(entry.id) then
-            tags[#tags + 1] = "in a proposal"
+            tags[#tags + 1] = L["in a proposal"]
         end
         local name = entry.id .. (#entry.members > 1 and string.format(" +%d", #entry.members - 1) or "")
         local dungeonText = (#tags > 0 and ("[" .. table.concat(tags, ", ") .. "]  ") or "")
@@ -805,9 +882,9 @@ local function queueItems()
         local menu = entry.id ~= ns.selfName and not snap.fakes[entry.id]
         local needs, roleCounts = "", nil
         if #entry.members > 1 then
-            -- Quest groups have their own sizes and no fixed roles, so only a
+            -- Quest and battleground groups have no fixed roles, so only a
             -- dungeon party has places of a role still open.
-            needs = mode ~= "quests" and ns.Filler.missingFor(ns.Roles.withReserved(entry.members, entry.reserved))
+            needs = mode == "dungeons" and ns.Filler.missingFor(ns.Roles.withReserved(entry.members, entry.reserved))
                 or ""
             roleCounts = { T = 0, H = 0, D = 0 }
             for _, member in ipairs(entry.members) do
@@ -861,7 +938,7 @@ local function groupFinderItems()
     local items = {}
     for _, listing in ipairs(QueueWindow.groupFinderPlayers(mode)) do
         items[#items + 1] = { roles = listing.roles, needs = "", name = listing.name, listing = listing,
-            dungeonText = areaText(listing.dungeons, listing.zones), player = listing.name,
+            dungeonText = areaText(listing.dungeons, listing.zones, listing.battlegrounds), player = listing.name,
             time = Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
             level = listing.level,
             color = { Widgets.classColor(listing.classToken) } }
@@ -875,7 +952,8 @@ local function groupFinderGroupItems()
         local present, needs, presentCounts, needCounts = groupRoles(listing)
         items[#items + 1] = { roles = present, needs = needs, roleCounts = presentCounts, needCounts = needCounts,
             name = string.format("%s +%d", listing.leader, (listing.members or 1) - 1),
-            dungeonText = areaText(listing.dungeons, listing.zones), player = listing.leader, group = listing,
+            dungeonText = areaText(listing.dungeons, listing.zones, listing.battlegrounds), player = listing.leader,
+            group = listing,
             time = Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
             level = listing.level,
             color = { Widgets.classColor(listing.classToken) } }
@@ -888,7 +966,7 @@ local function describe(letters, counts)
     local names = {}
     for letter in string.gmatch(letters or "", ".") do
         local count = counts and counts[letter] or 1
-        names[#names + 1] = (count >= 2 and (count .. " ") or "") .. Widgets.ROLE_NAMES[letter]
+        names[#names + 1] = (count >= 2 and (count .. " ") or "") .. Widgets.roleName(letter)
     end
     return table.concat(names, ", ")
 end
@@ -906,33 +984,35 @@ function QueueWindow.showRowTooltip(row, item)
         GameTooltip:SetText(item.name, unpack(item.color))
         GameTooltip:AddLine("\"" .. comment .. "\"", 1, 1, 1, true)
         if item.player then
-            GameTooltip:AddLine("Right-click: whisper or invite", 0.6, 0.6, 0.6)
+            GameTooltip:AddLine(L["Right-click: whisper or invite"], 0.6, 0.6, 0.6)
         end
         GameTooltip:Show()
         return
     end
-    local needs = (item.needs or "") ~= "" and ("needs " .. describe(item.needs, item.needCounts)) or "full"
+    local needs = (item.needs or "") ~= "" and string.format(L["needs %s"], describe(item.needs, item.needCounts))
+        or L["full"]
     if item.party then
         local entry = item.party
-        GameTooltip:SetText(string.format("Party of %d  ·  %s", #entry.members, needs), 1, 0.82, 0)
+        GameTooltip:SetText(string.format(L["Party of %d  ·  %s"], #entry.members, needs), 1, 0.82, 0)
         for i, member in ipairs(entry.members) do
-            local spec = i == 1 and ns.Spec.label(entry.spec)
+            local spec = i == 1 and ns.Spec.labelInRole(entry.spec)
             local r, g, b = 1, 1, 1
             if i == 1 then
                 r, g, b = Widgets.classColor(ns.Specs.decode(entry.spec))
             end
-            GameTooltip:AddLine(string.format("%s%s  ·  %s%s", member.name, i == 1 and " (leader)" or "",
+            local leader = i == 1 and (" (" .. L["leader"] .. ")") or ""
+            GameTooltip:AddLine(string.format("%s%s  ·  %s%s", member.name, leader,
                 spec and (spec .. ", ") or "", Widgets.describeRoles(member.roles)), r, g, b)
         end
     else
-        GameTooltip:SetText(string.format("Group of %d  ·  %s", listing.members or 1, needs), 1, 0.82, 0)
+        GameTooltip:SetText(string.format(L["Group of %d  ·  %s"], listing.members or 1, needs), 1, 0.82, 0)
         local r, g, b = Widgets.classColor(listing.classToken)
-        GameTooltip:AddLine(listing.leader .. " (leader)", r, g, b)
+        GameTooltip:AddLine(listing.leader .. " (" .. L["leader"] .. ")", r, g, b)
         if comment then
             GameTooltip:AddLine("\"" .. comment .. "\"", 1, 1, 1, true)
         end
         if item.roles ~= "" then
-            GameTooltip:AddLine("Has: " .. describe(item.roles, item.roleCounts), 0.85, 0.85, 0.85)
+            GameTooltip:AddLine(string.format(L["Has: %s"], describe(item.roles, item.roleCounts)), 0.85, 0.85, 0.85)
         end
         local names = {}
         for _, id in ipairs(listing.dungeons or {}) do
@@ -941,11 +1021,12 @@ function QueueWindow.showRowTooltip(row, item)
         for _, zone in ipairs(listing.zones or {}) do
             names[#names + 1] = zone
         end
-        GameTooltip:AddLine(table.concat(names, ", ") .. "  ·  listed " .. item.time, 0.85, 0.85, 0.85, true)
+        GameTooltip:AddLine(table.concat(names, ", ") .. "  ·  " .. string.format(L["listed %s"], item.time), 0.85,
+            0.85, 0.85, true)
     end
     if item.player then
-        GameTooltip:AddLine(item.group and "Right-click: request to join, or whisper the leader"
-            or "Right-click: whisper the leader", 0.6, 0.6, 0.6)
+        GameTooltip:AddLine(L[item.group and "Right-click: request to join, or whisper the leader"
+            or "Right-click: whisper the leader"], 0.6, 0.6, 0.6)
     end
     GameTooltip:Show()
 end
@@ -977,7 +1058,9 @@ function QueueWindow.openMenu(row, item)
     local request
     if not IsInGroup() then
         request = { label = "Request to join", run = function()
-            if item.group.dungeons then
+            if item.group.battlegrounds then
+                ns.BgFinder.request(item.group)
+            elseif item.group.dungeons then
                 ns.Apply.request(item.group, myRoles(), firstWanted(item.group.dungeons))
             else
                 ns.QuestFinder.request(item.group, myRoles(), QueueWindow.wantedQuests())
@@ -1052,7 +1135,7 @@ local function buildBlock(title, icon, coords)
         block.icon:SetTexCoord(unpack(coords))
     end
     block.title = Widgets.text(frame, "GameFontNormal")
-    block.title:SetText(title)
+    block.title:SetText(L[title])
     block.note = Widgets.text(frame, "GameFontDisableSmall", "RIGHT")
     return block
 end
@@ -1084,13 +1167,13 @@ local function placeBlock(block, top, bottom, shown)
 end
 
 local function caption(word, count, suffix)
-    return string.format("%s (%d)%s", word, count, suffix)
+    return string.format("%s (%d)%s", L[word], count, suffix)
 end
 
 -- Shows the subject of the main window's page, also when that page changed
 -- by itself (a group formed, a queue was left).
 function setMode(tab)
-    tab = tab == "quests" and "quests" or "dungeons"
+    tab = (tab == "quests" or tab == "battlegrounds") and tab or "dungeons"
     if tab == mode then
         return
     end
@@ -1113,11 +1196,12 @@ function QueueWindow.refresh()
         local finderTable = section == sections.finder or section == sections.groups
         for _, header in ipairs(section.columns) do
             if header.column.label == "Dungeons" then
-                header.label:SetText(not quests and "Dungeons" or (finderTable and "Zone" or "Quests"))
+                header.label:SetText(L[(mode == "battlegrounds" and "Battleground")
+                    or (not quests and "Dungeons") or (finderTable and "Zone" or "Quests")])
             end
         end
     end
-    local suffix = shownRoles() and "  ·  filtered" or ""
+    local suffix = shownRoles() and ("  ·  " .. L["filtered"]) or ""
     local top = -64 - TOP
     local y = top - BLOCK_BAND - 6
     -- Groups first, then players, in both blocks.
@@ -1151,19 +1235,18 @@ function QueueWindow.refresh()
     local finder = groupFinderItems()
     local groups = groupFinderGroupItems()
     if not quests and ns.LfgList.isSearching() then
-        blocks.finder.note:SetText("searching...")
+        blocks.finder.note:SetText(L["searching..."])
     elseif updatedAt then
-        blocks.finder.note:SetText("searched " .. Widgets.formatTime(GetTime() - updatedAt) .. " ago")
+        blocks.finder.note:SetText(string.format(L["searched %s ago"], Widgets.formatTime(GetTime() - updatedAt)))
     else
-        blocks.finder.note:SetText("not searched yet")
+        blocks.finder.note:SetText(L["not searched yet"])
     end
     sections.groups.header:SetText(caption("Groups", #groups, suffix))
-    local where = quests and "in the zones of your quests" or "for your dungeons"
     y = fillSection(sections.groups, y, groups, shownRoles() and "No group needs these roles."
-        or ("No groups listed " .. where .. "."))
+        or (quests and "No groups listed in the zones of your quests." or "No groups listed for your dungeons."))
     sections.finder.header:SetText(caption("Players", #finder, suffix))
     y = fillSection(sections.finder, y, finder, shownRoles() and "Nobody with these roles listed."
-        or ("Nobody listed " .. where .. "."))
+        or (quests and "Nobody listed in the zones of your quests." or "Nobody listed for your dungeons."))
     placeBlock(blocks.finder, top, y + 4, true)
     frame:SetHeight(-y + 10)
 end
@@ -1171,6 +1254,7 @@ end
 local function build()
     frame = Widgets.window("ForeverGroupsQueueFrame", "Who is looking", WIDTH, 300)
     frame:SetScript("OnShow", QueueWindow.refresh)
+    ns.KeySearch.watch(frame)
     frame:HookScript("OnHide", function()
         ns.PlayerMenu.hide()
     end)

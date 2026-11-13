@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Widgets = ns.Widgets
 
 -- How far everyone in the group is with the group's quests, folded out
@@ -87,7 +89,7 @@ function ProgressWindow.refresh()
         others:ClearAllPoints()
         others:SetPoint("TOPLEFT", 10, y)
         others:SetWidth(width - 20)
-        others:SetText("Without Forever Groups: " .. table.concat(without, ", "))
+        others:SetText(string.format(L["Without Forever Groups: %s"], table.concat(without, ", ")))
         local height = others:GetStringHeight()
         y = y - math.max(LINE, (type(height) == "number" and height or 0) + 4)
     end

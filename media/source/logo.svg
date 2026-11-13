@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<style>@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@700&amp;display=swap");</style>
+<defs>
+  <radialGradient id="leather" cx="50%" cy="40%" r="75%">
+    <stop offset="0" stop-color="#5c3e25"/>
+    <stop offset=".55" stop-color="#3a2614"/>
+    <stop offset="1" stop-color="#1b1009"/>
+  </radialGradient>
+  <filter id="grain" x="0" y="0" width="100%" height="100%">
+    <feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="3" seed="4" stitchTiles="stitch"/>
+    <feColorMatrix values="0 0 0 0 .08  0 0 0 0 .05  0 0 0 0 .02  1.8 0 0 0 -.75"/>
+    <feComposite in2="SourceGraphic" operator="in"/>
+  </filter>
+  <filter id="mottle" x="0" y="0" width="100%" height="100%">
+    <feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="9"/>
+    <feColorMatrix values="0 0 0 0 .05  0 0 0 0 .03  0 0 0 0 .01  2.2 0 0 0 -.95"/>
+    <feComposite in2="SourceGraphic" operator="in"/>
+  </filter>
+  <linearGradient id="gold" x1="0" y1="110" x2="0" y2="390" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#fff3c2"/>
+    <stop offset=".2" stop-color="#f4cf6e"/>
+    <stop offset=".48" stop-color="#d49c3a"/>
+    <stop offset=".75" stop-color="#9c6a1c"/>
+    <stop offset=".9" stop-color="#77501a"/>
+    <stop offset="1" stop-color="#b98a35"/>
+  </linearGradient>
+  <linearGradient id="goldRing" x1="0" y1="50" x2="0" y2="420" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ffe9a6"/>
+    <stop offset=".3" stop-color="#d9a545"/>
+    <stop offset=".65" stop-color="#8f6119"/>
+    <stop offset="1" stop-color="#c6953a"/>
+  </linearGradient>
+  <linearGradient id="goldText" x1="0" y1="360" x2="0" y2="420" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#fff4c8"/>
+    <stop offset=".45" stop-color="#f0c560"/>
+    <stop offset="1" stop-color="#a8741f"/>
+  </linearGradient>
+  <linearGradient id="ribbon" x1="0" y1="345" x2="0" y2="425" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#4a2f19"/>
+    <stop offset=".5" stop-color="#2f1d0e"/>
+    <stop offset="1" stop-color="#1c1108"/>
+  </linearGradient>
+  <linearGradient id="ribbonGold" x1="0" y1="345" x2="0" y2="425" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ffe7a0"/>
+    <stop offset=".35" stop-color="#e1ad4c"/>
+    <stop offset=".75" stop-color="#a06d1f"/>
+    <stop offset="1" stop-color="#6e4a15"/>
+  </linearGradient>
+  <radialGradient id="inner" cx="50%" cy="45%" r="50%">
+    <stop offset="0" stop-color="#6b4a2b" stop-opacity=".55"/>
+    <stop offset="1" stop-color="#140b05" stop-opacity=".5"/>
+  </radialGradient>
+  <filter id="bevel" x="-10%" y="-10%" width="120%" height="125%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="1.8" result="blur"/>
+    <feSpecularLighting in="blur" surfaceScale="3" specularConstant=".85" specularExponent="20" lighting-color="#ffe3a0" result="spec">
+      <feDistantLight azimuth="235" elevation="48"/>
+    </feSpecularLighting>
+    <feComposite in="spec" in2="SourceAlpha" operator="in" result="specIn"/>
+    <feComposite in="SourceGraphic" in2="specIn" operator="arithmetic" k1="0" k2="1" k3=".38" k4="0" result="lit"/>
+    <feDropShadow in="lit" dx="0" dy="4" stdDeviation="3.5" flood-color="#0a0502" flood-opacity=".8"/>
+  </filter>
+  <filter id="lift" x="-10%" y="-10%" width="120%" height="125%">
+    <feDropShadow dx="0" dy="4" stdDeviation="3.5" flood-color="#0a0502" flood-opacity=".8"/>
+  </filter>
+  <path id="spark" d="M0 -17 C2.5 -5 5 -2.5 15 0 C5 2.5 2.5 5 0 17 C-2.5 5 -5 2.5 -15 0 C-5 -2.5 -2.5 -5 0 -17 Z"/>
+
+  <!-- Tile background -->
+  <symbol id="tile" viewBox="0 0 512 512">
+    <rect x="8" y="8" width="496" height="496" rx="72" fill="url(#leather)"/>
+    <rect x="8" y="8" width="496" height="496" rx="72" filter="url(#mottle)" opacity=".7"/>
+    <rect x="8" y="8" width="496" height="496" rx="72" filter="url(#grain)" opacity=".5"/>
+    <rect x="22" y="22" width="468" height="468" rx="60" fill="none" stroke="#c99a45" stroke-opacity=".28" stroke-width="2" stroke-dasharray="7 6"/>
+    <rect x="8.5" y="8.5" width="495" height="495" rx="72" fill="none" stroke="#000" stroke-opacity=".5" stroke-width="3"/>
+  </symbol>
+
+  <!-- Ring with four sparks -->
+  <symbol id="ring" viewBox="0 0 512 512">
+    <circle cx="256" cy="236" r="160" fill="url(#inner)"/>
+    <g filter="url(#bevel)">
+      <circle cx="256" cy="236" r="172" fill="none" stroke="url(#goldRing)" stroke-width="7"/>
+      <circle cx="256" cy="236" r="160" fill="none" stroke="url(#goldRing)" stroke-width="2.2" stroke-opacity=".85"/>
+      <g fill="url(#goldRing)" stroke="#1c1108" stroke-width="5" paint-order="stroke">
+        <use href="#spark" transform="translate(256 64)"/>
+        <use href="#spark" transform="translate(84 236) scale(.85)"/>
+        <use href="#spark" transform="translate(428 236) scale(.85)"/>
+        <use href="#spark" transform="translate(134 114) scale(.42)"/>
+        <use href="#spark" transform="translate(378 114) scale(.42)"/>
+      </g>
+    </g>
+  </symbol>
+
+
+  <!-- Option B: the current party glyph, restyled -->
+  <symbol id="party" viewBox="0 0 512 512">
+    <g filter="url(#bevel)">
+      <g fill="none" stroke="url(#gold)" stroke-linecap="round" stroke-linejoin="round">
+        <g stroke-width="15">
+          <circle cx="112" cy="282" r="21"/><path d="M80 372 C80 336 94 318 112 318 C130 318 144 336 144 372"/>
+          <circle cx="400" cy="282" r="21"/><path d="M368 372 C368 336 382 318 400 318 C418 318 432 336 432 372"/>
+        </g>
+        <g stroke-width="17">
+          <circle cx="174" cy="262" r="27"/><path d="M134 372 C134 330 152 306 174 306 C196 306 214 330 214 372"/>
+          <circle cx="338" cy="262" r="27"/><path d="M298 372 C298 330 316 306 338 306 C360 306 378 330 378 372"/>
+        </g>
+        <g stroke-width="20">
+          <circle cx="256" cy="232" r="36"/><path d="M200 372 C200 316 226 286 256 286 C286 286 312 316 312 372"/>
+        </g>
+      </g>
+      <path d="M226 197 L220 158 L239 175 L256 146 L273 175 L292 158 L286 197 Z" fill="url(#gold)" stroke="#1f1209" stroke-width="5" stroke-linejoin="round" paint-order="stroke"/>
+    </g>
+  </symbol>
+<symbol id="partyTall" viewBox="0 0 512 512">
+    <g filter="url(#bevel)">
+      <g fill="none" stroke="url(#gold)" stroke-linecap="round" stroke-linejoin="round">
+        <g stroke-width="15">
+          <circle cx="112" cy="282" r="21"/><path d="M80 388 L80 372 C80 336 94 318 112 318 C130 318 144 336 144 372 L144 388"/>
+          <circle cx="400" cy="282" r="21"/><path d="M368 388 L368 372 C368 336 382 318 400 318 C418 318 432 336 432 372 L432 388"/>
+        </g>
+        <g stroke-width="17">
+          <circle cx="174" cy="262" r="27"/><path d="M134 388 L134 372 C134 330 152 306 174 306 C196 306 214 330 214 372 L214 388"/>
+          <circle cx="338" cy="262" r="27"/><path d="M298 388 L298 372 C298 330 316 306 338 306 C360 306 378 330 378 372 L378 388"/>
+        </g>
+        <g stroke-width="20">
+          <circle cx="256" cy="232" r="36"/><path d="M200 388 L200 372 C200 316 226 286 256 286 C286 286 312 316 312 372 L312 388"/>
+        </g>
+      </g>
+      <rect x="40" y="384" width="432" height="16" rx="8" fill="url(#gold)" stroke="#1f1209" stroke-width="5" paint-order="stroke"/>
+      <path d="M226 197 L220 158 L239 175 L256 146 L273 175 L292 158 L286 197 Z" fill="url(#gold)" stroke="#1f1209" stroke-width="5" stroke-linejoin="round" paint-order="stroke"/>
+    </g>
+  </symbol>
+
+
+  <!-- Banner with tails -->
+  <symbol id="banner" viewBox="0 0 512 512">
+    <g filter="url(#bevel)">
+      <path d="M78 372 L22 380 L44 404 L20 432 L92 426 Z" fill="url(#ribbonGold)" stroke="#1c1108" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M434 372 L490 380 L468 404 L492 432 L420 426 Z" fill="url(#ribbonGold)" stroke="#1c1108" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M78 372 L92 426 L94 380 Z M434 372 L420 426 L418 380 Z" fill="#3a240f"/>
+      <path d="M64 356 Q256 330 448 356 L448 414 Q256 388 64 414 Z" fill="url(#ribbonGold)" stroke="#1c1108" stroke-width="4" stroke-linejoin="round"/>
+    </g>
+    <path d="M73 364 Q256 339 439 364 L439 406 Q256 380 73 406 Z" fill="url(#ribbon)"/>
+    <path d="M73 364 Q256 339 439 364" fill="none" stroke="#000" stroke-opacity=".45" stroke-width="2"/>
+    <path id="bannerText" d="M80 399 Q256 373 432 399" fill="none"/>
+    <text font-family="Cinzel, 'Trajan Pro', Georgia, serif" font-weight="700" font-size="35" letter-spacing="2" fill="url(#goldText)" stroke="#120a04" stroke-width="4" stroke-linejoin="round" paint-order="stroke" text-anchor="middle"><textPath href="#bannerText" startOffset="50%">FOREVER GROUPS</textPath></text>
+  </symbol>
+
+  <symbol id="iconB" viewBox="0 0 512 512">
+    <clipPath id="iconDisc"><circle cx="256" cy="256" r="236"/></clipPath>
+    <g clip-path="url(#iconDisc)">
+      <rect width="512" height="512" fill="url(#leatherIcon)"/>
+      <rect width="512" height="512" filter="url(#mottle)" opacity=".6"/>
+      <g transform="translate(256 -58) scale(1.12) translate(-256 0)"><use href="#partyTall"/></g>
+    </g>
+    <g filter="url(#bevel)">
+      <circle cx="256" cy="256" r="240" fill="none" stroke="url(#goldRingIcon)" stroke-width="22"/>
+    </g>
+    <circle cx="256" cy="256" r="228" fill="none" stroke="#120a04" stroke-opacity=".7" stroke-width="3"/>
+  </symbol>
+  <radialGradient id="leatherIcon" cx="50%" cy="40%" r="65%">
+    <stop offset="0" stop-color="#5c3e25"/><stop offset=".6" stop-color="#3a2614"/><stop offset="1" stop-color="#1b1009"/>
+  </radialGradient>
+  <linearGradient id="goldRingIcon" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ffe9a6"/><stop offset=".35" stop-color="#d9a545"/><stop offset=".7" stop-color="#8f6119"/><stop offset="1" stop-color="#c6953a"/>
+  </linearGradient>
+</defs>
+<use href="#tile"/><use href="#ring"/><use href="#party"/><use href="#banner"/>
+</svg>

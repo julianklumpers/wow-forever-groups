@@ -774,6 +774,12 @@ local function clickTry(source)
     if not clickSearch.on or GetTime() - clickSearch.last < 5 or InCombatLockdown() then
         return
     end
+    -- One action can fire several of these; a source with a verdict leaves
+    -- the try to one without, so each is tested on its own.
+    local known = clickSearch.results[source]
+    if known and known.ok + known.blocked > 0 then
+        return
+    end
     clickSearch.last = GetTime()
     clickSearch.pending = source
     local ok, err = lfgCall("Search", lfgCategory or 2)
@@ -797,7 +803,23 @@ local function hookClicks()
             clickTry("WorldFrame OnMouseDown " .. tostring(button))
         end)
     end
-    for _, name in ipairs({ "CameraOrSelectOrMoveStart", "TurnOrActionStart", "CameraZoomIn", "CameraZoomOut" }) do
+    local mouse = CreateFrame("Frame")
+    local registered = pcall(mouse.RegisterEvent, mouse, "GLOBAL_MOUSE_DOWN")
+    mouse:SetScript("OnEvent", function(_, _, button)
+        clickTry("GLOBAL_MOUSE_DOWN " .. tostring(button))
+    end)
+    log("INFO", "clicksearch: GLOBAL_MOUSE_DOWN %s", registered and "registered" or "missing")
+    local window = _G.ForeverGroupsFrame
+    if window and window.HookScript then
+        window:HookScript("OnEnter", function()
+            clickTry("Forever Groups window OnEnter (hover)")
+        end)
+        if not window:IsMouseEnabled() then
+            window:EnableMouse(true)
+        end
+    end
+    for _, name in ipairs({ "CameraOrSelectOrMoveStart", "TurnOrActionStart", "CameraZoomIn", "CameraZoomOut",
+        "UseAction", "ActionButtonDown", "InteractUnit" }) do
         if type(_G[name]) == "function" then
             hooksecurefunc(name, function()
                 clickTry(name)
@@ -812,8 +834,10 @@ local function cmdClickSearch(rest)
     clickSearch.on = rest:match("^%s*off") == nil
     if clickSearch.on then
         hookClicks()
-        log("INFO", "clicksearch: on. In the world (not on a window): left-click, right-click and scroll the "
-            .. "camera, each a few times about 5 s apart, for 30 s; then /fgp clicksearch off")
+        log("INFO", "clicksearch: on. About 5 s apart, a few times each: left-click and right-click the world, "
+            .. "turn the camera with a mouse button held, scroll to zoom, click a spell on your action bar, "
+            .. "right-click an NPC, click on a WoW window (bags, map), move the mouse onto the open Forever Groups "
+            .. "window without clicking. Then /fgp clicksearch off")
         return
     end
     local parts = {}
@@ -1288,14 +1312,362 @@ local function cmdInspect(rest)
     end)
 end
 
+-- The /fgp lfgapi checks live in their own block: the file is near Lua's
+-- limit of 200 locals in one chunk.
+local cmdLfgApi, checkApiTest, checkTwice, checkGap
+do
+    -- /fgp lfgapi: every Group Finder function and Blizzard's own finder code,
+    -- then test searches for one dungeon (Ruins of Lordaeron), plain or with the
+    -- server-side filter; each search is its own command (a slash command counts
+    -- as player input).
+    local RUINS_OF_LORDAERON = 1982
+    local LFG_TABLES = { "C_LFGList", "C_LFGInfo", "C_LFGBrowse", "C_LFGListBrowse", "C_LFGFinder" }
+    local FINDER_PREFIXES = { "LFGListSearchPanel", "LFGListFrame", "LFGListUtil", "LFGBrowse", "LFGList_",
+        "LFG_LIST_SEARCH", "LFG_LIST_TOO_MANY", "LFG_LIST_MAX", "MAX_LFG_LIST" }
+    local apiTest
+
+    local function functionNames(t)
+        local names = {}
+        for name, value in pairs(t) do
+            if type(value) == "function" then
+                names[#names + 1] = tostring(name)
+            end
+        end
+        table.sort(names)
+        return names
+    end
+
+    local function finderGlobals()
+        local names = {}
+        for name, value in pairs(_G) do
+            if type(name) == "string" then
+                for _, prefix in ipairs(FINDER_PREFIXES) do
+                    if name:sub(1, #prefix) == prefix then
+                        local shown = type(value) == "function" and (name .. "()")
+                            or ((type(value) == "string" or type(value) == "number")
+                                and (name .. "=" .. tostring(value)))
+                            or (name .. ":" .. type(value))
+                        names[#names + 1] = shown
+                        break
+                    end
+                end
+            end
+        end
+        table.sort(names)
+        return names
+    end
+
+    local function apiSearch(mode)
+        local languages
+        local _, offered = lfgCall("GetAvailableLanguageSearchFilter")
+        if type(offered) == "table" then
+            languages = {}
+            for _, code in ipairs(offered) do
+                languages[code] = true
+            end
+        end
+        local advanced
+        if mode == "heal" or mode == "dps" or mode == "tank" or mode == "healdps" then
+            local _, base = lfgCall("GetAdvancedFilter")
+            advanced = {}
+            for key, value in pairs(type(base) == "table" and base or {}) do
+                advanced[key] = value
+            end
+            local _, info = lfgCall("GetActivityInfoTable", RUINS_OF_LORDAERON)
+            local group = type(info) == "table" and info.groupFinderActivityGroupID
+            advanced.activities = group and { group } or {}
+            advanced.needsHealer = mode == "heal" or mode == "healdps"
+            advanced.needsDamage = mode == "dps" or mode == "healdps"
+            advanced.needsTank = mode == "tank"
+        end
+        apiTest = { mode = mode, at = GetTime() }
+        local ok, err = lfgCall("Search", 2, 0, 0, languages, false, advanced, { RUINS_OF_LORDAERON })
+        log(ok and "INFO" or "FAIL", "lfgapi %s: Search for Ruins of Lordaeron%s -> %s", mode,
+            advanced and (" with " .. dumpValue(advanced)) or "", ok and "called" or show(err))
+    end
+
+    -- The quests in the log: their Group Finder activity, whether WoW calls them
+    -- elite, and the first one with an activity to search for.
+    local function questActivities()
+        local first
+        local countOk, count = pcall(C_QuestLog.GetNumQuestLogEntries)
+        count = countOk and tonumber(count) or 0
+        for index = 1, count do
+            local ok, info = pcall(C_QuestLog.GetInfo, index)
+            if ok and type(info) == "table" and not info.isHeader and info.questID then
+                local _, activity = lfgCall("GetActivityIDForQuestID", info.questID)
+                local eliteOk, elite = pcall(resolve("C_QuestLog.IsEliteQuest") or error, info.questID)
+                store("INFO", "lfgapi quest %s \"%s\": activity %s, suggestedGroup %s, IsEliteQuest %s",
+                    show(info.questID), show(info.title), show(activity), show(info.suggestedGroup),
+                    eliteOk and show(elite) or "missing")
+                if activity and not first then
+                    first = { questID = info.questID, title = info.title, activity = activity }
+                end
+            end
+        end
+        return first
+    end
+
+    local function apiQuestSearch(rest)
+        local quest = questActivities()
+        local questID = tonumber(rest)
+        if questID then
+            local _, activity = lfgCall("GetActivityIDForQuestID", questID)
+            quest = { questID = questID, title = "#" .. questID, activity = activity }
+        end
+        if not quest or not quest.activity then
+            log("FAIL", "lfgapi quest: no quest in the log has a Group Finder activity")
+            return
+        end
+        local _, info = lfgCall("GetActivityInfoTable", quest.activity)
+        local category = type(info) == "table" and info.categoryID or 116
+        local set, setErr = lfgCall("SetSearchToQuestID", quest.questID)
+        apiTest = { mode = "quest", at = GetTime(), questID = quest.questID }
+        local ok, err = lfgCall("Search", category)
+        log(ok and "INFO" or "FAIL", "lfgapi quest: SetSearchToQuestID(%s \"%s\") -> %s; Search(category %s) -> %s",
+            show(quest.questID), show(quest.title), set and "ok" or show(setErr), show(category),
+            ok and "called" or show(err))
+    end
+
+    -- Two searches from one command, straight after each other: Ruins of
+    -- Lordaeron, then Wailing Caverns. Does WoW run both (two result events,
+    -- each with its own dungeon), or does the second replace or fail the first?
+    local twiceTest
+
+    local function apiTwice()
+        twiceTest = { at = GetTime(), events = 0 }
+        local first = { lfgCall("Search", 2, 0, 0, nil, false, nil, { RUINS_OF_LORDAERON }) }
+        local second = { lfgCall("Search", 2, 0, 0, nil, false, nil, { 796 }) }
+        log("INFO", "lfgapi twice: first Search -> %s %s, second Search -> %s %s", show(first[1]), show(first[2]),
+            show(second[1]), show(second[2]))
+    end
+
+    function checkTwice(event)
+        if not twiceTest or GetTime() - twiceTest.at > 10 then
+            return
+        end
+        twiceTest.events = twiceTest.events + 1
+        local _, _, results = pcall(C_LFGList.GetSearchResults)
+        local ruins, caverns = 0, 0
+        for _, id in ipairs(type(results) == "table" and results or {}) do
+            local _, info = lfgCall("GetSearchResultInfo", id)
+            for _, activity in ipairs(type(info) == "table" and info.activityIDs or {}) do
+                ruins = ruins + (activity == RUINS_OF_LORDAERON and 1 or 0)
+                caverns = caverns + (activity == 796 and 1 or 0)
+            end
+        end
+        log("RECV", "lfgapi twice: %s #%d after %.2f s: %d results, %d Ruins, %d Wailing Caverns", event,
+            twiceTest.events, GetTime() - twiceTest.at, type(results) == "table" and #results or 0, ruins, caverns)
+    end
+
+    -- How soon a search may follow the previous one: for 30 s every key press
+    -- (at most every 0.2 s) searches, Ruins of Lordaeron and Wailing Caverns in
+    -- turn; each result or failure is matched to its search and gap.
+    local GAP_TIME, GAP_MIN = 30, 0.2
+    local gapTest, gapFrame
+    local gapMin = GAP_MIN
+
+    local function gapSearch(source)
+        local now = GetTime()
+        local gap = now - gapTest.last
+        gapTest.last = now
+        gapTest.count = gapTest.count + 1
+        local activity = gapTest.count % 2 == 1 and RUINS_OF_LORDAERON or 796
+        gapTest.searches[#gapTest.searches + 1] = { number = gapTest.count, at = now, gap = gap, activity = activity }
+        local ok, err = lfgCall("Search", 2, 0, 0, nil, false, nil, { activity })
+        log("INFO", "lfgapi gap: search %d (%s, %s) %.2f s after the previous -> %s", gapTest.count,
+            activity == 796 and "Wailing Caverns" or "Ruins", source, gap, ok and "called" or show(err))
+    end
+
+    local function apiGap(arg)
+        gapMin = math.max(GAP_MIN, tonumber(arg) or GAP_MIN)
+        if not gapFrame then
+            gapFrame = CreateFrame("Frame", "ForeverGroupsProbeGapFrame", UIParent)
+            gapFrame:SetScript("OnKeyDown", function()
+                if gapTest and GetTime() < gapTest.ends and GetTime() - gapTest.last >= gapMin then
+                    gapSearch("key")
+                end
+            end)
+            pcall(gapFrame.SetPropagateKeyboardInput, gapFrame, true)
+        end
+        gapTest = { ends = GetTime() + GAP_TIME, last = -math.huge, count = 0, searches = {} }
+        pcall(gapFrame.EnableKeyboard, gapFrame, true)
+        gapSearch("command")
+        log("INFO", "lfgapi gap: for %d s a key press searches when %.1f s have passed; keep pressing keys",
+            GAP_TIME, gapMin)
+        C_Timer.After(GAP_TIME + 3, function()
+            pcall(gapFrame.EnableKeyboard, gapFrame, false)
+            log("INFO", "lfgapi gap: done after %d searches", gapTest and gapTest.count or 0)
+            gapTest = nil
+        end)
+    end
+
+    function checkGap(event)
+        if not gapTest then
+            return
+        end
+        local last = gapTest.searches[#gapTest.searches]
+        if not last then
+            return
+        end
+        if event == "LFG_LIST_SEARCH_FAILED" then
+            log("RECV", "lfgapi gap: FAILED after search %d (%.2f s after the previous)", last.number, last.gap)
+            return
+        end
+        local _, _, results = pcall(C_LFGList.GetSearchResults)
+        local ruins, caverns = 0, 0
+        for _, id in ipairs(type(results) == "table" and results or {}) do
+            local _, info = lfgCall("GetSearchResultInfo", id)
+            for _, activity in ipairs(type(info) == "table" and info.activityIDs or {}) do
+                ruins = ruins + (activity == RUINS_OF_LORDAERON and 1 or 0)
+                caverns = caverns + (activity == 796 and 1 or 0)
+            end
+        end
+        local fits = (last.activity == 796 and caverns > ruins) or (last.activity ~= 796 and ruins > caverns)
+        log("RECV", "lfgapi gap: results %.2f s after search %d (%.2f s after the previous): %d Ruins, %d Caverns"
+            .. " -> %s",
+            GetTime() - last.at, last.number, last.gap, ruins, caverns, fits and "this search" or "an older search")
+    end
+
+    -- Who is in the listed groups of the last search, member by member.
+    local function apiMembers()
+        local shown = 0
+        local _, _, results = pcall(C_LFGList.GetSearchResults)
+        for _, id in ipairs(type(results) == "table" and results or {}) do
+            local _, info = lfgCall("GetSearchResultInfo", id)
+            if type(info) == "table" and (info.numMembers or 0) > 1 and shown < 4 then
+                shown = shown + 1
+                for member = 1, info.numMembers do
+                    local _, player = lfgCall("GetSearchResultPlayerInfo", id, member)
+                    store("INFO", "lfgapi members: group %s member %d -> %s", show(id), member, dumpValue(player))
+                end
+                local _, a, b, c = lfgCall("GetSearchResultFriends", id)
+                store("INFO", "lfgapi members: group %s friends -> %s | %s | %s", show(id), dumpValue(a), dumpValue(b),
+                    dumpValue(c))
+            end
+        end
+        log(shown > 0 and "INFO" or "WARN", "lfgapi members: %d groups read (search first)", shown)
+    end
+
+    function cmdLfgApi(rest)
+        local mode = (rest or ""):lower()
+        if mode == "" then
+            for _, path in ipairs(LFG_TABLES) do
+                local t = resolve(path)
+                local names = type(t) == "table" and table.concat(functionNames(t), ", ") or type(t)
+                store("INFO", "lfgapi: %s: %s", path, names)
+            end
+            store("INFO", "lfgapi: finder globals: %s", table.concat(finderGlobals(), ", "))
+            for _, name in ipairs({ "GetAdvancedFilter", "GetSearchResultsCount", "GetFilteredSearchResults",
+                "GetLanguageSearchFilter", "GetDefaultLanguageSearchFilter" }) do
+                if type(resolve("C_LFGList." .. name)) == "function" then
+                    store("INFO", "lfgapi: C_LFGList.%s() -> %s", name, probeCall("C_LFGList." .. name))
+                end
+            end
+            local roles = resolve("C_LFGListRoles")
+            store("INFO", "lfgapi: C_LFGListRoles: %s",
+                type(roles) == "table" and table.concat(functionNames(roles), ", ")
+                or type(roles))
+            for _, path in ipairs({ "C_LFGListRoles.GetRoles", "C_LFGListRoles.GetSavedRoles",
+                "C_LFGList.GetAvailableRoles", "C_LFGList.GetRoleCheckInfo", "C_LFGInfo.GetLevelUpInstances",
+                "IsTrialAccount", "IsVeteranTrialAccount", "IsRestrictedAccount" }) do
+                if type(resolve(path)) == "function" then
+                    store("INFO", "lfgapi: %s() -> %s", path, probeCall(path))
+                else
+                    store("INFO", "lfgapi: %s missing", path)
+                end
+            end
+            log("INFO", "lfgapi: stored; then /fgp lfgapi plain | heal | dps | quest | members")
+            return
+        end
+        local word, arg = mode:match("^(%S+)%s*(.-)$")
+        if word == "quest" then
+            apiQuestSearch(arg)
+        elseif word == "members" then
+            apiMembers()
+        elseif word == "twice" then
+            apiTwice()
+        elseif word == "gap" then
+            apiGap(arg)
+        elseif word == "plain" or word == "heal" or word == "dps" or word == "tank" or word == "healdps" then
+            apiSearch(word)
+        else
+            log("FAIL", "lfgapi: use /fgp lfgapi, or plain | heal | dps | tank | quest [questID] | members")
+        end
+    end
+
+    function checkApiTest()
+        if not apiTest then
+            return
+        end
+        local test = apiTest
+        apiTest = nil
+        local _, count, results = pcall(C_LFGList.GetSearchResults)
+        results = type(results) == "table" and results or {}
+        if test.mode == "quest" then
+            local forQuest, solo = 0, 0
+            for _, id in ipairs(results) do
+                local _, info = lfgCall("GetSearchResultInfo", id)
+                if type(info) == "table" then
+                    forQuest = forQuest + (info.questID == test.questID and 1 or 0)
+                    solo = solo + ((info.numMembers or 0) <= 1 and 1 or 0)
+                    if forQuest + solo <= 3 then
+                        store("INFO", "lfgapi quest: result %s -> %s", show(id), dumpValue(info))
+                    end
+                end
+            end
+            log("RECV", "lfgapi quest: %s found, %d returned, %d with questID %s, %d solo", show(count), #results,
+                forQuest, show(test.questID), solo)
+            return
+        end
+        local ruins, solo, needing, other = 0, 0, 0, 0
+        local roleKey = ({ heal = "HEALER_REMAINING", dps = "DAMAGER_REMAINING", tank = "TANK_REMAINING" })[test.mode]
+        local both, healOnly, dpsOnly = 0, 0, 0
+        for _, id in ipairs(results) do
+            local _, info = lfgCall("GetSearchResultInfo", id)
+            local _, counts = lfgCall("GetSearchResultMemberCounts", id)
+            local forRuins = false
+            for _, activity in ipairs(type(info) == "table" and info.activityIDs or {}) do
+                forRuins = forRuins or activity == RUINS_OF_LORDAERON
+            end
+            if forRuins then
+                ruins = ruins + 1
+            else
+                other = other + 1
+            end
+            if type(info) == "table" and (info.numMembers or 0) > 1 and type(counts) == "table" then
+                local heal, dps = (counts.HEALER_REMAINING or 0) > 0, (counts.DAMAGER_REMAINING or 0) > 0
+                both = both + ((heal and dps) and 1 or 0)
+                healOnly = healOnly + ((heal and not dps) and 1 or 0)
+                dpsOnly = dpsOnly + ((dps and not heal) and 1 or 0)
+            end
+            if type(info) == "table" and (info.numMembers or 0) <= 1 then
+                solo = solo + 1
+            elseif roleKey and type(counts) == "table" and (counts[roleKey] or 0) > 0 then
+                needing = needing + 1
+            end
+        end
+        log("RECV", "lfgapi %s: %s found, %d returned in %.1f s: %d for Ruins, %d for other activities, %d solo%s",
+            test.mode, show(count), #results, GetTime() - test.at, ruins, other, solo,
+            roleKey and string.format(", %d groups with a %s place", needing, test.mode) or "")
+        log("RECV", "lfgapi %s: groups needing healer and DPS %d, only a healer %d, only DPS %d", test.mode, both,
+            healOnly, dpsOnly)
+    end
+end
+
 local function onLfgResults(event)
     log("EVENT", "%s%s", event, keySearch.on and " (keysearch active)" or "")
     checkFilterTest()
+    checkApiTest()
+    checkTwice(event)
+    checkGap(event)
     lfgDumpResults()
 end
 
 local function onLfgFailed(event, reason)
     log("FAIL", "%s reason=%s", event, show(reason))
+    checkTwice(event)
+    checkGap(event)
 end
 
 -- Accepting a party invite from the invite event itself (no click): what
@@ -1864,6 +2236,631 @@ local function cmdChatFilter()
     log("INFO", "chatfilter: whispered yourself twice; only the 'should show' line should be in chat")
 end
 
+-- Class art for the role tiles: the Classic talent tab backgrounds and
+-- icons, retail atlases that might hold class art, and what the spec APIs
+-- return. Files are checked with GetFileIDFromPath, atlases with
+-- C_Texture.GetAtlasInfo; everything found is drawn so a screenshot shows it.
+local CLASS_TREES = {
+    WARRIOR = { "WarriorArms", "WarriorFury", "WarriorProtection" },
+    PALADIN = { "PaladinHoly", "PaladinProtection", "PaladinCombat" },
+    HUNTER = { "HunterBeastMastery", "HunterMarksmanship", "HunterSurvival" },
+    ROGUE = { "RogueAssassination", "RogueCombat", "RogueSubtlety" },
+    PRIEST = { "PriestDiscipline", "PriestHoly", "PriestShadow" },
+    SHAMAN = { "ShamanElementalCombat", "ShamanEnhancement", "ShamanRestoration" },
+    MAGE = { "MageArcane", "MageFire", "MageFrost" },
+    WARLOCK = { "WarlockCurses", "WarlockSummoning", "WarlockDestruction" },
+    DRUID = { "DruidBalance", "DruidFeralCombat", "DruidRestoration" },
+}
+local CLASS_SPECS = {
+    WARRIOR = { "arms", "fury", "protection" }, PALADIN = { "holy", "protection", "retribution" },
+    HUNTER = { "beastmastery", "marksmanship", "survival" }, ROGUE = { "assassination", "outlaw", "subtlety" },
+    PRIEST = { "discipline", "holy", "shadow" }, SHAMAN = { "elemental", "enhancement", "restoration" },
+    MAGE = { "arcane", "fire", "frost" }, WARLOCK = { "affliction", "demonology", "destruction" },
+    DRUID = { "balance", "feral", "restoration" },
+}
+local CLASS_TAB_ICONS = {
+    WARRIOR = { "Ability_Rogue_Eviscerate", "Ability_Warrior_InnerRage", "INV_Shield_06" },
+    PALADIN = { "Spell_Holy_HolyBolt", "Spell_Holy_DevotionAura", "Spell_Holy_AuraOfLight" },
+    HUNTER = { "Ability_Hunter_BeastTaming", "Ability_Marksmanship", "Ability_Hunter_SwiftStrike" },
+    ROGUE = { "Ability_Rogue_Eviscerate", "Ability_BackStab", "Ability_Stealth" },
+    PRIEST = { "Spell_Holy_WordFortitude", "Spell_Holy_HolyBolt", "Spell_Shadow_ShadowWordPain" },
+    SHAMAN = { "Spell_Nature_Lightning", "Spell_Nature_LightningShield", "Spell_Nature_MagicImmunity" },
+    MAGE = { "Spell_Holy_MagicalSentry", "Spell_Fire_FireBolt02", "Spell_Frost_FrostBolt02" },
+    WARLOCK = { "Spell_Shadow_DeathCoil", "Spell_Shadow_Metamorphosis", "Spell_Shadow_RainOfFire" },
+    DRUID = { "Spell_Nature_StarFall", "Ability_Racial_BearForm", "Spell_Nature_HealingTouch" },
+}
+local CLASS_IDS = { WARRIOR = 1, PALADIN = 2, HUNTER = 3, ROGUE = 4, PRIEST = 5, SHAMAN = 7, MAGE = 8, WARLOCK = 9,
+    DRUID = 11 }
+
+local classArtFrame
+
+local function fileExists(path)
+    local has = _G.GetFileIDFromPath
+    if type(has) ~= "function" then
+        return nil
+    end
+    local ok, id = pcall(has, path)
+    return ok and id ~= nil and id ~= 0, ok and id or nil
+end
+
+local function atlasExists(name)
+    local get = resolve("C_Texture.GetAtlasInfo")
+    if type(get) ~= "function" then
+        return nil
+    end
+    local ok, info = pcall(get, name)
+    return ok and type(info) == "table", ok and type(info) == "table" and info or nil
+end
+
+local function classAtlases(class)
+    local lower = class:lower()
+    local proper = class:sub(1, 1) .. class:sub(2):lower()
+    local names = {
+        "talents-background-" .. lower, "classicon-" .. lower, "GarrMission_ClassIcon-" .. proper,
+        "groupfinder-icon-class-" .. lower, "charactercreate-class-" .. lower, "class-" .. lower,
+        "Class-" .. proper, "talents-heroclass-" .. lower, "UI-HUD-ActionBar-" .. proper,
+    }
+    for _, spec in ipairs(CLASS_SPECS[class] or {}) do
+        names[#names + 1] = "spec-thumbnail-" .. lower .. "-" .. spec
+        names[#names + 1] = "talents-background-" .. lower .. "-" .. spec
+        names[#names + 1] = "spec-background-" .. lower .. "-" .. spec
+        names[#names + 1] = "talents-background-" .. lower .. spec
+    end
+    return names
+end
+
+local function classArtCell(parent, x, y, width, height)
+    local cell = CreateFrame("Frame", nil, parent)
+    cell:SetSize(width, height + 14)
+    cell:SetPoint("TOPLEFT", x, y)
+    cell.image = cell:CreateTexture(nil, "ARTWORK")
+    cell.image:SetSize(width, height)
+    cell.image:SetPoint("TOP")
+    cell.label = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    cell.label:SetPoint("TOP", cell.image, "BOTTOM", 0, -1)
+    cell.label:SetWidth(width + 20)
+    return cell
+end
+
+local function cmdClassArt(rest)
+    local class = (rest or ""):upper():match("%a+")
+    if not class or not CLASS_TREES[class] then
+        class = select(2, UnitClass("player"))
+    end
+    if classArtFrame then
+        classArtFrame:Hide()
+    end
+    local frame = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+    classArtFrame = frame
+    frame:SetSize(780, 600)
+    frame:SetPoint("CENTER")
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    title:SetPoint("TOP", 0, -5)
+    title:SetText(string.format("Class art for %s  (/fgp classart [class])", class))
+
+    local x, y = 16, -34
+    for i, name in ipairs(CLASS_TREES[class]) do
+        local path = "Interface\\TalentFrame\\" .. name .. "-TopLeft"
+        local exists, id = fileExists(path)
+        store("RECV", "classart: file %s exists=%s id=%s", path, show(exists), show(id))
+        local cell = classArtCell(frame, x + (i - 1) * 180, y, 160, 160)
+        cell.image:SetTexture(exists ~= false and path or nil)
+        if exists == false then
+            cell.image:SetColorTexture(0.3, 0, 0, 0.5)
+        end
+        cell.label:SetText(name .. (exists == false and " (missing)" or ""))
+        local icon = "Interface\\Icons\\" .. CLASS_TAB_ICONS[class][i]
+        local iconExists = fileExists(icon)
+        store("RECV", "classart: icon %s exists=%s", icon, show(iconExists))
+        local iconCell = classArtCell(frame, x + (i - 1) * 180 + 60, y - 182, 40, 40)
+        iconCell.image:SetTexture(icon)
+        iconCell.label:SetText(CLASS_TAB_ICONS[class][i] .. (iconExists == false and " (missing)" or ""))
+    end
+
+    local tabInfo = _G.GetTalentTabInfo
+    for i = 1, 3 do
+        if type(tabInfo) == "function" then
+            store("RECV", "classart: GetTalentTabInfo(%d) -> %s", i, showAll(pcall(tabInfo, i)))
+        end
+    end
+    local specInfo = _G.GetSpecializationInfoForClassID
+    local classId = CLASS_IDS[class]
+    if type(specInfo) == "function" and classId then
+        for i = 1, 4 do
+            local ok, id, name, _, icon, role, _, _ = pcall(specInfo, classId, i)
+            store("RECV", "classart: GetSpecializationInfoForClassID(%d,%d) -> %s %s %s icon=%s role=%s", classId, i,
+                show(ok), show(id), show(name), show(icon), show(role))
+            if ok and icon then
+                local cell = classArtCell(frame, 560 + (i - 1) * 52, y, 40, 40)
+                cell.image:SetTexture(icon)
+                cell.label:SetText(tostring(name))
+            end
+        end
+    else
+        store("RECV", "classart: GetSpecializationInfoForClassID=%s", type(specInfo))
+    end
+
+    local found, missing = {}, {}
+    for _, name in ipairs(classAtlases(class)) do
+        local exists, info = atlasExists(name)
+        if exists then
+            found[#found + 1] = { name = name, info = info }
+        else
+            missing[#missing + 1] = name
+        end
+    end
+    store("RECV", "classart: atlases missing: %s", table.concat(missing, ", "))
+    local ax, ay = 16, y - 250
+    for _, atlas in ipairs(found) do
+        local w, h = atlas.info.width or 100, atlas.info.height or 100
+        local scale = math.min(170 / w, 110 / h, 1)
+        local cell = classArtCell(frame, ax, ay, math.max(20, w * scale), math.max(20, h * scale))
+        cell.image:SetAtlas(atlas.name)
+        cell.label:SetText(atlas.name)
+        store("RECV", "classart: atlas %s exists %dx%d", atlas.name, w, h)
+        ax = ax + 190
+        if ax > 760 - 180 then
+            ax, ay = 16, ay - 140
+        end
+    end
+    frame:Show()
+    log("INFO", "classart: %s: %d atlases found, %d not; details in /fgp log. Please take a screenshot.", class,
+        #found, #missing)
+end
+
+-- Which retail spec art atlases exist for every class: spec-thumbnail-*
+-- and talents-background-*, with a few spellings per spec.
+local SPEC_ART_NAMES = {
+    warrior = { "arms", "fury", "protection" },
+    paladin = { "holy", "protection", "retribution" },
+    hunter = { "beastmastery", "beast-mastery", "marksmanship", "survival" },
+    rogue = { "assassination", "outlaw", "combat", "subtlety" },
+    priest = { "discipline", "holy", "shadow" },
+    shaman = { "elemental", "enhancement", "restoration" },
+    mage = { "arcane", "fire", "frost" },
+    warlock = { "affliction", "demonology", "destruction" },
+    druid = { "balance", "feral", "guardian", "restoration" },
+}
+
+local function cmdSpecArt()
+    local found, missing = 0, {}
+    for class, specs in pairs(SPEC_ART_NAMES) do
+        for _, spec in ipairs(specs) do
+            for _, prefix in ipairs({ "spec-thumbnail-", "talents-background-" }) do
+                local name = prefix .. class .. "-" .. spec
+                local exists, info = atlasExists(name)
+                if exists then
+                    found = found + 1
+                    store("RECV", "specart: %s %dx%d", name, info.width or 0, info.height or 0)
+                else
+                    missing[#missing + 1] = name
+                end
+            end
+        end
+    end
+    store("RECV", "specart: missing: %s", table.concat(missing, ", "))
+    log("INFO", "specart: %d found, %d missing; details in the saved log", found, #missing)
+end
+
+-- The art on the category buttons of WoW's Group Finder (Dungeons, Quests &
+-- Zones): reads the textures of the real buttons (open the Group Finder
+-- first) and checks likely atlas names; what exists is drawn.
+local FINDER_ATLASES = {
+    "groupfinder-button-dungeons", "groupfinder-button-questing", "groupfinder-button-raids",
+    "groupfinder-button-raids-classic", "groupfinder-button-raids-bc", "groupfinder-button-arenas",
+    "groupfinder-button-rbg", "groupfinder-button-skirmishes", "groupfinder-button-custom-pve",
+    "groupfinder-button-custom-pvp", "groupfinder-button-delves", "groupfinder-button-cover",
+    "groupfinder-button-select", "groupfinder-button-questing-classic", "groupfinder-button-dungeons-classic",
+    "groupfinder-background", "groupfinder-background-dungeons", "groupfinder-background-questing",
+}
+
+local finderArtFrame
+
+local function scanFinderArt(frame, depth, seen, found)
+    if not frame or depth > 8 or seen[frame] then
+        return
+    end
+    seen[frame] = true
+    local label
+    if frame.GetRegions then
+        for _, region in ipairs({ frame:GetRegions() }) do
+            if region.GetObjectType and region:GetObjectType() == "FontString" then
+                local text = region:GetText()
+                if type(text) == "string" and text ~= "" then
+                    label = label or text
+                end
+            end
+        end
+        for _, region in ipairs({ frame:GetRegions() }) do
+            if region.GetObjectType and region:GetObjectType() == "Texture" then
+                local atlas = region.GetAtlas and region:GetAtlas()
+                local texture = region.GetTexture and region:GetTexture()
+                if (atlas and atlas ~= "") or texture then
+                    local w, h = region:GetSize()
+                    local fw, fh = frame:GetSize()
+                    local points = {}
+                    for i = 1, region:GetNumPoints() do
+                        local point, _, relativePoint, px, py = region:GetPoint(i)
+                        points[#points + 1] = string.format("%s>%s(%s,%s)", tostring(point), tostring(relativePoint),
+                            tostring(px), tostring(py))
+                    end
+                    found[#found + 1] = { label = label or "?", atlas = atlas, texture = texture,
+                        coords = { region:GetTexCoord() }, name = region:GetDebugName(),
+                        size = string.format("%.0fx%.0f in %.0fx%.0f %s", w or 0, h or 0, fw or 0, fh or 0,
+                            table.concat(points, " ")) }
+                end
+            end
+        end
+    end
+    if frame.GetChildren then
+        for _, child in ipairs({ frame:GetChildren() }) do
+            scanFinderArt(child, depth + 1, seen, found)
+        end
+    end
+end
+
+local function cmdFinderArt()
+    local found, seen = {}, {}
+    for _, name in ipairs({ "LFGListFrame", "LFGParentFrame", "PVEFrame", "GroupFinderFrame" }) do
+        local root = _G[name]
+        if root then
+            scanFinderArt(root, 0, seen, found)
+        end
+    end
+    local kept = 0
+    for _, item in ipairs(found) do
+        local atlas, texture = tostring(item.atlas), tostring(item.texture)
+        if item.label ~= "?" or atlas:find("groupfinder") or texture:find("[Gg]roup") then
+            kept = kept + 1
+            store("RECV", "finderart: [%s] %s atlas=%s texture=%s size=%s", item.label, tostring(item.name), atlas,
+                texture, item.size)
+        end
+    end
+    if finderArtFrame then
+        finderArtFrame:Hide()
+    end
+    local frame = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+    finderArtFrame = frame
+    frame:SetSize(700, 520)
+    frame:SetPoint("CENTER")
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    title:SetPoint("TOP", 0, -5)
+    title:SetText("Group Finder art (/fgp finderart)")
+    local x, y, shown = 16, -34, 0
+    for _, name in ipairs(FINDER_ATLASES) do
+        local exists, info = atlasExists(name)
+        if exists then
+            shown = shown + 1
+            store("RECV", "finderart: atlas %s %dx%d", name, info.width or 0, info.height or 0)
+            local w, h = info.width or 100, info.height or 100
+            local scale = math.min(320 / w, 70 / h, 1)
+            local cell = classArtCell(frame, x, y, math.max(20, w * scale), math.max(20, h * scale))
+            cell.image:SetAtlas(name)
+            cell.label:SetText(name)
+            if x > 16 then
+                x, y = 16, y - 92
+            else
+                x = 350
+            end
+        else
+            store("RECV", "finderart: atlas %s missing", name)
+        end
+    end
+    frame:Show()
+    log("INFO", "finderart: %d textures read from the Group Finder (%d kept), %d atlases found. Open the Group "
+        .. "Finder first for the first number.", #found, kept, shown)
+end
+
+-- Battlegrounds: which functions exist, which battlegrounds the client
+-- knows, the Group Finder's battleground activities, and (once a
+-- battlemaster's window opens or the queue changes) what those tell.
+local PVP_FUNCTIONS = {
+    "JoinBattlefield", "GetNumBattlefields", "GetBattlefieldInfo", "GetBattlefieldStatus", "GetMaxBattlefieldID",
+    "GetNumBattlegroundTypes", "GetBattlegroundInfo", "CanJoinBattlefieldAsGroup", "RequestBattlegroundInstanceInfo",
+    "SetSelectedBattlefield", "GetSelectedBattlefield", "AcceptBattlefieldPort", "GetBattlefieldPortExpiration",
+    "GetBattlefieldEstimatedWaitTime", "GetBattlefieldTimeWaited", "GetBattlefieldInstanceInfo",
+    "JoinBattlegroundQueue", "JoinSkirmish", "CloseBattlefield", "UnitInBattleground", "GetBattlefieldWinner",
+}
+
+local function pvpStatus(context)
+    local max = resolve("GetMaxBattlefieldID")
+    local count = type(max) == "function" and select(2, pcall(max)) or 3
+    for i = 1, tonumber(count) or 3 do
+        store("RECV", "pvp: %s GetBattlefieldStatus(%d) -> %s", context, i, probeCall("GetBattlefieldStatus", i))
+        store("RECV", "pvp: %s GetBattlefieldEstimatedWaitTime(%d) -> %s", context, i,
+            probeCall("GetBattlefieldEstimatedWaitTime", i))
+    end
+end
+
+local function pvpBattlemaster(context)
+    local count = probeCall("GetNumBattlefields")
+    log("RECV", "pvp: %s GetNumBattlefields -> %s, CanJoinBattlefieldAsGroup -> %s, GetSelectedBattlefield -> %s",
+        context, count, probeCall("CanJoinBattlefieldAsGroup"), probeCall("GetSelectedBattlefield"))
+    for i = 1, math.min(tonumber(count) or 0, 20) do
+        store("RECV", "pvp: %s GetBattlefieldInfo(%d) -> %s", context, i, probeCall("GetBattlefieldInfo", i))
+    end
+    for _, name in ipairs({ "BattlefieldFrame", "PVPBattlegroundFrame", "PVPUIFrame", "PVPFrame",
+        "HonorFrame", "BattlefieldFrameJoinButton", "BattlefieldFrameGroupJoinButton" }) do
+        local frame = _G[name]
+        if frame then
+            store("RECV", "pvp: %s frame %s shown=%s", context, name,
+                show(frame.IsShown and frame:IsShown()))
+        end
+    end
+end
+
+local function onBattlefieldsShow(event, ...)
+    log("RECV", "pvp: %s %s", event, showAll(...))
+    pvpBattlemaster(event)
+end
+
+local function onBattlefieldStatus(event, ...)
+    log("RECV", "pvp: %s %s", event, showAll(...))
+    pvpStatus(event)
+end
+
+local function cmdPvp()
+    local present, missing = {}, {}
+    for _, name in ipairs(PVP_FUNCTIONS) do
+        if type(resolve(name)) == "function" then
+            present[#present + 1] = name
+        else
+            missing[#missing + 1] = name
+        end
+    end
+    log("INFO", "pvp: present: %s", table.concat(present, ", "))
+    log("INFO", "pvp: missing: %s", #missing > 0 and table.concat(missing, ", ") or "none")
+    if type(_G.C_PvP) == "table" then
+        local names = {}
+        for name, value in pairs(_G.C_PvP) do
+            if type(value) == "function" then
+                names[#names + 1] = name
+            end
+        end
+        table.sort(names)
+        store("INFO", "pvp: C_PvP: %s", table.concat(names, ", "))
+        for _, name in ipairs({ "GetBattlegroundInfo", "GetAvailableBattlegrounds", "IsBattleground",
+            "GetRandomBGInfo", "IsWarModeActive", "GetActiveBrawlInfo" }) do
+            if type(_G.C_PvP[name]) == "function" then
+                store("INFO", "pvp: C_PvP.%s() -> %s", name, probeCall("C_PvP." .. name))
+            end
+        end
+    end
+    local types = probeCall("GetNumBattlegroundTypes")
+    log("INFO", "pvp: GetNumBattlegroundTypes -> %s", types)
+    for i = 1, math.min(tonumber(types) or 0, 30) do
+        store("INFO", "pvp: GetBattlegroundInfo(%d) -> %s", i, probeCall("GetBattlegroundInfo", i))
+        log("INFO", "pvp: C_PvP.GetBattlegroundInfo(%d) -> %s", i, probeCall("C_PvP.GetBattlegroundInfo", i))
+    end
+    store("INFO", "pvp: C_PvP.GetLevelUpBattlegrounds() -> %s", probeCall("C_PvP.GetLevelUpBattlegrounds"))
+    store("INFO", "pvp: C_PvP.GetRandomEpicBGInfo() -> %s", probeCall("C_PvP.GetRandomEpicBGInfo"))
+    pvpStatus("now")
+    pvpBattlemaster("now")
+    local ok, categories = lfgCall("GetAvailableCategories")
+    if ok and type(categories) == "table" then
+        for _, id in ipairs(categories) do
+            local infoOk, info = lfgCall("GetLfgCategoryInfo", id)
+            local name = infoOk and type(info) == "table" and info.name or ""
+            store("INFO", "pvp: lfg category %s = %s", show(id), dumpValue(name))
+            if type(name) == "string" and not isSecret(name) and name:lower():find("battle") then
+                local actOk, activities = lfgCall("GetAvailableActivities", id)
+                for _, activity in ipairs(actOk and type(activities) == "table" and activities or {}) do
+                    local aOk, aInfo = lfgCall("GetActivityInfoTable", activity)
+                    store("INFO", "pvp: lfg battleground activity %s: %s", show(activity),
+                        aOk and dumpTable(aInfo) or show(aInfo))
+                end
+                log("INFO", "pvp: Group Finder category %s (%s) has %d activities", show(id), name,
+                    actOk and type(activities) == "table" and #activities or 0)
+            end
+        end
+    end
+    log("INFO", "pvp: now talk to a battlemaster (the window logs itself); queue alone and leave the queue again "
+        .. "if you can. Then /fgp log or just say done.")
+end
+
+-- Rounded corners for art: draws a place like the group card's (106 x 80,
+-- the tooltip border on top) filled with spec art, once per mask candidate,
+-- so a screenshot shows which mask makes the art follow the round corners.
+local MASK_CANDIDATES = {
+    { "none", nil },
+    { "common-iconmask", "Interface\\Common\\common-iconmask" },
+    { "UI-Frame-IconMask", "Interface\\FrameGeneral\\UIFrameIconMask" },
+    { "SquareMask", "Interface\\Masks\\SquareMask" },
+    { "white rounded", "Interface\\Buttons\\WHITE8X8" },
+}
+
+local maskFrame
+
+local function cmdMask()
+    if maskFrame then
+        maskFrame:SetShown(not maskFrame:IsShown())
+        return
+    end
+    maskFrame = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+    maskFrame:SetSize(660, 170)
+    maskFrame:SetPoint("CENTER")
+    maskFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    maskFrame:EnableMouse(true)
+    maskFrame:SetMovable(true)
+    maskFrame:RegisterForDrag("LeftButton")
+    maskFrame:SetScript("OnDragStart", maskFrame.StartMoving)
+    maskFrame:SetScript("OnDragStop", maskFrame.StopMovingOrSizing)
+    local title = maskFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    title:SetPoint("TOP", 0, -5)
+    title:SetText("Masks for rounded art (/fgp mask)")
+    log("INFO", "mask: CreateMaskTexture=%s", show(type(maskFrame.CreateMaskTexture)))
+    for i, candidate in ipairs(MASK_CANDIDATES) do
+        local ok, place = pcall(CreateFrame, "Frame", nil, maskFrame, "BackdropTemplate")
+        if not ok then
+            place = CreateFrame("Frame", nil, maskFrame)
+        end
+        place:SetSize(106, 80)
+        place:SetPoint("TOPLEFT", 16 + (i - 1) * 126, -40)
+        local art = place:CreateTexture(nil, "BACKGROUND", nil, 1)
+        art:SetPoint("TOPLEFT", 2, -2)
+        art:SetPoint("BOTTOMRIGHT", -2, 2)
+        local atlasOk = pcall(art.SetAtlas, art, "spec-thumbnail-druid-feral")
+        if not atlasOk then
+            art:SetColorTexture(0.6, 0.3, 0.1, 1)
+        end
+        local path = candidate[2]
+        local exists = path and fileExists(path)
+        if path and type(place.CreateMaskTexture) == "function" then
+            local mask = place:CreateMaskTexture()
+            mask:SetAllPoints(art)
+            local setOk, err = pcall(mask.SetTexture, mask, path, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            local addOk, addErr = pcall(art.AddMaskTexture, art, mask)
+            store("RECV", "mask: %s exists=%s set=%s %s add=%s %s", candidate[1], show(exists), show(setOk), show(err),
+                show(addOk), show(addErr))
+        end
+        if place.SetBackdrop then
+            place:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14 })
+            place:SetBackdropBorderColor(1, 1, 1, 0.5)
+        end
+        local label = maskFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("TOP", place, "BOTTOM", 0, -4)
+        label:SetText(i .. ") " .. candidate[1] .. (path and exists == false and " (missing)" or ""))
+    end
+    maskFrame:Show()
+    log("INFO", "mask: shown; please take a screenshot")
+end
+
+-- Raids for battleground premades: whether the addon may turn the party
+-- into a raid without a click (from a timer), and back again. Only as the
+-- leader of a party outside an instance: the group is a raid for a few
+-- seconds.
+local raidTest
+
+local function raidStep(text, fnName)
+    local fn = resolve("C_PartyInfo." .. fnName) or resolve(fnName)
+    if type(fn) ~= "function" then
+        log("FAIL", "raid: %s missing", fnName)
+        return
+    end
+    raidTest.blocked = nil
+    local ok, err = pcall(fn)
+    log(ok and "INFO" or "FAIL", "raid: %s from a timer -> %s %s", text, show(ok), show(err))
+    C_Timer.After(2, function()
+        log("RECV", "raid: after %s: IsInRaid=%s IsInGroup=%s members=%s blocked=%s", text, show(IsInRaid()),
+            show(IsInGroup()), show(GetNumGroupMembers()), show(raidTest.blocked))
+    end)
+end
+
+local function cmdRaid()
+    log("INFO", "raid: C_PartyInfo.ConvertToRaid=%s ConvertToRaid=%s C_PartyInfo.ConvertToParty=%s ConvertToParty=%s",
+        type(resolve("C_PartyInfo.ConvertToRaid")), type(_G.ConvertToRaid), type(resolve("C_PartyInfo.ConvertToParty")),
+        type(_G.ConvertToParty))
+    if not IsInGroup() or IsInRaid() or not UnitIsGroupLeader("player") then
+        log("FAIL", "raid: be the leader of a party (not a raid) for this test")
+        return
+    end
+    if IsInInstance() then
+        log("FAIL", "raid: leave the instance first; the group is a raid for a few seconds")
+        return
+    end
+    raidTest = {}
+    C_Timer.After(1, function()
+        raidStep("ConvertToRaid", "ConvertToRaid")
+    end)
+    C_Timer.After(6, function()
+        raidStep("ConvertToParty", "ConvertToParty")
+    end)
+    log("INFO", "raid: turning the party into a raid in 1 s and back in 6 s, both from a timer")
+end
+
+-- /fgp rescind <Name> [expire]: invite a player, then take the invite back
+-- after 5 s with C_PartyInfo.UninviteUnit (or, with "expire", leave it to
+-- see how long WoW keeps it open); every system message and roster change
+-- is logged meanwhile.
+local cmdRescind
+do
+    local watch, watchFrame, keyFrameRescind
+
+    local function groupState()
+        return string.format("IsInGroup=%s members=%s", show(IsInGroup()), show(GetNumGroupMembers()))
+    end
+
+    local function startWatch(name, seconds)
+        if not watchFrame then
+            watchFrame = CreateFrame("Frame")
+            watchFrame:SetScript("OnEvent", function(_, event, text)
+                if not watch or GetTime() > watch.ends then
+                    return
+                end
+                log("RECV", "rescind %s +%.1fs: %s %s | %s", watch.name, GetTime() - watch.at, event,
+                    event == "CHAT_MSG_SYSTEM" and show(text) or "", groupState())
+            end)
+            for _, event in ipairs({ "CHAT_MSG_SYSTEM", "GROUP_ROSTER_UPDATE", "PARTY_INVITE_CANCEL",
+                "GROUP_INVITE_CONFIRMATION" }) do
+                pcall(watchFrame.RegisterEvent, watchFrame, event)
+            end
+        end
+        watch = { name = name, at = GetTime(), ends = GetTime() + seconds }
+    end
+
+    function cmdRescind(rest)
+        local name, mode = (rest or ""):match("^%s*(.-)%s*(expire)%s*$")
+        name = name or (rest or ""):match("^%s*(.-)%s*$")
+        if (not name or name == "") and UnitExists("target") and UnitIsPlayer("target") then
+            -- Forever names have a space: UnitFullName gives the two parts.
+            local first, second = UnitFullName("target")
+            name = second and second ~= "" and (first .. " " .. second) or first
+            log("INFO", "rescind: using your target, %s", show(name))
+        end
+        if not name or name == "" then
+            log("FAIL", "rescind: target a player (or give a name): /fgp rescind [Name] [expire], not in a group")
+            return
+        end
+        if IsInGroup() then
+            log("FAIL", "rescind: leave your group first, so the invite is the only thing in it")
+            return
+        end
+        local uninvite = resolve("C_PartyInfo.UninviteUnit") or _G.UninviteUnit
+        log("INFO", "rescind: C_PartyInfo.UninviteUnit=%s UninviteUnit=%s", type(resolve("C_PartyInfo.UninviteUnit")),
+            type(_G.UninviteUnit))
+        startWatch(name, mode == "expire" and 180 or 15)
+        local ok, err = pcall(C_PartyInfo.InviteUnit, name)
+        log(ok and "INFO" or "FAIL", "rescind: invited %s -> %s %s | %s", name, show(ok), show(err), groupState())
+        if mode == "expire" then
+            log("INFO", "rescind: leaving the invite open; ask %s not to answer, logging for 3 minutes", name)
+            return
+        end
+        if type(uninvite) ~= "function" then
+            log("FAIL", "rescind: no UninviteUnit function")
+            return
+        end
+        -- UninviteUnit is protected: from a timer it is blocked, so it waits
+        -- for the first key press after 5 s.
+        if not keyFrameRescind then
+            keyFrameRescind = CreateFrame("Frame", "ForeverGroupsProbeRescindFrame", UIParent)
+            pcall(keyFrameRescind.SetPropagateKeyboardInput, keyFrameRescind, true)
+        end
+        keyFrameRescind:SetScript("OnKeyDown", function()
+            if GetTime() - watch.at < 5 then
+                return
+            end
+            keyFrameRescind:EnableKeyboard(false)
+            local okU, errU = pcall(uninvite, name)
+            log(okU and "INFO" or "FAIL", "rescind: UninviteUnit(%s) on a key press %.1f s after the invite"
+                .. " -> %s %s | %s", name, GetTime() - watch.at, show(okU), show(errU), groupState())
+        end)
+        keyFrameRescind:EnableKeyboard(true)
+        log("INFO", "rescind: press any key after 5 s to take the invite back")
+    end
+end
+
 local COMMANDS = {
     { "all", "run info, api, join, chan, whisper, big, ping and popup", cmdAll },
     { "info", "build, names, time, lockdown, group state", cmdInfo },
@@ -1881,6 +2878,8 @@ local COMMANDS = {
     { "tell", "<Name>[: text] plain chat whisper from a timer", cmdTell },
     { "popup", "[Name] proposal popup from a timer; Accept invites Name", cmdPopup },
     { "lfg", "info | search | searchlater | results  WoW group finder checks", cmdLfg },
+    { "lfgapi", "[plain|heal|dps|tank|quest [id]|members|twice|gap] Group Finder functions, test searches",
+        cmdLfgApi },
     { "quests", "quest log details (group size, elite, objectives) and Group Finder categories", cmdQuests },
     { "spec", "how the client tells your specialization (specs, talent trees)", cmdSpec },
     { "talents", "dump the talent tree: nodes, points spent, positions", cmdTalents },
@@ -1891,6 +2890,13 @@ local COMMANDS = {
     { "zonelevels", "level ranges of the Quests & Zones activities", cmdZoneLevels },
     { "dropdown", "show the dropdown styles this client has", cmdDropdown },
     { "chatfilter", "check that our own outgoing whispers can be hidden from chat", cmdChatFilter },
+    { "classart", "[class] show the class art this client has (talent backgrounds, icons, atlases)", cmdClassArt },
+    { "specart", "check the retail spec art atlases for every class", cmdSpecArt },
+    { "finderart", "the art of the Group Finder's category buttons (open the Group Finder first)", cmdFinderArt },
+    { "pvp", "battlegrounds: functions, the battlegrounds and the Group Finder's battleground activities", cmdPvp },
+    { "mask", "draw art with rounded-corner mask candidates, to see which one fits the frames", cmdMask },
+    { "raid", "as party leader outside an instance: turn the party into a raid and back, from a timer", cmdRaid },
+    { "rescind", "[Name] [expire] invite your target (or Name), take it back on a key press after 5 s", cmdRescind },
     { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },
     { "channels", "[name] member count of every joined channel (with a name: join it for the check)", cmdChannels },
     { "log", "[n] print the last n stored log lines", cmdLog },
@@ -1988,6 +2994,9 @@ local function onChannelNotice(event, text, _, _, channelString, _, _, _, _, bas
 end
 
 local function onActionBlocked(event, addon, func)
+    if raidTest then
+        raidTest.blocked = tostring(func)
+    end
     if autoAccept.pending then
         log("FAIL", "autoaccept: blocked (%s)", show(func))
     end
@@ -2039,6 +3048,72 @@ local function onRoleEvent(event, ...)
     log("RECV", "%s: %s; my role %s", event, showAll(...), show(UnitGroupRolesAssigned("player")))
 end
 
+-- For 20 s after loading: the player's role as WoW tells it, and the role
+-- the party frames show for the player, written down whenever either
+-- changes, with the time to a tenth of a second.
+local ROLE_WATCH_SECONDS = 20
+local roleWatchStart = GetTime()
+local lastRoleWatch
+
+local function shownRole()
+    local parts = {}
+    for _, prefix in ipairs({ "CompactPartyFrameMember", "CompactRaidFrame" }) do
+        for i = 1, 5 do
+            local frame = _G[prefix .. i]
+            local unit = frame and frame.unit
+            if unit and UnitExists(unit) and UnitIsUnit(unit, "player") then
+                local icon = frame.roleIcon
+                local atlas = icon and icon.GetAtlas and icon:GetAtlas()
+                local coords = icon and icon.GetTexCoord and table.concat({ icon:GetTexCoord() }, ",")
+                parts[#parts + 1] = string.format("%s%d shown=%s atlas=%s coords=%s", prefix, i,
+                    show(icon and icon:IsShown()), show(atlas), show(coords))
+            end
+        end
+    end
+    return #parts > 0 and table.concat(parts, "; ") or "no party frame for the player"
+end
+
+local roleWatch = CreateFrame("Frame")
+roleWatch:SetScript("OnUpdate", function(self)
+    local elapsed = GetTime() - roleWatchStart
+    if elapsed > ROLE_WATCH_SECONDS then
+        self:SetScript("OnUpdate", nil)
+        store("INFO", "rolewatch: done after %d s", ROLE_WATCH_SECONDS)
+        return
+    end
+    local now = string.format("role=%s ingroup=%s | %s", show(UnitGroupRolesAssigned("player")), show(IsInGroup()),
+        shownRole())
+    if now ~= lastRoleWatch then
+        lastRoleWatch = now
+        store("RECV", "rolewatch +%.1fs: %s", elapsed, now)
+    end
+end)
+
+-- Who sets a role: every call of a role function, with the code that made
+-- it (the Lua stack without this hook), for the whole session.
+local function hookRoleSetter(path)
+    local parent, key = path:match("^(.-)%.?([^%.]+)$")
+    local owner = parent ~= "" and resolve(parent) or _G
+    if type(owner) ~= "table" or type(owner[key]) ~= "function" or type(hooksecurefunc) ~= "function" then
+        return
+    end
+    hooksecurefunc(owner, key, function(...)
+        local stack = type(debugstack) == "function" and debugstack(2, 8, 0) or "no debugstack"
+        stack = stack:gsub("\n", " <- ")
+        store("RECV", "rolewatch +%.1fs: %s(%s) from %s", GetTime() - roleWatchStart, path, showAll(...), stack)
+    end)
+end
+
+for _, path in ipairs({ "UnitSetRole", "SetLFGRoles", "C_LFGList.SetRoles", "C_PartyInfo.SetRole",
+    "SetPVPRoles", "C_LFGList.SetRole" }) do
+    hookRoleSetter(path)
+end
+
+local function onRoleChanged(event, ...)
+    store("RECV", "rolewatch +%.1fs: %s %s; my role %s", GetTime() - roleWatchStart, event, showAll(...),
+        show(UnitGroupRolesAssigned("player")))
+end
+
 local function onRoster()
     local size = GetNumGroupMembers()
     if size ~= lastGroupSize then
@@ -2075,6 +3150,7 @@ local handlers = {
     ROLE_POLL_BEGIN = onRoleEvent,
     LFG_ROLE_CHECK_SHOW = onRoleEvent,
     PLAYER_ROLES_ASSIGNED = onRoleEvent,
+    ROLE_CHANGED_INFORM = onRoleChanged,
     GROUP_ROSTER_UPDATE = onRoster,
     CHAT_MSG_SYSTEM = onSystem,
     PLAYER_REGEN_DISABLED = onCombat,
@@ -2084,6 +3160,10 @@ local handlers = {
     LFG_LIST_APPLICATION_STATUS_UPDATED = onApplicationStatus,
     LFG_LIST_ACTIVE_ENTRY_UPDATE = onApplicationStatus,
     INSPECT_READY = onInspectReady,
+    BATTLEFIELDS_SHOW = onBattlefieldsShow,
+    BATTLEFIELDS_CLOSED = onBattlefieldsShow,
+    PVPQUEUE_ANYWHERE_SHOW = onBattlefieldsShow,
+    UPDATE_BATTLEFIELD_STATUS = onBattlefieldStatus,
 }
 
 local eventFrame = CreateFrame("Frame")

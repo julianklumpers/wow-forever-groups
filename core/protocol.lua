@@ -45,6 +45,8 @@ Protocol.VERSION = "v2"
 -- dungeon and quest queues never mix; a questing group has room for at most
 -- one tank and one healer, the rest DPS.
 Protocol.QUESTS = { prefix = "q1", slots = { T = 1, H = 1, D = 5 } }
+-- Battleground groups: parties of up to five in any roles.
+Protocol.BATTLEGROUNDS = { prefix = "b1", slots = { T = 5, H = 5, D = 5 } }
 Protocol.MAX_BYTES = 255
 Protocol.ROLES = { T = true, H = true, D = true }
 Protocol.ANSWERS = { R = true, Y = true, N = true, C = true }

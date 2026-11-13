@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local L = ns.L
+
 local Widgets = ns.Widgets
 
 local Popup = {}
@@ -83,9 +85,9 @@ local function paintOpenRow(row, role)
     row.openRole = role
     Widgets.setRoleIcon(row.icon, role)
     row.icon:SetAlpha(0.4)
-    row.name:SetText("Open")
+    row.name:SetText(L["Open"])
     row.name:SetTextColor(0.6, 0.6, 0.6)
-    row.detail:SetText("from the Group Finder")
+    row.detail:SetText(L["from the Group Finder"])
     row.name:ClearAllPoints()
     row.name:SetPoint("TOPLEFT", NAME_X, -2)
     row.crown:Hide()
@@ -98,10 +100,11 @@ local function paintRow(row, member, leader)
     row.openRole = nil
     Widgets.setRoleIcon(row.icon, member.role)
     row.icon:SetAlpha(1)
-    row.name:SetText(member.name .. (mine and " (you)" or ""))
+    row.name:SetText(member.name .. (mine and (" (" .. L["you"] .. ")") or ""))
     row.name:SetTextColor(Widgets.classColor(classOf(member)))
-    local spec = ns.Spec.label(member.spec) or (mine and ns.Spec.myLabel()) or nil
-    local detail = member.fake and (spec and (spec .. "  ·  fake") or "fake") or spec or ""
+    local spec = ns.Spec.labelInRole(member.spec or (mine and ns.Spec.code()) or nil, member.role)
+        or (mine and ns.Spec.myLabel(member.role)) or nil
+    local detail = member.fake and (spec and (spec .. "  ·  " .. L["fake"]) or L["fake"]) or spec or ""
     row.detail:SetText(detail)
     row.name:ClearAllPoints()
     if detail ~= "" then
@@ -156,7 +159,7 @@ local function render(view)
     local accepted = 0
     for _, member in ipairs(members) do
         if member.name == ns.selfName then
-            role = "you play " .. Widgets.ROLE_NAMES[member.role]
+            role = string.format(L["you play %s"], Widgets.roleName(member.role))
         end
         if member.answer == "Y" then
             accepted = accepted + 1
@@ -167,7 +170,7 @@ local function render(view)
     parts[#parts + 1] = role
     ui.subtitle:SetText(table.concat(parts, "  ·  "))
     local art, crop
-    if view.queue ~= "quests" then
+    if view.queue == nil then
         art, crop = ns.Dungeons.art(view.dungeon)
     end
     local dungeon = ns.Dungeons.get(view.dungeon)
@@ -199,7 +202,7 @@ local function render(view)
         end
     end
     local y = rowsTop + math.min(#places, #rows) * ROW_HEIGHT + 4
-    ui.count:SetText(string.format("%d/%d accepted", accepted, players))
+    ui.count:SetText(string.format(L["%d/%d accepted"], accepted, players))
     local answered = myAnswer(view) == "Y"
     ui.accept:SetShown(not answered)
     ui.decline:SetShown(not answered)
@@ -319,7 +322,7 @@ local function build()
     ui.bar.text:SetPoint("CENTER")
     ui.waiting = Widgets.text(frame, "GameFontNormal", "CENTER")
     ui.waiting:SetPoint("BOTTOM", 0, 18)
-    ui.waiting:SetText("Accepted. Waiting for the others...")
+    ui.waiting:SetText(L["Accepted. Waiting for the others..."])
     ui.accept = Widgets.button(frame, ACCEPT or "Accept", 120)
     ui.accept:SetPoint("BOTTOMLEFT", CONTENT_LEFT, 14)
     ui.accept:SetScript("OnClick", function()
@@ -352,6 +355,7 @@ function Popup.show(view, engine)
     endTime = GetTime() + seconds
     ui.bar:SetMinMaxValues(0, seconds)
     render(view)
+    ns.Window.stepAside()
     frame:Show()
     onUpdate()
     ns.Notify.attention()
@@ -375,6 +379,7 @@ function Popup.hide(engine)
     if frame then
         frame:Hide()
     end
+    ns.Window.comeBack()
 end
 
 function Popup.isShown()
