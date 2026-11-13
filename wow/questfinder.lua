@@ -407,6 +407,7 @@ function QuestFinder.onWhisper(text, sender)
     if not ok then
         return
     end
+    Log.detail("%s answered: \"%s\" (%s)", sender, text, answer or "unclear")
     if answer == "no" then
         over[sender] = true
         Log.detail("%s can't take you; asking another group.", sender)
@@ -480,6 +481,7 @@ function QuestFinder.onInvite(inviter, tank, healer, dps)
     local role = ns.LfgPick.joinRole(current.members[1].roles,
         remaining or ns.LfgPick.inviteRoles(tank == true, healer == true, dps == true))
     if ns.Group.acceptInvite(role) then
+        ns.Whispers.stopQuiet(inviter)
         Log.info("Questing group found: you're the %s.", ns.Widgets.ROLE_NAMES[role] or "?")
         Log.detail("Joined %s's group.", inviter)
     end

@@ -18,10 +18,25 @@ local NO_PHRASES = {
     "already have", "already got", "got one", "we're full", "were full", "we are full", "is full",
     "not looking", "no room", "no spot", "no space", "filled",
 }
-local NO_WORDS = { "no", "nope", "nah", "sorry", "sry", "full", "nvm", "found", "declined" }
+-- English first, then the languages heard most on Forever: Russian, German,
+-- French, Spanish, Portuguese. string.lower only lowers A-Z, so Cyrillic and
+-- accented words are listed as they are written, capitalised too.
+local NO_WORDS = {
+    "no", "nope", "nah", "sorry", "sry", "full", "nvm", "found", "declined",
+    "нет", "Нет", "неа", "фулл", "фул", "полная", "сорри", "сорян", "извини", "Извини",
+    "nein", "voll", "leider", "sorri",
+    "non", "complet", "désolé", "desole", "dsl",
+    "lleno", "completo", "perdon", "perdón",
+    "não", "nao", "cheio",
+}
 local YES_WORDS = {
     "sure", "yes", "yep", "yup", "yeah", "yea", "ya", "ok", "okay", "kk", "np", "inv", "invite", "invited",
     "inviting", "invd", "sec", "secs", "moment", "omw", "coming", "come", "welcome", "y",
+    "да", "Да", "ок", "Ок", "инв", "щас", "сек", "конечно", "давай", "Давай",
+    "ja", "klar", "sicher", "gerne",
+    "oui", "ouais", "bien",
+    "si", "sí", "claro", "vale",
+    "sim",
 }
 
 local function contains(text, phrase)
@@ -41,17 +56,28 @@ end
 -- Words of a question about the player, which the addon can answer itself
 -- ("lvl?", "what spec?", "class?", "you tank?").
 local QUESTION_WORDS = { "lvl", "level", "class", "spec", "role", "ilvl", "gs", "gear", "tank", "heal", "healer",
-    "dps", "what", "which" }
+    "dps", "what", "which",
+    "лвл", "уровень", "класс", "спек", "какой", "Какой", "танк", "хил", "дд",
+    "klasse", "welche", "welcher",
+    "niveau", "classe", "quel", "quelle",
+    "nivel", "clase", "que", "qué", "cual", "cuál",
+    "nível", "classe" }
+
+-- The words of a text: runs of letters, including the bytes of non-English
+-- letters (anything that is not a space, punctuation or a digit).
+local function words(text)
+    local set = {}
+    for word in string.gmatch(text, "[^%s%p%d]+") do
+        set[word] = true
+    end
+    return set
+end
 
 function Replies.isQuestion(text)
     if type(text) ~= "string" then
         return false
     end
-    local set = {}
-    for word in string.gmatch(string.lower(text), "[%a]+") do
-        set[word] = true
-    end
-    return anyWord(set, QUESTION_WORDS)
+    return anyWord(words(string.lower(text)), QUESTION_WORDS)
 end
 
 function Replies.classify(text)
@@ -74,10 +100,7 @@ function Replies.classify(text)
     for _, phrase in ipairs(NO_PHRASES) do
         no = no or contains(text, phrase)
     end
-    local set = {}
-    for word in string.gmatch(text, "[%a]+") do
-        set[word] = true
-    end
+    local set = words(text)
     no = no or anyWord(set, NO_WORDS)
     yes = yes or anyWord(set, YES_WORDS)
     if no and not yes then

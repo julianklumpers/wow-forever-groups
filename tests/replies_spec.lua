@@ -32,6 +32,17 @@ describe("reading a leader's answer", function()
         end
     end)
 
+    it("reads the common words of Russian, German, French, Spanish and Portuguese too", function()
+        for _, text in ipairs({ "нет", "Нет, фулл", "voll, sorry", "complet", "lleno", "não" }) do
+            assert.are.equal("no", Replies.classify(text), text)
+        end
+        for _, text in ipairs({ "да", "ja klar", "oui", "claro", "sim" }) do
+            assert.are.equal("yes", Replies.classify(text), text)
+        end
+        assert.is_true(Replies.isQuestion("Какой спек?"))
+        assert.is_true(Replies.isQuestion("quel niveau ?"))
+    end)
+
     it("knows a question about the player", function()
         for _, text in ipairs({ "lvl?", "what spec?", "class?", "you tank?", "ilvl" }) do
             assert.is_true(Replies.isQuestion(text), text)

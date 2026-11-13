@@ -11,6 +11,9 @@
   leader asks back for your level, class or spec ("lvl?", "what spec?"), Forever Groups answers
   for you, unseen (Settings → Messages: "Answer to an asked leader's question"). Whispers from
   anyone else always show.
+- A leader's answer is understood in Russian, German, French, Spanish and Portuguese too ("нет",
+  "voll", "complet", "да", "ja", "oui", "лвл?", "quel niveau ?"...). Once you're in the leader's
+  group, their whispers show again. What a leader answered is in the saved log.
 - `/fg debug on` shows all of it again in chat and in the status (`/fg debug off` hides it);
   everything is always in the saved log for `/fg bugreport`.
 

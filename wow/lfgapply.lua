@@ -264,6 +264,7 @@ local function followInvite()
         return false
     end
     if IsInGroup() and not UnitIsGroupLeader("player") then
+        ns.Whispers.stopQuiet(leader)
         Log.detail("You joined %s's group for %s.", leader, Dungeons.name(invited.dungeon))
         Apply.reset()
         ns.Filler.stop(true)
@@ -330,6 +331,7 @@ local function onInviteRequest(inviter, tank, healer, dps)
     a.invitedAt = GetServerTime()
     local role = joinRole(inviter, tank == true, healer == true, dps == true)
     if not ns.db.noAutoAcceptAsked and (a.request or Apply.isSeeker()) and ns.Group.acceptInvite(role) then
+        ns.Whispers.stopQuiet(inviter)
         Log.info("Group found for %s: you're the %s.", Dungeons.name(a.dungeon), Widgets.ROLE_NAMES[role] or "?")
         Log.detail("Joined %s's group.", inviter)
         return
@@ -399,6 +401,7 @@ function Apply.onWhisper(text, sender)
     if not ok then
         return
     end
+    Log.detail("%s answered: \"%s\" (%s)", key, text, answer or "unclear")
     if answer == "no" then
         a.over = true
         Log.detail("%s can't take you; asking another group.", key)

@@ -78,6 +78,15 @@ function Whispers.expectReplies(name, seconds)
     quiet[name] = GetTime() + seconds
 end
 
+-- The asked leader's group was joined: what they whisper now is for the
+-- player again.
+function Whispers.stopQuiet(name)
+    local key = Whispers.find(quiet, name)
+    if key then
+        quiet[key] = nil
+    end
+end
+
 local function hideReply(_, _, text, sender)
     if (ns.db and (ns.db.showSentWhispers or ns.db.debug)) or ns.isSecret(sender) or ns.isSecret(text) then
         return false
