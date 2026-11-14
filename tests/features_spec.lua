@@ -355,15 +355,18 @@ describe("data from WoW itself", function()
 end)
 
 describe("sharing dungeon quests in a new group", function()
-    local function party()
+    local function party(auto, healQuests)
         local world = World.new()
         local leader = world:addClient("Tanky Mctank", { level = 20, questLog = {
             { "The Deadmines", true }, { "Red Silk Bandanas", false, 101 }, { "Oh Brother...", false, 102 },
             { "Secret Quest", false, 999 },
         } })
-        local heal = world:addClient("Heally Mcheal", { level = 20, questLog = {
+        local heal = world:addClient("Heally Mcheal", { level = 20, questLog = healQuests or {
             { "The Deadmines", true }, { "The Defias Brotherhood", false, 103 },
         } })
+        for _, client in ipairs({ leader, heal }) do
+            client.ns.db.noAutoShareQuests = not auto
+        end
         world:advance(12)
         leader.party, leader.isLeader = { "Heally Mcheal", "No Addon" }, true
         heal.party = { "Tanky Mctank", "No Addon" }
@@ -409,6 +412,129 @@ describe("sharing dungeon quests in a new group", function()
         world:advance(5)
         assert.are.same({ 101, 102 }, leader.pushed)
         assert.is_true(leader:said("Sharing 2 quests for The Deadmines with your group"))
+    end)
+
+    it("shares by itself the quests a member lacks, once", function()
+        local world, leader, heal = party(true)
+        heal.ns.GroupView.track("5")
+        heal:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.are.same({ 101, 102 }, leader.pushed)
+        assert.are.same({ 103 }, heal.pushed)
+        leader:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.are.same({ 101, 102 }, leader.pushed)
+    end)
+
+    it("leaves a quest to one holder, and shares nothing everyone has", function()
+        local world, leader, heal = party(true, {
+            { "The Deadmines", true }, { "Red Silk Bandanas", false, 101 },
+        })
+        leader.unitQuests["No Addon"] = { [101] = true, [102] = true }
+        heal.unitQuests["No Addon"] = { [101] = true }
+        heal.ns.GroupView.track("5")
+        heal:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.are.same({ 102 }, leader.pushed)
+        assert.are.same({}, heal.pushed)
+    end)
+
+    it("asks the party once to share, when someone has no Forever Groups, by one player only", function()
+        local world, leader, heal = party(true)
+        heal.ns.GroupView.track("5")
+        heal:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        local function asks(client)
+            local n = 0
+            for _, w in ipairs(client.whispers) do
+                if w.chatType == "PARTY" and w.text:find("Anyone have quests for The Deadmines", 1, true) then
+                    n = n + 1
+                end
+            end
+            return n
+        end
+        assert.are.equal(1, asks(heal) + asks(leader))
+        heal:fire("GROUP_ROSTER_UPDATE")
+        leader:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.are.equal(1, asks(heal) + asks(leader))
+    end)
+
+    local function askedIn(client)
+        local n = 0
+        for _, w in ipairs(client.whispers) do
+            if w.chatType == "PARTY" and w.text:find("Anyone have quests", 1, true) then
+                n = n + 1
+            end
+        end
+        return n
+    end
+
+    it("does not ask after seeing a boss die, nor share again after a /reload", function()
+        local world, leader, heal = party(true)
+        heal.ns.Run.current = function()
+            return { dungeon = "5", kills = 1 }
+        end
+        heal.ns.GroupView.track("5")
+        heal:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.are.equal(0, askedIn(heal))
+        assert.are.same({ 101, 102 }, leader.pushed)
+        local saved = leader:logout()
+        local again = world:addClient("Tanky Mctank", { level = 20, saved = saved, questLog = leader.questLog })
+        again.party, again.isLeader = { "Heally Mcheal", "No Addon" }, true
+        world:advance(12)
+        again.ns.GroupView.track("5")
+        again:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.are.same({}, again.pushed)
+        assert.are.equal(0, askedIn(again))
+    end)
+
+    it("lets a player who joins a run under way ask for quests too", function()
+        local world, leader, heal = party(true)
+        world:advance(12)
+        assert.are.equal(1, askedIn(leader))
+        leader.ns.Run.current = function()
+            return { dungeon = "5", kills = 1 }
+        end
+        local new = world:addClient("Aaa Newcomer", { level = 20, questLog = {} })
+        world:advance(12)
+        leader.party = { "Heally Mcheal", "No Addon", "Aaa Newcomer" }
+        new.party = { "Tanky Mctank", "Heally Mcheal", "No Addon" }
+        leader:fire("GROUP_ROSTER_UPDATE")
+        new.ns.GroupView.track("5")
+        new:fire("GROUP_ROSTER_UPDATE")
+        world:advance(15)
+        assert.are.equal(1, askedIn(new))
+        assert.are.equal(1, askedIn(leader))
+        assert.are.equal(0, askedIn(heal))
+    end)
+
+    it("shares again with a player who was too far away, once they come closer", function()
+        local world, leader = party(true)
+        for _ = 1, 40 do
+            if #leader.pushed > 0 then
+                break
+            end
+            world:advance(0.25)
+        end
+        assert.are.same({ 101 }, leader.pushed)
+        leader:system(string.format(leader.env.ERR_QUEST_PUSH_TOO_FAR_S, "No Addon"))
+        world:advance(5)
+        assert.are.same({ 101, 102 }, leader.pushed)
+        world:advance(16)
+        assert.are.same({ 101, 102, 101 }, leader.pushed)
+    end)
+
+    it("shares again with a player who joins later", function()
+        local world, leader = party(true)
+        world:advance(12)
+        assert.are.same({ 101, 102 }, leader.pushed)
+        leader.party = { "Heally Mcheal", "No Addon", "New Dps" }
+        leader:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.are.same({ 101, 102, 101, 102 }, leader.pushed)
     end)
 end)
 

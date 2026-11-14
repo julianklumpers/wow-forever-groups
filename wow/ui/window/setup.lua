@@ -119,9 +119,10 @@ function W.neededRole()
         return nil
     end
     local myClass = Party.playerClass()
-    local best, bestRatio, tie
+    local best, bestRatio, tie, playable = nil, nil, false, 0
     for _, role in ipairs(Widgets.ROLES) do
         if Classes.canPlay(myClass, role) then
+            playable = playable + 1
             local ratio = counts[role] / ns.Config.SLOTS[role]
             if not best or ratio < bestRatio then
                 best, bestRatio, tie = role, ratio, false
@@ -130,7 +131,9 @@ function W.neededRole()
             end
         end
     end
-    if not best or tie then
+    -- With one role there is nothing to choose: that role is not "needed
+    -- most" just because it is the only one.
+    if not best or tie or playable < 2 then
         return nil
     end
     local parts = {}

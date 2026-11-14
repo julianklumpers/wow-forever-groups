@@ -441,10 +441,20 @@ ns.on("ADDON_LOADED", function(name)
         return
     end
     takeOverOldAddon()
+    local fresh = ForeverGroupsDB == nil
     ForeverGroupsDB = ForeverGroupsDB or {}
     ForeverGroupsCharDB = ForeverGroupsCharDB or {}
     ns.db = ForeverGroupsDB
     ns.charDb = ForeverGroupsCharDB
+    -- The tour is for new players: one who used Forever Groups before
+    -- (saved settings exist) can start it from the settings or /fg tour.
+    if ns.db.tourSeen == nil then
+        if fresh then
+            ns.db.tourSeen = false
+        else
+            ns.db.tourSeen = true
+        end
+    end
     ns.db.queueSort, ns.db.queueSortReverse, ns.db.queueSorts, ns.db.queueTab = nil, nil, nil, nil
     Comm.init(onReady, onMessage, function(sender, text)
         ns.Presence.seen(sender)
@@ -514,6 +524,7 @@ ns.on("PLAYER_LOGIN", function()
     end
     ns.Settings.register()
     ns.MinimapButton.refresh()
+    ns.Tour.welcome()
     Comm.start()
     C_Timer.NewTicker(1, tick)
 end)

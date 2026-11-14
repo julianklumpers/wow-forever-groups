@@ -80,6 +80,12 @@ local TABS = {
                         label = "Find a replacement by itself when someone leaves",
                         tip = "As leader, when a player leaves before every boss is down, Forever Groups looks "
                             .. "for a replacement right away instead of asking you first." },
+                    { key = "noAutoShareQuests", inverted = true,
+                        label = "Share my dungeon quests with players who lack them",
+                        tip = "In a group for a dungeon, your quests for it are shared with the players who don't "
+                            .. "have them yet. With several Forever Groups players holding the same quest, one of "
+                            .. "them shares it. Players without Forever Groups get every shareable quest (WoW "
+                            .. "skips those who have it)." },
                 },
             },
         },
@@ -359,6 +365,12 @@ local function buildExtras(page, y)
         ns.db.statusPosition = nil
         ns.Status.resetPosition()
         Log.info("Status bar moved back under the minimap.")
+    end)
+    local tour = Widgets.button(page, "Show the tour again", 200)
+    tour:SetPoint("LEFT", reset, "RIGHT", 10, 0)
+    tour:SetScript("OnClick", function()
+        frame:Hide()
+        ns.Tour.restart()
     end)
 end
 

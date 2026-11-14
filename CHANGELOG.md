@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A short tour for new players: on the first login the window opens by itself and points out
+  the roles, who is looking now and the Who is looking list, the dungeons and what a dungeon
+  row tells you, the tabs and Find group, one at a time (Next or Skip), with the rest of the
+  window darkened. Players who used Forever Groups before don't get it; Settings → Display →
+  "Show the tour again" and `/fg tour` bring it back for anyone.
 - Groups form more reliably when chat messages get lost or arrive late. A lost "accept" no
   longer leaves the leader behind while the others wait for an invite, answers are sent again
   while a group is being proposed, and a proposal that arrives too late keeps your place instead
@@ -14,6 +19,16 @@
   again instead of waiting half a minute.
 - Searching on key presses works again after a /reload during a fight, once the fight ends.
 - One error in a part of the addon no longer stops the rest from running.
+- "Needed most" no longer marks the only role of a class that plays one (a warlock's DPS).
+- Dungeon quests are shared by themselves: in a group for a dungeon, your quests for it go to the
+  players who don't have them yet, once each (one Forever Groups player shares a quest several
+  have). Settings → Groups → "Share my dungeon quests with players who lack them" turns it off.
+  A player who joins later, also while the others are already inside or past a boss, gets them
+  too: a share WoW turns down because they are too far away is tried again every 15 s.
+  With players in the group who don't have Forever Groups (their quests can't be seen), each
+  Forever Groups player asks the party once on coming into the group to share theirs (not after
+  seeing a boss die, so not again after a /reload mid-run) ("Anyone have quests for The Deadmines? Please share them with
+  the group."; one message for the whole group, editable under Messages).
 - Searching another category in WoW's own Group Finder window no longer wipes the dungeon
   groups Forever Groups found.
 - A group proposal that could not be sent in time (chat locked during a boss fight) is called

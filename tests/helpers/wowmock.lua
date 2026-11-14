@@ -647,6 +647,13 @@ local function buildEnv(world, client)
         IsPushableQuest = function(id)
             return id ~= 999
         end,
+        -- unitQuests: { [name] = { [questID] = true } } for party members
+        -- WoW can see on a quest.
+        IsUnitOnQuest = function(unit, id)
+            local index = tonumber(string.match(unit or "", "^party(%d)$"))
+            local name = index and client.party[index]
+            return name ~= nil and client.unitQuests[name] ~= nil and client.unitQuests[name][id] == true
+        end,
         SetSelectedQuest = function(id)
             client.selectedQuest = id
         end,
@@ -1321,6 +1328,8 @@ local function buildEnv(world, client)
         end,
     }
     env.ERR_DECLINE_GROUP_S = "%s declines your group invitation."
+    env.ERR_QUEST_PUSH_TOO_FAR_S = "%s is too far away to receive your quest"
+    env.ERR_QUEST_PUSH_BUSY_S = "%s is busy"
     env.ERR_GROUP_FULL = "Your party is full."
     env.ERR_ALREADY_IN_GROUP_S = "%s is already in a group."
     env.ERR_BAD_PLAYER_NAME_S = "Cannot find player '%s'."
@@ -1370,7 +1379,7 @@ function World:addClient(name, opts)
         noEyeTemplate = opts.noEyeTemplate, noDropdownButton = opts.noDropdownButton, chatFilters = {},
         version = opts.version, talents = opts.talents, trial = opts.trial, locale = opts.locale,
         inCombat = opts.inCombat,
-        questLog = opts.questLog or {}, positions = {}, visible = {}, popups = {}, pushed = {},
+        questLog = opts.questLog or {}, positions = {}, visible = {}, popups = {}, pushed = {}, unitQuests = {},
         inspectTalents = {}, inspects = {}, farAway = {},
         activityLevels = opts.activityLevels or World.ACTIVITY_LEVELS, journalEntrances = opts.journalEntrances or {},
         journalBosses = opts.journalBosses or {}, journalMaps = opts.journalMaps or {},
@@ -1380,9 +1389,13 @@ function World:addClient(name, opts)
         },
     }, Client)
     client.env = buildEnv(self, client)
+    -- A client has used Forever Groups before, unless the test makes a fresh
+    -- install (fresh = true: no saved variables at all).
     if opts.saved then
         client.env.ForeverGroupsDB = opts.saved.db
         client.env.ForeverGroupsCharDB = opts.saved.charDb
+    elseif not opts.fresh and not opts.oldAddon then
+        client.env.ForeverGroupsDB = {}
     end
     client.disabledAddOns, client.oldAddon = {}, opts.oldAddon
     if opts.oldAddon then

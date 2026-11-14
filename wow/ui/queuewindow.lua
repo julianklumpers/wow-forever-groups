@@ -1404,6 +1404,11 @@ function QueueWindow.show()
     open(true)
 end
 
+-- The tab with the eye on the main window's edge (for the tour).
+function QueueWindow.handle()
+    return handle
+end
+
 -- The tab on the main window's edge, made with the main window.
 function QueueWindow.attach(main)
     handle = Widgets.backdropFrame("Button", main)

@@ -349,6 +349,7 @@ function Window.toggle()
     W.frame:SetShown(not W.frame:IsShown())
     if W.frame:IsShown() then
         ns.LfgList.searchIfStale(30)
+        ns.Tour.maybeStart()
     end
 end
 
@@ -357,6 +358,7 @@ function Window.show()
         W.build()
     end
     W.frame:Show()
+    ns.Tour.maybeStart()
 end
 
 -- The window steps aside while a group proposal asks for an answer, and

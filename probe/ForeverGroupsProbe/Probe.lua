@@ -3010,6 +3010,64 @@ do
     end
 end
 
+-- Sharing a quest with the party: which quests can be shared, which party
+-- members WoW says are on each (IsUnitOnQuest, both the classic and the
+-- C_QuestLog form), then QuestLogPushQuest for the first shareable one:
+-- right away from the command (a hardware event), or with "later" from a
+-- timer 3 s on (no hardware event). Blocked actions and WoW's system lines
+-- (shared, already has it, ...) show for 10 s.
+local function cmdShareQuest(rest)
+    local later = (rest or ""):lower():find("later") ~= nil
+    local units = {}
+    for i = 1, 4 do
+        if UnitExists("party" .. i) then
+            units[#units + 1] = "party" .. i
+        end
+    end
+    local countOk, count = pcall(C_QuestLog.GetNumQuestLogEntries)
+    count = countOk and tonumber(count) or 0
+    local first
+    for index = 1, count do
+        local ok, info = pcall(C_QuestLog.GetInfo, index)
+        if ok and type(info) == "table" and not info.isHeader and info.questID then
+            local pushable = probeCall("C_QuestLog.IsPushableQuest", info.questID)
+            local onQuest = {}
+            for _, unit in ipairs(units) do
+                onQuest[#onQuest + 1] = string.format("%s classic=%s c=%s", unit,
+                    probeCall("IsUnitOnQuest", index, unit), probeCall("C_QuestLog.IsUnitOnQuest", unit, info.questID))
+            end
+            store("INFO", "sharequest %s \"%s\": pushable %s; %s", show(info.questID), show(info.title), pushable,
+                table.concat(onQuest, "; "))
+            if not first and pushable:find("true") then
+                first = info
+            end
+        end
+    end
+    if #units == 0 then
+        log("FAIL", "sharequest: you are not in a party; invite someone first")
+        return
+    end
+    if not first then
+        log("FAIL", "sharequest: no quest in your log can be shared")
+        return
+    end
+    local function push(how)
+        watchSystemUntil = GetTime() + 10
+        local selected = probeCall("C_QuestLog.SetSelectedQuest", first.questID)
+        local pushed = probeCall("QuestLogPushQuest")
+        log("INFO", "sharequest %s: \"%s\" SetSelectedQuest -> %s, QuestLogPushQuest -> %s (watch for blocked "
+            .. "and system lines)", how, show(first.title), selected, pushed)
+    end
+    if later then
+        log("INFO", "sharequest: sharing \"%s\" from a timer in 3 s", show(first.title))
+        C_Timer.After(3, function()
+            push("from a timer")
+        end)
+    else
+        push("from the command")
+    end
+end
+
 local COMMANDS = {
     { "all", "run info, api, join, chan, whisper, big, ping and popup", cmdAll },
     { "info", "build, names, time, lockdown, group state", cmdInfo },
@@ -3048,6 +3106,8 @@ local COMMANDS = {
     { "raid", "as party leader outside an instance: turn the party into a raid and back, from a timer", cmdRaid },
     { "rescind", "[Name] [expire] invite your target (or Name), take it back on a key press after 5 s", cmdRescind },
     { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },
+    { "sharequest", "[later] share the first shareable quest with the party (later: from a timer, no click)",
+        cmdShareQuest },
     { "channels", "[name] member count of every joined channel (with a name: join it for the check)", cmdChannels },
     { "log", "[n] print the last n stored log lines", cmdLog },
     { "clear", "clear the stored log", cmdClear },

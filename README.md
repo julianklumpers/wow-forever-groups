@@ -33,7 +33,8 @@ in the group, with roles set for you.
   groups to invite you (and joins when they do, as the role they still need), lists your own
   group, and invites players who whisper a needed role.
 - **In the group** — a card with the dungeon's picture and every member's role, spec, distance
-  to the entrance and dungeon quests; share your quests in one click; a waypoint to the entrance.
+  to the entrance and dungeon quests; your quests for the dungeon are shared by themselves with
+  whoever lacks them (or in one click); a waypoint to the entrance.
   When someone leaves, one click (or none, a setting) finds a replacement. If your leader doesn't
   have Forever Groups and the group isn't full yet, "Make me leader" asks them to promote you;
   then Forever Groups fills the group.
@@ -62,8 +63,9 @@ servers or websites involved; everything happens in game.
 
 ## Getting started
 
-1. Install the addon (CurseForge, Wago or WoWInterface) and log in.
-2. Type `/fg`, click the minimap button, or the Forever Groups tab on WoW's Group Finder.
+1. Install the addon (CurseForge, Wago or WoWInterface) and log in. The first time, the window opens by itself
+   with a short tour of it.
+2. Later, type `/fg`, click the minimap button, or the Forever Groups tab on WoW's Group Finder.
 3. Tick your roles and dungeons (or open the **Quests** tab) and press **Find group**.
 
 ## Commands
@@ -75,6 +77,7 @@ servers or websites involved; everything happens in game.
 | `/fg settings` | Settings: Groups, Messages, Display |
 | `/fg messages` | Edit the whispers and party messages |
 | `/fg progress` | Fold the quest progress in or out |
+| `/fg tour` | Show the tour of the window again |
 | `/fg help` | All commands |
 | `/fg selftest` | Check which game features work in your client |
 | `/fg bugreport` | A report to copy when something goes wrong |

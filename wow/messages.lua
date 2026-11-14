@@ -53,6 +53,9 @@ Messages.LIST = {
     { id = "partyReplacement", label = "Party chat: looking for a replacement",
         default = "Looking for a replacement {role}.",
         keys = { "role" } },
+    { id = "partyAskQuests", label = "Party chat: asking for quests to share",
+        default = "Anyone have quests for {dungeon}? Please share them with the group.",
+        keys = { "dungeon" } },
 }
 
 Messages.PLACEHOLDERS = { "dungeon", "quest", "zone", "size", "role", "roles", "spec", "level", "battleground" }

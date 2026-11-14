@@ -35,6 +35,16 @@ How the addon works inside, for anyone reading or changing the code. The player-
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
 - the one-second tick (`wow/main.lua`) and the Group Finder's result listeners (`wow/lfglist.lua`) run each part in
   its own `pcall`: an error goes to WoW's error handler and the other parts go on
+- the tour (`wow/ui/tour.lua`): `ns.db.tourSeen` is false on a fresh install (no saved variables at all) and true for
+  players who used Forever Groups before; while false, the window opens by itself 5 s into the first login (after
+  a fight, `PLAYER_REGEN_ENABLED`; `db.welcomed`) and each opening (`Window.show`/`toggle`, `Tour.maybeStart`) starts
+  the tour once the setup is on screen. Eight steps outline a part in pulsing gold with a bubble (roles, Looking now,
+  the Who is looking tab, dungeons, a dungeon row, tabs, Find group, keep playing) and darken the rest of the window (four bands around the part, placed from both
+  frames' edges every 0.25 s); a step whose part is hidden is left out. Its frames sit on UIParent in the
+  FULLSCREEN_DIALOG strata (above the window's border), take the window's scale and hide and show with it; the
+  bubble is left-aligned with the part, right-aligned when it would stick out past the window. Next/Done or Skip set `tourSeen`;
+  Settings → Display and `/fg tour` (`Tour.restart`) show it again. The test mock makes clients that used the
+  addon before unless `fresh = true`
 - matchmaking (`core/matchmaker.lua`): `findGroups` goes over the queue once, each entry in turn anchoring a group
   with the earliest feasible set behind it (an exhaustive search within `SEARCH_BUDGET` steps; an anchor that found
   nothing never finds a group later in the same run, as groups only take players away). The questing and battleground
@@ -484,7 +494,7 @@ Group Finder numbers are known (`LfgList.isSearched`: in the last dungeon search
 Finder off). Before queueing, a dungeon search asks for the ticked dungeons and every dungeon for the player's
 level, so the unticked rows are known too; once queued or filling, only those dungeons. The role tile of the role
 needed most for the ticked dungeons (fewest looking per place in a group, among the roles the class can play; none
-on a tie or with nobody looking) says "Needed most" (`W.neededRole`, `Widgets.paintNeeded`), not while queued and
+on a tie, with nobody looking, or for a class with only one role) says "Needed most" (`W.neededRole`, `Widgets.paintNeeded`), not while queued and
 not on the Quests tab.
 
 ### During and after forming
@@ -510,6 +520,23 @@ not on the Quests tab.
 - **Quest sharing:** in a group being built, party members with Forever Groups exchange which quests they have for the
   dungeon over PARTY addon messages (`v1|QL|dungeon|questID,...`, asked for with `v1|QR|dungeon`); the window shows
   the counts per player, and "Share my quests" shares every shareable quest, 1.5 s apart (`wow/questshare.lua`).
+  Sharing also happens by itself (`QuestShare.autoShare`, off with `db.noAutoShareQuests`) 5 s after the roster
+  changes or a list arrives: each of our shareable quests for the dungeon that a member lacks is shared, by the
+  first by name of the Forever Groups players holding it, once per member (`sharedTo`, so a member who joins later
+  gets it too). A member with Forever Groups whose list has not come in is waited for once (5 s more); one without
+  it gets the quest unless `C_QuestLog.IsUnitOnQuest(unit, id)` says it has it (that says false at a distance, and
+  WoW skips members already on the quest: "X is already on that quest."). Sharing from a timer is allowed
+  (`/fgp sharequest later`, 2026-11-14). With members without Forever Groups in the party (no list, not seen by
+  `Presence`), each Forever Groups player asks the party once on coming into the group to share theirs
+  (`QuestShare.askParty`, the `partyAskQuests` message; not with `db.noPartyAnnounce`): also a player who joins a run
+  under way, but not one who saw a boss die in this run (`Run.current().kills`; a /reload in the dungeon with a
+  level-up's roster update once asked mid-run). The one asking sends `v1|QA|dungeon` on the PARTY addon channel, and
+  who hears it does not ask; at a new group the players ask in order of name, 3 s apart, so only the first does. A
+  share WoW turns down with `ERR_QUEST_PUSH_TOO_FAR_S` or `ERR_QUEST_PUSH_BUSY_S` (a newcomer outside while we are
+  inside; the line names the player, so it is matched to the quest shared in the last 1.5 s) is tried again every
+  15 s, at most 20 times. What was shared, whether we asked or heard an ask are kept in `charDb.questShare` for the
+  group's dungeon, so a /reload does not share or ask again; it is cleared on leaving the group. Only a real change
+  starts a round (the tracked dungeon or the party's names, not every `GROUP_ROSTER_UPDATE`).
 - **Replacement:** `wow/run.lua` counts bosses killed (`ENCOUNTER_END`). A dungeon's boss count comes from WoW's
   Adventure Guide when it lists the dungeon, else from finished runs (the most ever killed in one run). When someone leaves the full group before every known boss is down, the leader gets a popup to
   queue the group for a replacement (Forever Groups and the Group Finder, the leaver excluded); with

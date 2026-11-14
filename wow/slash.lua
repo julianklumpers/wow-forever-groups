@@ -426,6 +426,7 @@ local COMMANDS = {
     { "invite", "send the group invites again (leader)", Group.inviteAll },
     { "debug", "[on | off]  show what Forever Groups does (asking, inviting, whispers, messages)", cmdDebug },
     { "preview", "show the group card with a sample group (again to hide it)", cmdPreview },
+    { "tour", "show the tour of the main window again", function() ns.Tour.restart() end },
     { "slots", "<t> <h> <d> | reset  test with a smaller group", cmdSlots },
     { "log", "[n] show the last n log lines", cmdLog },
     { "queue", "show who is looking (queue and Group Finder)", function() ns.QueueWindow.show() end },
