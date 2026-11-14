@@ -85,7 +85,8 @@ end
 local function settleAsks(roles)
     local _, updatedAt = ns.LfgList.listings()
     for leader, a in pairs(asks) do
-        if not a.over and not a.invitedAt and not a.yesAt and updatedAt and a.askedAt and updatedAt > a.askedAt then
+        local news = (updatedAt and a.askedAt and updatedAt > a.askedAt) or ns.LfgList.isDelisted(a.listingId)
+        if not a.over and not a.invitedAt and not a.yesAt and news then
             local found
             for _, group in ipairs(ns.LfgList.groups()) do
                 if group.leader == leader then
@@ -329,8 +330,9 @@ end
 -- (or for a request the player clicked), unless switched off; with the role
 -- the player offered.
 local function onInviteRequest(inviter, tank, healer, dps)
-    local a = asks[inviter]
-    if not a then
+    inviter = ns.Whispers.find(asks, inviter)
+    local a = inviter and asks[inviter]
+    if not a or ns.Group.justAccepted() then
         return
     end
     a.invitedAt = GetServerTime()

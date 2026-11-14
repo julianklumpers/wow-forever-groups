@@ -280,7 +280,10 @@ local function kindOf(ids)
     elseif battlegrounds > 0 then
         return "battlegrounds"
     end
-    return lastKind
+    -- Nothing we can place: our own search tells its kind (no results is
+    -- news too); results of a search in another category of WoW's window
+    -- are not ours to read.
+    return pending and pending.kind or nil
 end
 
 local function coversListing(covered, listing)
@@ -295,13 +298,19 @@ end
 
 function LfgList.refresh()
     local found, ids = call("GetSearchResults")
-    if lastKind ~= "dungeons" then
-        coveredActivities = nil
-    end
     if type(ids) ~= "table" then
         return
     end
     local kind = kindOf(ids)
+    if not kind then
+        Log.debug("group finder: %d results of another search, left alone", #ids)
+        return
+    end
+    -- Dungeon results of a search that was not ours (WoW's own window)
+    -- replace every listing.
+    if kind == "dungeons" and not (pending and pending.kind == "dungeons") then
+        coveredActivities = nil
+    end
     if kind == "zones" then
         refreshZones(ids)
         return
@@ -362,11 +371,30 @@ end
 -- WoW reports a change to one result between searches: someone delisted or
 -- formed a group, or a leader's name arrived after the results did. Drop,
 -- update or add just that listing.
+-- The listeners hear of a group that delisted between searches, once for a
+-- burst of updates: an ask to its leader is over without waiting for the
+-- next search.
+local notifyPending = false
+
+local function notifySoon()
+    if notifyPending or not (C_Timer and C_Timer.After) then
+        return
+    end
+    notifyPending = true
+    C_Timer.After(0.5, function()
+        notifyPending = false
+        notify()
+    end)
+end
+
 local function onResultUpdated(id)
     if unreadable(id) then
         return
     end
     version = version + 1
+    if LfgList.isDelisted(id) then
+        notifySoon()
+    end
     for i, listing in ipairs(zoneListings) do
         if listing.id == id then
             local ok, fresh = pcall(readResult, id, zonesOf, "zones")
@@ -635,6 +663,11 @@ function LfgList.search(part)
         end
     end
     local activities = part == "rest" and rest or mainPart
+    if #activities == 0 then
+        -- Nothing the Group Finder lists (The Stockade has no activity): a
+        -- search of everything would only bring 100 other results.
+        return false
+    end
     pending = { kind = "dungeons", part = part, lastPart = lastPart, covered = coveredActivities,
         searchedAt = searchedAt, anySearchAt = anySearchAt, new = {} }
     for _, activity in ipairs(activities) do
@@ -871,6 +904,11 @@ end
 -- Listed groups (two or more players) with the roles they still need.
 -- Whether a result is still listed, also when it could not be read (its
 -- leader's name not there yet): asks wait for it instead of giving up.
+function LfgList.isDelisted(id)
+    local info = id ~= nil and call("GetSearchResultInfo", id)
+    return type(info) == "table" and not isSecret(info.isDelisted) and info.isDelisted == true
+end
+
 function LfgList.stillListed(id)
     if id == nil then
         return false

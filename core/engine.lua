@@ -166,55 +166,40 @@ function Engine:updateEntry(members, reserved, dungeons)
     return true
 end
 
+-- Sets a field of the next queue entry; a queued entry changes right away
+-- when it still fits in the queue message. Returns false when it did not fit.
+function Engine:changeEntry(field, value)
+    self[field] = value
+    local entry = self.myEntry
+    if not entry or entry[field] == value then
+        return true
+    end
+    local before = entry[field]
+    entry[field] = value
+    if not Protocol.encode(heartbeatMessage(entry), self.space) then
+        entry[field] = before
+        return false
+    end
+    self:publish()
+    return true
+end
+
 -- The playstyle for the next queue entry; a queued entry changes right away.
 function Engine:setPlaystyle(playstyle)
-    self.playstyle = playstyle
-    local entry = self.myEntry
-    if entry and entry.playstyle ~= playstyle then
-        local before = entry.playstyle
-        entry.playstyle = playstyle
-        if not Protocol.encode(heartbeatMessage(entry), self.space) then
-            entry.playstyle = before
-            self:emit("error", {
-                message = "the new playstyle does not fit in the queue message; it applies next time",
-            })
-            return
-        end
-        self:publish()
+    if not self:changeEntry("playstyle", playstyle) then
+        self:emit("error", { message = "the new playstyle does not fit in the queue message; it applies next time" })
     end
 end
 
--- The player's spec code for the queue entry ("SHAMAN2"); a queued entry
--- changes right away when it still fits in the message.
+-- The player's spec code for the queue entry ("SHAMAN2").
 function Engine:setSpec(spec)
-    self.spec = spec
-    local entry = self.myEntry
-    if entry and entry.spec ~= spec then
-        local before = entry.spec
-        entry.spec = spec
-        if not Protocol.encode(heartbeatMessage(entry), self.space) then
-            entry.spec = before
-            return
-        end
-        self:publish()
-    end
+    self:changeEntry("spec", spec)
 end
 
 -- Whether the player would like to lead (only a solo player's wish counts in
--- matchmaking); a queued entry changes right away.
+-- matchmaking).
 function Engine:setLead(lead)
-    lead = lead and true or nil
-    self.lead = lead
-    local entry = self.myEntry
-    if entry and entry.lead ~= lead then
-        local before = entry.lead
-        entry.lead = lead
-        if not Protocol.encode(heartbeatMessage(entry), self.space) then
-            entry.lead = before
-            return
-        end
-        self:publish()
-    end
+    self:changeEntry("lead", lead and true or nil)
 end
 
 -- Puts the own entry in the local queue and tells the others, unless held.
@@ -714,8 +699,12 @@ function Engine:sinceOf(id)
     return entry and entry.since
 end
 
--- Queued real players, longest online first.
+-- Queued real players, longest online first; worked out once per change to
+-- the queue.
 function Engine:candidates()
+    if self.candidatesVersion == self.queue.version then
+        return self.candidateList
+    end
     local list = {}
     for _, id in ipairs(self.queue:ids()) do
         if not self.fakes[id] then
@@ -727,6 +716,7 @@ function Engine:candidates()
     for i, candidate in ipairs(list) do
         names[i] = candidate.id
     end
+    self.candidateList, self.candidatesVersion = names, self.queue.version
     return names
 end
 
@@ -786,6 +776,26 @@ function Engine.age(seq, now)
         return age
     end
     return nil
+end
+
+function Engine:prefix()
+    return self.space and self.space.prefix or Protocol.VERSION
+end
+
+-- A proposal of ours that never reached the channel: dropped here too, with
+-- nobody removed, so its players are free for the next round.
+function Engine:cancelOwnProposal(seq)
+    local key = Proposal.key(self.name, seq)
+    local proposal = self.proposals[key]
+    if not proposal or proposal.outcome then
+        return
+    end
+    self:release(proposal)
+    self.proposals[key] = nil
+    if self.myProposalKey == key then
+        self.myProposalKey = nil
+        self:emit("proposalEnded", { key = key, result = "requeued", reason = "unsent" })
+    end
 end
 
 function Engine:nextSeq()

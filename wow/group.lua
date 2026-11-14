@@ -211,8 +211,16 @@ local function closeRoleWindow()
 end
 
 -- role: the role ("T", "H", "D") to play in the joined group, or nil.
+local acceptedAt = -math.huge
+
+-- Several parts listen for the same invite (a queue group, an asked
+-- leader); the first to accept it takes it, the others leave it alone.
+function Group.justAccepted()
+    return GetTime() - acceptedAt < 2
+end
+
 local function acceptInvite(role)
-    if IsInGroup() or type(AcceptGroup) ~= "function" then
+    if IsInGroup() or type(AcceptGroup) ~= "function" or Group.justAccepted() then
         return false
     end
     if role then
@@ -230,6 +238,7 @@ local function acceptInvite(role)
         pcall(StaticPopup_Hide, "PARTY_INVITE")
     end
     if ok then
+        acceptedAt = GetTime()
         closeRoleWindow()
         if C_Timer and C_Timer.After then
             C_Timer.After(0.3, closeRoleWindow)

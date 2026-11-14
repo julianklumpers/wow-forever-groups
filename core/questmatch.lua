@@ -29,40 +29,12 @@ function QuestMatch.parse(key)
     return id, size
 end
 
-local function overlap(a, b)
-    local mine, count = {}, 0
-    for _, key in ipairs(a.dungeons) do
-        mine[key] = true
-    end
-    for _, key in ipairs(b.dungeons) do
-        if mine[key] then
-            count = count + 1
-        end
-    end
-    return count
-end
-
-local function has(entry, key)
-    for _, other in ipairs(entry.dungeons) do
-        if other == key then
-            return true
-        end
-    end
-    return false
-end
+local overlap, has = Matchmaker.sharedKeys, Matchmaker.wantsKey
+local shares, addNames = Matchmaker.sharesPlayer, Matchmaker.addNames
 
 local function canHeal(entry)
     for _, member in ipairs(entry.members) do
         if Roles.has(member.roles, "H") then
-            return true
-        end
-    end
-    return false
-end
-
-local function shares(entry, names)
-    for _, member in ipairs(entry.members) do
-        if member.name and names[member.name] then
             return true
         end
     end
@@ -90,22 +62,16 @@ local function bestAssignment(chosen, size)
     return best
 end
 
-local function addNames(entry, names)
-    for _, member in ipairs(entry.members) do
-        if member.name then
-            names[member.name] = true
-        end
-    end
-end
-
 -- nil when no group of this size can be formed around the anchor; a party
 -- that is already big enough for the quest needs nobody.
-local function groupFor(anchor, later, key, size, taken)
+-- The candidates are the entries after the anchor: list[from] onwards.
+local function groupFor(anchor, list, from, key, size, taken)
     if #anchor.members >= size or not bestAssignment({ anchor }, size) then
         return nil
     end
     local candidates = {}
-    for _, entry in ipairs(later) do
+    for i = from, #list do
+        local entry = list[i]
         if has(entry, key) and not shares(entry, taken) then
             candidates[#candidates + 1] = { entry = entry, overlap = overlap(anchor, entry), heals = canHeal(entry) }
         end
@@ -165,21 +131,7 @@ local function finish(group, size)
         end
         parts[i] = { id = entry.id, members = list, size = #entry.members, source = entry.source }
     end
-    local leader = Matchmaker.chooseLeaderEntry(parts)
-    local ordered = { leader }
-    for _, part in ipairs(parts) do
-        if part ~= leader then
-            ordered[#ordered + 1] = part
-        end
-    end
-    local assigned, members, sources = {}, {}, {}
-    for i, part in ipairs(ordered) do
-        assigned[i] = part.members
-        sources[i] = part.source
-        for _, member in ipairs(part.members) do
-            members[#members + 1] = member
-        end
-    end
+    local leader, assigned, sources, members = Matchmaker.orderByLeader(parts)
     return {
         dungeon = group.key,
         entries = sources,
@@ -212,14 +164,16 @@ function QuestMatch.findGroups(entries)
             end
         end
         for index, anchor in ipairs(remaining) do
-            local later = { unpack(remaining, index + 1) }
             local best
             if not shares(anchor, taken) then
-                local keys = { unpack(anchor.dungeons) }
+                local keys = {}
+                for i, key in ipairs(anchor.dungeons) do
+                    keys[i] = key
+                end
                 table.sort(keys)
                 for _, key in ipairs(keys) do
                     local _, size = QuestMatch.parse(key)
-                    local group = size and groupFor(anchor, later, key, size, taken)
+                    local group = size and groupFor(anchor, remaining, index + 1, key, size, taken)
                     if group and (not best or group.overlap > best.overlap) then
                         best = group
                     end

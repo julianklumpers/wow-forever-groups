@@ -4,12 +4,10 @@ local Proposal = require("core.proposal")
 local Config = require("core.config")
 
 describe("Election", function()
-    it("picks the alphabetically first name", function()
-        assert.are.equal("Anna-R", Election.pick({ "Bob-R", "Anna-R", "Cees-R" }))
-    end)
-
-    it("picks nobody from an empty list", function()
-        assert.is_nil(Election.pick({}))
+    it("puts whoever has been online longest first, then goes by name", function()
+        local list = { { id = "Bob-R", since = 5 }, { id = "Cees-R", since = 3 }, { id = "Anna-R", since = 5 } }
+        table.sort(list, Election.before)
+        assert.are.same({ "Cees-R", "Anna-R", "Bob-R" }, { list[1].id, list[2].id, list[3].id })
     end)
 
     it("lets the lower matchmaker win, then the older proposal", function()

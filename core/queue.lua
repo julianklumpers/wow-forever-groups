@@ -79,12 +79,16 @@ function Queue:expire(now, keepId)
     return removed
 end
 
+-- Sorted once per change to the entries; callers only read the list.
 function Queue:list()
-    local list = {}
-    for _, entry in pairs(self.entries) do
-        list[#list + 1] = entry
+    if self.listVersion ~= self.version then
+        local list = {}
+        for _, entry in pairs(self.entries) do
+            list[#list + 1] = entry
+        end
+        self.sorted, self.listVersion = Matchmaker.sortByPriority(list), self.version
     end
-    return Matchmaker.sortByPriority(list)
+    return self.sorted
 end
 
 function Queue:ids()

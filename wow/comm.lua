@@ -69,6 +69,10 @@ end
 
 -- P shares A's priority so a matchmaker's own answer never overtakes its proposal.
 local PRIORITY = { A = Outbox.HIGH, P = Outbox.HIGH, L = Outbox.NORMAL, Q = Outbox.LOW, S = Outbox.LOW }
+-- How long a message may wait in the queue before it is worthless: a
+-- proposal must reach its members before they count as gone (10 s), an
+-- answer before the proposal ends, a keep-alive before the next one.
+local TTL = { P = 8, A = 30, K = 10 }
 
 -- The dungeon (v2|) and questing (q1|) queues each have their own heartbeat.
 function Comm.send(text)
@@ -79,8 +83,22 @@ function Comm.send(text)
         -- lower priority) and put us back in everyone's queue.
         Comm.outbox:remove(heartbeat)
     end
-    Comm.outbox:push(text, PRIORITY[kind] or Outbox.NORMAL, kind == "Q" and heartbeat or nil)
+    Comm.outbox:push(text, PRIORITY[kind] or Outbox.NORMAL, kind == "Q" and heartbeat or nil, TTL[kind])
     Comm.outbox:flush()
+end
+
+-- A proposal of ours that never went out: its queue drops it, so nobody
+-- waits for it and its players are not counted as gone.
+function Comm.onDropped(text)
+    local space, seq = string.match(text, "^(%a%d+)|P|(%d+)|")
+    if not space then
+        return
+    end
+    for _, engine in ipairs(ns.Queues.engines()) do
+        if engine:prefix() == space then
+            engine:cancelOwnProposal(tonumber(seq))
+        end
+    end
 end
 
 -- Bypasses the queue; used on logout when there is no next tick.
@@ -277,6 +295,7 @@ function Comm.init(onReady, onMessage, onParty, onFlood)
         transmit = transmit,
         onDrop = function(text, reason)
             Log.debug("dropped %s (%s)", text, reason)
+            Comm.onDropped(text)
         end,
     })
     C_ChatInfo.RegisterAddonMessagePrefix(Comm.PREFIX)

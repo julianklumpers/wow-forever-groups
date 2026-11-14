@@ -35,6 +35,11 @@ How the addon works inside, for anyone reading or changing the code. The player-
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
 - the one-second tick (`wow/main.lua`) and the Group Finder's result listeners (`wow/lfglist.lua`) run each part in
   its own `pcall`: an error goes to WoW's error handler and the other parts go on
+- matchmaking (`core/matchmaker.lua`): `findGroups` goes over the queue once, each entry in turn anchoring a group
+  with the earliest feasible set behind it (an exhaustive search within `SEARCH_BUDGET` steps; an anchor that found
+  nothing never finds a group later in the same run, as groups only take players away). The questing and battleground
+  matchers share its helpers (`wantsKey`, `sharedKeys`, `sharesPlayer`, `addNames`, `orderByLeader`). The queue's
+  sorted list (`Queue:list`) and the election's candidates are worked out once per change to the queue
 - `media/` – `icon.tga` (64×64, 32-bit uncompressed, top-left origin; the only image in the package) and the logo
   for README and download sites (`logo-1024.png`, `logo-400.png`); their SVG sources are in `media/source/`
   (`logo.svg`, `icon.svg`; the ribbon's font is Cinzel from Google Fonts). Render them with headless Chrome
@@ -58,6 +63,11 @@ one stream of keep-alives, not two. A client that joins asks for the state (`v2|
 dungeon protocol's sync too) answer with their
 entry and re-send the open proposals they made or answered, so the newcomer knows who is reserved. Proposals resolve
 on every client, so they complete even if the matchmaker disappears.
+
+Messages wait in a send queue (`core/outbox.lua`, 6 at once and 1 per second) while WoW throttles or blocks them;
+some are worthless once late and expire there: a proposal after 8 s (before its members would count as gone), an
+answer after 30 s, a keep-alive after 10 s. A proposal of ours that expired or was dropped is called off on this client
+too (`Engine:cancelOwnProposal`, from `Comm.onDropped`): its players are free again and nobody counts as gone.
 
 Messages can get lost or arrive late, so a proposal is built to end the same way on every client. While it is open
 each member sends its own answer again every 8 s (`Config.ANSWER_RESEND`), and an answer that arrives before its
@@ -356,10 +366,15 @@ their roles to invite them, by whisper to the leader (one at a time; listings up
 away leader), then nearest to full, then the most recently listed; the next after 20 s without an invite, so two
 invites never arrive at once; a leader asked automatically is not asked again for 15 min, also in a later queue or
 after a reload (`charDb.askedLeaders`); the questing queue the same), and waits 60 s in all, or less: with no group left to ask and every asked leader clearly done (a no, full or gone),
-building starts at once (`Apply.wantsToBuild`). Replies are matched to the asked leader with or without a realm
-(`Whispers.find`), and `WhisperInvite` ignores leaders we asked. An asked leader's invite
+building starts at once (`Apply.wantsToBuild`). Replies and invites are matched to the asked leader with or without a
+realm (`Whispers.find`), and `WhisperInvite` ignores leaders we asked. A leader counts as asked only once the whisper
+went out. An ask is over as soon as WoW reports its group delisted (`LFG_LIST_SEARCH_RESULT_UPDATED`, `LfgList.isDelisted`;
+the listeners hear of it within 0.5 s), without waiting for the next search. The battleground and questing finders keep
+their asks in `core/asks.lua` (`Asks`: when, from which result, the role offered, a yes, a no, a question answered);
+the dungeon side keeps its own in `wow/lfgapply.lua`. An asked leader's invite
 is accepted at once while still looking, or for a "Request to join" click (`Group.acceptInvite`; off with
-`noAutoAcceptAsked`). An invite from a listed group brings up WoW's role window (`LFGInvitePopup`, with
+`noAutoAcceptAsked`). Several parts may know the inviter (a queue group, an asked leader); the first to accept takes
+the invite and the others leave it alone for 2 s (`Group.justAccepted`). An invite from a listed group brings up WoW's role window (`LFGInvitePopup`, with
 `PARTY_INVITE_REQUEST`'s tank/healer/damage flags) instead of the plain popup, and it stays up after joining
 (probe, 2026-11-12); it is closed with `StaticPopupSpecial_Hide` right away and again after 0.3 and 1 s, and the role
 is set through `RoleSync.expect` (`UnitSetRole("player")` once in the group). An ask offers one role
@@ -405,7 +420,7 @@ as not searched, the part keeps its turn, the search times go back) and tried ag
 most 3 times in a row. A refused zone or battleground search gets its search time back too, so the next input asks
 again instead of waiting on the old results. Wailing Caverns alone already gives 100 results at a busy time. Results replace only the listings of the dungeons searched
 (`coveredActivities`), and a listing for dungeons of both parts (it comes back in each search under a new id) is
-kept once per leader, the newest; listings of a part not searched again are dropped after 2 minutes; a search from Blizzard's window replaces them all. Alone and looking with one role, the main
+kept once per leader, the newest; listings of a part not searched again are dropped after 2 minutes; a dungeon search from Blizzard's window replaces them all. Results the addon can't place (no dungeon, zone or battleground among them) count only when its own search is waiting for an answer (`pending.kind`); otherwise they are another category searched in WoW's window and left alone. A dungeon search with no activity to search (The Stockade alone) is not sent. Alone and looking with one role, the main
 search uses WoW's advanced filter (`Search`'s sixth argument, built from `C_LFGList.GetAdvancedFilter` with the
 activities' `groupFinderActivityGroupID`s, which Forever requires, and one of `needsTank`/`needsHealer`/
 `needsDamage`): the server then leaves out groups without a place for that role, solo players stay. With several

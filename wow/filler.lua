@@ -385,9 +385,13 @@ end
 -- Searches if that would help; only from a click or key press.
 function Filler.searchIfUseful(age)
     if Filler.wantsSearch(age) then
-        state.needSearch = false
-        LfgList.search()
-        return true
+        -- A search held back for the server's limit goes out on a later
+        -- input; until then it is still needed.
+        local ok, why = LfgList.search()
+        if ok then
+            state.needSearch = false
+        end
+        return ok or why == "wait"
     end
     return false
 end

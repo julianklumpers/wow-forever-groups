@@ -19,45 +19,14 @@ local BgMatch = {}
 
 local MAX_PLAYERS = 5
 
-local function has(entry, key)
-    for _, other in ipairs(entry.dungeons) do
-        if other == key then
-            return true
-        end
-    end
-    return false
-end
+local has, overlap = Matchmaker.wantsKey, Matchmaker.sharedKeys
+local names, shares = Matchmaker.addNames, Matchmaker.sharesPlayer
 
-local function overlap(a, b)
-    local count = 0
-    for _, key in ipairs(b.dungeons) do
-        if has(a, key) then
-            count = count + 1
-        end
-    end
-    return count
-end
-
-local function names(entry, into)
-    for _, member in ipairs(entry.members) do
-        if member.name then
-            into[member.name] = true
-        end
-    end
-end
-
-local function shares(entry, taken)
-    for _, member in ipairs(entry.members) do
-        if member.name and taken[member.name] then
-            return true
-        end
-    end
-    return false
-end
-
-local function groupFor(anchor, later, key, taken)
+-- The candidates are the entries after the anchor: list[from] onwards.
+local function groupFor(anchor, list, from, key, taken)
     local candidates = {}
-    for _, entry in ipairs(later) do
+    for i = from, #list do
+        local entry = list[i]
         if has(entry, key) and not shares(entry, taken) then
             candidates[#candidates + 1] = { entry = entry, overlap = overlap(anchor, entry) }
         end
@@ -116,21 +85,7 @@ end
 -- A party in the group leads it, else the player who would like to lead.
 local function finish(group)
     local parts, missing = assign(group.entries)
-    local leader = Matchmaker.chooseLeaderEntry(parts)
-    local ordered = { leader }
-    for _, part in ipairs(parts) do
-        if part ~= leader then
-            ordered[#ordered + 1] = part
-        end
-    end
-    local assigned, members, sources = {}, {}, {}
-    for i, part in ipairs(ordered) do
-        assigned[i] = part.members
-        sources[i] = part.source
-        for _, member in ipairs(part.members) do
-            members[#members + 1] = member
-        end
-    end
+    local leader, assigned, sources, members = Matchmaker.orderByLeader(parts)
     return {
         dungeon = group.key,
         entries = sources,
@@ -161,11 +116,13 @@ function BgMatch.findGroups(entries)
         for index, anchor in ipairs(remaining) do
             local best
             if #anchor.members < MAX_PLAYERS and not shares(anchor, taken) then
-                local later = { unpack(remaining, index + 1) }
-                local keys = { unpack(anchor.dungeons) }
+                local keys = {}
+                for i, key in ipairs(anchor.dungeons) do
+                    keys[i] = key
+                end
                 table.sort(keys)
                 for _, key in ipairs(keys) do
-                    local group = groupFor(anchor, later, key, taken)
+                    local group = groupFor(anchor, remaining, index + 1, key, taken)
                     if group and (not best or group.players > best.players
                         or (group.players == best.players and group.overlap > best.overlap)) then
                         best = group

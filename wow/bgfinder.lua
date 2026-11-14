@@ -64,14 +64,7 @@ local function forState(listing)
 end
 
 local function asking()
-    local count = 0
-    for leader, at in pairs(state.asked) do
-        local promised = state.promisedAt[leader] and now() - state.promisedAt[leader] < PROMISE_WAIT
-        if not state.over[leader] and (now() - at < ASK_WAIT or promised) then
-            count = count + 1
-        end
-    end
-    return count
+    return state.asks:waiting()
 end
 
 local function pendingCount()
@@ -99,18 +92,18 @@ local function startBuilding()
 end
 
 local function ask(listing)
-    state.asked[listing.leader] = now()
-    state.askedIds[listing.leader] = listing.id
+    local role = ns.LfgPick.askRole(state.roles)
     if ns.db.dryRun then
+        state.asks:add(listing.leader, listing.id, role)
         Log.info("Dry run: would ask %s to invite you for %s.", listing.leader, battlegroundName())
         return
     end
-    local role = ns.LfgPick.askRole(state.roles)
     local sent = whisper(listing.leader, ns.Messages.text("bgAsk", {
         level = UnitLevel("player"), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
         battleground = englishName(),
     }))
     if sent then
+        state.asks:add(listing.leader, listing.id, role)
         ns.Apply.rememberAsk(listing.leader)
         ns.Whispers.expectReplies(listing.leader, 90)
         Log.detail("Asked %s to invite you for %s.", listing.leader, battlegroundName())
@@ -123,7 +116,7 @@ local function nextGroup()
     local best
     for _, listing in ipairs((ns.LfgList.battlegroundListings())) do
         if not listing.solo and (listing.open or 0) > 0 and listing.leader ~= ns.selfName and forState(listing)
-            and not state.asked[listing.leader] and not ns.Apply.recentlyAsked(listing.leader)
+            and not state.asks:find(listing.leader) and not ns.Apply.recentlyAsked(listing.leader)
             and (not best or (listing.age or 0) < (best.age or 0)) then
             best = listing
         end
@@ -134,17 +127,15 @@ end
 -- Listed groups that left the Group Finder after an ask are over.
 local function settleAsks()
     local listings, updatedAt = ns.LfgList.battlegroundListings()
-    for leader, at in pairs(state.asked) do
-        if not state.over[leader] and not state.promisedAt[leader] and (updatedAt or 0) > at then
-            local listed = ns.LfgList.stillListed(state.askedIds[leader])
-            for _, listing in ipairs(listings) do
-                listed = listed or (not listing.solo and listing.leader == leader)
-            end
-            if not listed then
-                state.over[leader] = true
-                Log.detail("%s's group is no longer listed; asking another.", leader)
-            end
+    local ended = state.asks:settle(updatedAt, function(leader, id)
+        local listed = ns.LfgList.stillListed(id)
+        for _, listing in ipairs(listings) do
+            listed = listed or (not listing.solo and listing.leader == leader)
         end
+        return listed
+    end, ns.LfgList.isDelisted)
+    for _, leader in ipairs(ended) do
+        Log.detail("%s's group is no longer listed; asking another.", leader)
     end
 end
 
@@ -272,7 +263,8 @@ local function newState(opts)
     return {
         battleground = opts.battleground, size = opts.size, roles = opts.roles, startedAt = now(),
         phase = (IsInGroup() or opts.lead or not ns.Features.apply()) and "build" or "ask",
-        asked = {}, askedIds = {}, over = {}, promisedAt = {}, answered = {}, pending = {}, tried = {},
+        asks = ns.Asks.new({ clock = now, find = ns.Whispers.find, wait = ASK_WAIT, promiseWait = PROMISE_WAIT }),
+        pending = {}, tried = {},
         healerNames = {}, listedRoles = {},
     }
 end
@@ -504,12 +496,15 @@ local function recentRequests()
 end
 
 function BgFinder.wasAsked(leader)
-    return (state and ns.Whispers.find(state.asked, leader) ~= nil) or ns.Whispers.find(recentRequests(), leader) ~= nil
+    return (state and state.asks:find(leader) ~= nil) or ns.Whispers.find(recentRequests(), leader) ~= nil
 end
 
 function BgFinder.onWhisper(text, sender)
-    sender = state and ns.Whispers.find(state.asked, sender)
-    if not sender or state.over[sender] then
+    local asked
+    if state then
+        asked, sender = state.asks:get(sender)
+    end
+    if not asked or asked.over then
         return
     end
     local ok, answer = pcall(ns.Replies.classify, text)
@@ -517,25 +512,21 @@ function BgFinder.onWhisper(text, sender)
         return
     end
     Log.detail("%s answered: \"%s\" (%s)", sender, text, answer or "unclear")
+    state.asks:answer(sender, answer)
     if answer == "no" then
-        state.over[sender] = true
         BgFinder.onResults()
         return
     end
-    if answer == "yes" then
-        state.promisedAt[sender] = now()
-    end
-    if not state.answered[sender] and ns.Replies.isQuestion(text) then
-        state.answered[sender] = true
-        ns.Apply.answerQuestion(sender, ns.LfgPick.askRole(state.roles))
+    if ns.Replies.isQuestion(text) and state.asks:firstQuestion(sender) then
+        ns.Apply.answerQuestion(sender, asked.role)
     end
 end
 
 -- An invite from a leader the player asked, while alone, is joined at once
 -- (unless switched off).
 function BgFinder.onInvite(inviter)
-    local asked = (state and ns.Whispers.find(state.asked, inviter)) or ns.Whispers.find(recentRequests(), inviter)
-    if not asked or IsInGroup() or ns.db.noAutoAcceptAsked then
+    local asked = (state and state.asks:find(inviter)) or ns.Whispers.find(recentRequests(), inviter)
+    if not asked or IsInGroup() or ns.db.noAutoAcceptAsked or ns.Group.justAccepted() then
         return
     end
     local roles = (state and state.roles) or ns.charDb.lastRoles or "D"

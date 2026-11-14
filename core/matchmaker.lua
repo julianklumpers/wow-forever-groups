@@ -311,6 +311,71 @@ function Matchmaker.chooseLeaderEntry(entries)
     return best.entry
 end
 
+-- Helpers the questing and battleground matchers share: entries list the
+-- keys they wait for in `dungeons`.
+function Matchmaker.wantsKey(entry, key)
+    for _, other in ipairs(entry.dungeons) do
+        if other == key then
+            return true
+        end
+    end
+    return false
+end
+
+-- How many keys two entries both wait for.
+function Matchmaker.sharedKeys(a, b)
+    local mine, count = {}, 0
+    for _, key in ipairs(a.dungeons) do
+        mine[key] = true
+    end
+    for _, key in ipairs(b.dungeons) do
+        if mine[key] then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+-- Whether a player of the entry is among names (already placed).
+function Matchmaker.sharesPlayer(entry, names)
+    for _, member in ipairs(entry.members) do
+        if member.name and names[member.name] then
+            return true
+        end
+    end
+    return false
+end
+
+function Matchmaker.addNames(entry, names)
+    for _, member in ipairs(entry.members) do
+        if member.name then
+            names[member.name] = true
+        end
+    end
+end
+
+-- parts: per entry { id, members (name, role), size, source }. Puts the
+-- leader's part first (chooseLeaderEntry) and returns it, with per part its
+-- members and queue entry, and every member in that order.
+function Matchmaker.orderByLeader(parts)
+    local leader = Matchmaker.chooseLeaderEntry(parts)
+    local ordered = { leader }
+    for _, part in ipairs(parts) do
+        if part ~= leader then
+            ordered[#ordered + 1] = part
+        end
+    end
+    local assigned, sources, members = {}, {}, {}
+    for i, part in ipairs(ordered) do
+        assigned[i] = part.members
+        sources[i] = part.source
+        for _, member in ipairs(part.members) do
+            members[#members + 1] = member
+        end
+    end
+    return leader, assigned, sources, members
+end
+
 -- target: the roles the group's own players fill (all slots for a full group).
 local function finishGroup(group, target)
     local picked = {}
@@ -328,21 +393,7 @@ local function finishGroup(group, target)
         end
         assigned[i] = { id = entry.id, members = members, size = #entry.members, source = entry.source }
     end
-    local leaderEntry = Matchmaker.chooseLeaderEntry(assigned)
-    local ordered = { leaderEntry }
-    for _, entry in ipairs(assigned) do
-        if entry ~= leaderEntry then
-            ordered[#ordered + 1] = entry
-        end
-    end
-    local members, perEntry, sources = {}, {}, {}
-    for i, entry in ipairs(ordered) do
-        perEntry[i] = entry.members
-        sources[i] = entry.source
-        for _, member in ipairs(entry.members) do
-            members[#members + 1] = member
-        end
-    end
+    local leaderEntry, perEntry, sources, members = Matchmaker.orderByLeader(assigned)
     return {
         dungeon = group.dungeon,
         playstyles = Playstyles.mix(group.entries),
@@ -384,29 +435,22 @@ function Matchmaker.findGroups(entries, slots)
     slots = slots or Config.SLOTS
     local wrapped = wrapAll(entries, slots)
 
-    local groups, used, usedNames = {}, {}, {}
+    local groups, usedNames = {}, {}
     local budget = { left = SEARCH_BUDGET }
     local full = { T = slots.T, H = slots.H, D = slots.D }
-    local progress = true
-    while progress do
-        progress = false
-        local remaining = {}
-        for _, entry in ipairs(wrapped) do
-            if not used[entry.id] then
-                remaining[#remaining + 1] = entry
-            end
+    -- One pass is enough: the search is exhaustive and a group only takes
+    -- players away, so an anchor that found nothing never finds a group later.
+    -- Entries already placed are skipped through usedNames.
+    for anchorIndex = 1, #wrapped do
+        if budget.left <= 0 then
+            break
         end
-        for anchorIndex = 1, #remaining do
-            local group = tryAnchor(remaining, anchorIndex, slots, budget, usedNames)
-            if group then
-                for _, entry in ipairs(group.entries) do
-                    used[entry.id] = true
-                    setTaken(entry, usedNames, true)
-                end
-                groups[#groups + 1] = finishGroup(group, full)
-                progress = true
-                break
+        local group = tryAnchor(wrapped, anchorIndex, slots, budget, usedNames)
+        if group then
+            for _, entry in ipairs(group.entries) do
+                setTaken(entry, usedNames, true)
             end
+            groups[#groups + 1] = finishGroup(group, full)
         end
     end
     return groups

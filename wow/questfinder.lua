@@ -20,15 +20,13 @@ local ASK_WAIT = 20
 local PROMISE_WAIT = 30
 
 local invited = {}
-local asked = {}
--- Asked leaders who said no or whose group left the Group Finder, and those
--- who said yes (when).
-local over, promisedAt = {}, {}
--- The Group Finder result each asked leader was asked from, and the
--- leaders whose question was answered.
-local askedIds, answered = {}, {}
--- The one role offered to each asked leader, joined with on their invite.
-local askedRoles = {}
+
+local function newAsks()
+    return ns.Asks.new({ clock = GetTime, find = ns.Whispers.find, wait = ASK_WAIT, promiseWait = PROMISE_WAIT })
+end
+
+-- Leaders asked to invite the player, with the one role offered to each.
+local asks = newAsks()
 -- Everyone invited while this queue entry lasts: a player who let the
 -- invite run out is not invited again.
 local tried = {}
@@ -152,12 +150,10 @@ local function invite(listing, key, role, quest)
     Log.detail("Invited %s from the Group Finder for %s.", listing.name, quest.title)
 end
 
-local function ask(listing, quest)
-    asked[listing.leader] = GetTime()
-    askedIds[listing.leader] = listing.id
+local function askLeader(listing, quest)
     local role = ns.LfgPick.askRole(entry().members[1].roles, listing.remaining)
-    askedRoles[listing.leader] = role
     if ns.db.dryRun then
+        asks:add(listing.leader, listing.id, role)
         Log.info("Dry run: would ask %s, who leads a group in %s, to invite you.", listing.leader, quest.zone)
         return
     end
@@ -168,35 +164,27 @@ local function ask(listing, quest)
     if not sent then
         return
     end
+    asks:add(listing.leader, listing.id, role)
     ns.Apply.rememberAsk(listing.leader)
     ns.Whispers.expectReplies(listing.leader, 90)
     Log.detail("Asked %s, who leads a group in %s, to invite you for %s.", listing.leader, quest.zone, quest.title)
 end
 
 local function askCount()
-    local count = 0
-    for leader, at in pairs(asked) do
-        local promised = promisedAt[leader] and GetTime() - promisedAt[leader] < PROMISE_WAIT
-        if not over[leader] and (GetTime() - at < ASK_WAIT or promised) then
-            count = count + 1
-        end
-    end
-    return count
+    return asks:waiting()
 end
 
 -- Zone results that came in after an ask: a group no longer listed is over.
 local function settleAsks(listings, updatedAt)
-    for leader, at in pairs(asked) do
-        if not over[leader] and not promisedAt[leader] and updatedAt > at and GetTime() - at < ASK_WAIT then
-            local listed = ns.LfgList.stillListed(askedIds[leader])
-            for _, listing in ipairs(listings) do
-                listed = listed or (not listing.solo and listing.leader == leader)
-            end
-            if not listed then
-                over[leader] = true
-                Log.detail("%s's group is no longer listed; asking another.", leader)
-            end
+    local ended = asks:settle(updatedAt, function(leader, id)
+        local listed = ns.LfgList.stillListed(id)
+        for _, listing in ipairs(listings) do
+            listed = listed or (not listing.solo and listing.leader == leader)
         end
+        return listed
+    end, ns.LfgList.isDelisted)
+    for _, leader in ipairs(ended) do
+        Log.detail("%s's group is no longer listed; asking another.", leader)
     end
 end
 
@@ -212,6 +200,15 @@ function QuestFinder.onResults()
         return
     end
     settleAsks(listings, updatedAt)
+    -- Oldest listing first, on a copy: the list belongs to LfgList.
+    local byAge = {}
+    for i, listing in ipairs(listings) do
+        byAge[i] = listing
+    end
+    table.sort(byAge, function(a, b)
+        return (a.age or 0) > (b.age or 0)
+    end)
+    listings = byAge
     local keys = focus and { focus } or current.dungeons
     for _, key in ipairs(keys) do
         local quest = questFor(key)
@@ -226,9 +223,6 @@ function QuestFinder.onResults()
         if open > 0 then
             local taken = takenRoles(current)
             local picked = 0
-            table.sort(listings, function(a, b)
-                return (a.age or 0) > (b.age or 0)
-            end)
             for _, listing in ipairs(ns.Features.fill() and listings or {}) do
                 local role = listing.solo and hasZone(listing, quest.zone) and not tried[listing.name]
                     and listing.name ~= ns.selfName and not inParty(listing.name) and roleFor(listing.roles, taken)
@@ -246,7 +240,7 @@ function QuestFinder.onResults()
                 and askCount() < MAX_ASKS then
                 local groups = {}
                 for _, listing in ipairs(listings) do
-                    if not listing.solo and hasZone(listing, quest.zone) and not asked[listing.leader]
+                    if not listing.solo and hasZone(listing, quest.zone) and not asks:find(listing.leader)
                         and not ns.Apply.recentlyAsked(listing.leader) and (listing.members or 1) < size then
                         groups[#groups + 1] = listing
                     end
@@ -263,7 +257,7 @@ function QuestFinder.onResults()
                     return (a.age or 0) < (b.age or 0)
                 end)
                 if groups[1] then
-                    ask(groups[1], quest)
+                    askLeader(groups[1], quest)
                     return
                 end
             end
@@ -385,29 +379,34 @@ function QuestFinder.request(listing, roles, wanted)
         end
     end
     subject = subject or (listing.zones and listing.zones[1]) or "your group"
-    asked[listing.leader] = GetTime()
     local role = ns.LfgPick.askRole(roles or "D", listing.remaining)
-    askedRoles[listing.leader] = role
     if ns.db.dryRun then
+        asks:add(listing.leader, listing.id, role)
         Log.info("Dry run: would ask %s to invite you for %s.", listing.leader, subject)
         return
     end
-    whisper(listing.leader, ns.Messages.text("questAsk", {
+    local sent = whisper(listing.leader, ns.Messages.text("questAsk", {
         level = UnitLevel("player"), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
         quest = subject,
     }))
+    if not sent then
+        Log.debug("asking %s failed: the whisper did not go out", listing.leader)
+        return
+    end
+    asks:add(listing.leader, listing.id, role)
     Log.info("Asked %s to invite you for %s.", listing.leader, subject)
 end
 
 function QuestFinder.wasAsked(leader)
-    return ns.Whispers.find(asked, leader) ~= nil
+    return asks:find(leader) ~= nil
 end
 
 -- A whisper from a leader we asked: a clear no moves on to the next group,
 -- a clear yes holds off asking others while the invite comes.
 function QuestFinder.onWhisper(text, sender)
-    sender = ns.Whispers.find(asked, sender)
-    if not sender or over[sender] then
+    local ask
+    ask, sender = asks:get(sender)
+    if not ask or ask.over then
         return
     end
     local ok, answer = pcall(ns.Replies.classify, text)
@@ -415,24 +414,20 @@ function QuestFinder.onWhisper(text, sender)
         return
     end
     Log.detail("%s answered: \"%s\" (%s)", sender, text, answer or "unclear")
+    asks:answer(sender, answer)
     if answer == "no" then
-        over[sender] = true
         Log.detail("%s can't take you; asking another group.", sender)
         QuestFinder.onResults()
         return
     end
-    if answer == "yes" then
-        promisedAt[sender] = GetTime()
-    end
-    if not answered[sender] and ns.Replies.isQuestion(text) then
-        answered[sender] = true
-        ns.Apply.answerQuestion(sender, askedRoles[sender])
+    if ns.Replies.isQuestion(text) and asks:firstQuestion(sender) then
+        ns.Apply.answerQuestion(sender, ask.role)
     end
 end
 
 function QuestFinder.reset()
-    invited, asked, tried, focus, chosen, focusJoined = {}, {}, {}, nil, nil, nil
-    over, promisedAt, askedIds, answered = {}, {}, {}, {}
+    invited, tried, focus, chosen, focusJoined = {}, {}, nil, nil, nil
+    asks = newAsks()
 end
 
 -- For the status: { invited = n, asked = n }.
@@ -446,7 +441,7 @@ end
 
 function QuestFinder.tick()
     if not entry() then
-        if next(invited) or next(asked) or next(tried) or focus then
+        if next(invited) or asks:any() or next(tried) or focus then
             QuestFinder.reset()
         end
         return
@@ -475,7 +470,9 @@ end
 -- once, unless switched off.
 function QuestFinder.onInvite(inviter, tank, healer, dps)
     local current = entry()
-    if not asked[inviter] or not current or #current.members ~= 1 or ns.db.noAutoAcceptAsked
+    local ask
+    ask, inviter = asks:get(inviter)
+    if not ask or not current or #current.members ~= 1 or ns.db.noAutoAcceptAsked or ns.Group.justAccepted()
         or next(invited) ~= nil or (current.reserved or "") ~= "" then
         return
     end
@@ -486,7 +483,7 @@ function QuestFinder.onInvite(inviter, tank, healer, dps)
         end
     end
     local invitedRoles = ns.LfgPick.inviteRoles(tank == true, healer == true, dps == true)
-    local role = askedRoles[inviter]
+    local role = ask.role
     if not role or (invitedRoles and invitedRoles[role] == 0) then
         role = ns.LfgPick.joinRole(current.members[1].roles, remaining or invitedRoles)
     end

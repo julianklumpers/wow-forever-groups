@@ -5,16 +5,6 @@ local Election = {}
 
 -- Every client applies the same rule to its own view, so clients with the
 -- same view agree. Candidates are the owners of live queue entries.
-function Election.pick(names)
-    local best
-    for _, name in ipairs(names) do
-        if best == nil or name < best then
-            best = name
-        end
-    end
-    return best
-end
-
 -- Candidates { id, since }: whoever has been online longest comes first, so
 -- the matchmaker role stays with a stable client; ties go by name.
 function Election.before(a, b)

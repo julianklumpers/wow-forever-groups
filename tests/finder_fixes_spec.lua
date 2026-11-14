@@ -63,3 +63,51 @@ describe("a refused zone search", function()
         assert.is_true(client.ns.LfgList.secondsSinceZoneSearch() < 5)
     end)
 end)
+
+describe("results of a search in another category of WoW's Group Finder", function()
+    it("leave the dungeon listings alone", function()
+        local world = World.new()
+        world:list("Dm Dps", "D", 799)
+        world:list("Custom Group", "D", 5555)
+        local solo = world:addClient("Solo Dps", { level = 20 })
+        world:advance(CONNECT)
+        solo:slash("/dq")
+        world:advance(1)
+        assert.are.equal(1, #solo.ns.LfgList.listings())
+        world:advance(6)
+        solo.inClick, solo.clickSearched = true, false
+        solo.env.C_LFGList.Search(120, 0, 0, nil, false, nil, { 5555 })
+        solo.inClick = false
+        world:advance(1)
+        assert.are.equal(1, #solo.ns.LfgList.listings())
+        assert.are.equal("Dm Dps", solo.ns.LfgList.listings()[1].name)
+    end)
+end)
+
+describe("an asked group that leaves the Group Finder", function()
+    it("is over at once, and the next group is asked without waiting for a search", function()
+        local world = World.new()
+        local first = world:listGroup("Four Of Five", 799, { T = 0, H = 0, D = 1 })
+        world:listGroup("Three Of Five", 799, { T = 0, H = 1, D = 1 })
+        local solo = world:addClient("Solo Dps", { level = 20 })
+        world:advance(CONNECT)
+        solo:slash("/dq join dps dm")
+        world:advance(1)
+        local function asked()
+            local names = {}
+            for _, w in ipairs(solo.whispers) do
+                if w.text:find("could you invite me") then
+                    names[#names + 1] = w.target
+                end
+            end
+            return names
+        end
+        assert.are.same({ "Four Of Five" }, asked())
+        local searches = solo.searches
+        world.listings[first].isDelisted = true
+        solo:fire("LFG_LIST_SEARCH_RESULT_UPDATED", first)
+        world:advance(3)
+        assert.are.equal(searches, solo.searches)
+        assert.are.same({ "Four Of Five", "Three Of Five" }, asked())
+    end)
+end)

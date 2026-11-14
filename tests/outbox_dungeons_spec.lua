@@ -24,6 +24,18 @@ describe("Outbox", function()
         return Outbox.new(opts)
     end
 
+    it("drops an item that waited past its time to live", function()
+        local outbox = newOutbox({ capacity = 1 })
+        outbox:push("first")
+        outbox:push("late", Outbox.NORMAL, nil, 2)
+        outbox:push("kept")
+        assert.are.equal(1, outbox:flush())
+        now = 3
+        outbox:flush()
+        assert.are.same({ "first", "kept" }, sent)
+        assert.are.same({ "late:expired" }, dropped)
+    end)
+
     it("sends a burst up to capacity, then one per second", function()
         local outbox = newOutbox({ capacity = 3 })
         for i = 1, 5 do

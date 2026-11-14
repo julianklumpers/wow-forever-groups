@@ -51,19 +51,22 @@ end
 
 -- replaceKey: a queued item with the same key is replaced instead of adding a
 -- second one (e.g. only the newest heartbeat matters).
-function Outbox:push(text, priority, replaceKey)
+-- ttl: seconds after which an item not sent yet is dropped (onDrop "expired"),
+-- for messages that are worthless once late; nil keeps it until sent.
+function Outbox:push(text, priority, replaceKey, ttl)
     priority = priority or Outbox.NORMAL
+    local expiresAt = ttl and self.clock() + ttl or nil
     if replaceKey then
         for _, item in ipairs(self.queue) do
             if item.replaceKey == replaceKey then
-                item.text = text
+                item.text, item.expiresAt = text, expiresAt
                 return
             end
         end
     end
     self.sequence = self.sequence + 1
     self.queue[#self.queue + 1] = {
-        text = text, priority = priority, replaceKey = replaceKey, sequence = self.sequence,
+        text = text, priority = priority, replaceKey = replaceKey, sequence = self.sequence, expiresAt = expiresAt,
     }
     table.sort(self.queue, before)
     while #self.queue > self.maxQueued do
@@ -87,8 +90,20 @@ function Outbox:size()
     return #self.queue
 end
 
+function Outbox:dropExpired()
+    local now = self.clock()
+    for i = #self.queue, 1, -1 do
+        local item = self.queue[i]
+        if item.expiresAt and now >= item.expiresAt then
+            table.remove(self.queue, i)
+            self.onDrop(item.text, "expired")
+        end
+    end
+end
+
 function Outbox:flush()
     self:refill()
+    self:dropExpired()
     local sent = 0
     while #self.queue > 0 and self.clock() >= self.pausedUntil and self.tokens >= 1 do
         local item = self.queue[1]

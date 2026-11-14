@@ -36,6 +36,7 @@ core\classes.lua
 core\fill.lua
 core\lfgpick.lua
 core\replies.lua
+core\asks.lua
 wow\events.lua
 wow\log.lua
 wow\features.lua

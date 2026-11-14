@@ -14,6 +14,14 @@
   again instead of waiting half a minute.
 - Searching on key presses works again after a /reload during a fight, once the fight ends.
 - One error in a part of the addon no longer stops the rest from running.
+- Searching another category in WoW's own Group Finder window no longer wipes the dungeon
+  groups Forever Groups found.
+- A group proposal that could not be sent in time (chat locked during a boss fight) is called
+  off quietly, instead of counting everyone in it as gone.
+- When a group you asked to invite you leaves the Group Finder, the next group is asked right
+  away. A leader whose whisper could not be sent is no longer counted as asked.
+- An invite is accepted once, also when several parts of the addon know who sent it.
+- Matchmaking does less repeated work on a long queue.
 
 ## 0.26.0 (2026-11-14)
 

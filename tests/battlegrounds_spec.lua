@@ -117,6 +117,20 @@ describe("Find group on the Battlegrounds tab", function()
         assert.is_true(client:said("Joined Bg Lead's battleground group"))
     end)
 
+    it("does not count a leader as asked when the whisper could not go out", function()
+        local world = World.new()
+        world:listGroup("Bg Lead", 919, { T = 0, H = 0, D = 1 })
+        local client = world:addClient("Solo Player", { level = 25 })
+        ready(world, client, { "Healer" })
+        client.ns.db.noWhisper = true
+        client:click("Button", "Find group")
+        world:advance(2)
+        assert.is_false(client.ns.BgFinder.wasAsked("Bg Lead"))
+        client.ns.db.noWhisper = false
+        client.ns.BgFinder.onResults()
+        assert.is_true(client.ns.BgFinder.wasAsked("Bg Lead"))
+    end)
+
     it("builds a premade of ten from listed players, becoming a raid past five", function()
         local world = World.new()
         for i = 1, 9 do
