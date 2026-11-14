@@ -276,14 +276,15 @@ local function queueGroup(fromClick)
     if lastLeaver then
         names[#names + 1] = lastLeaver
     end
-    if fromClick then
-        ns.LfgList.search()
-    end
     if ns.engine and not ns.engine.myEntry then
         ns.join(members, { dungeon })
     end
     if ns.Features.fill() then
         ns.Filler.start({ dungeon = dungeon, missing = open, members = names })
+    end
+    -- After the fill started, so the click's one search covers its dungeon.
+    if fromClick then
+        ns.LfgList.search()
     end
     return dungeon, open
 end

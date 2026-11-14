@@ -169,7 +169,7 @@ describe("Find group on the Battlegrounds tab", function()
         assert.is_true(client.ns.BgFinder.isActive())
         assert.is_truthy(client:findText("Still looking for 2 healers"))
         world:list("Late Healer", "H", 919, 22)
-        client.inClick = true
+        client.inClick, client.clickSearched = true, false
         client.ns.LfgList.searchBattlegrounds()
         client.inClick = false
         world:advance(2)
@@ -188,6 +188,29 @@ describe("Find group on the Battlegrounds tab", function()
         client:click("Button", "Find players")
         world:advance(2)
         assert.are.equal(4, #client.invites)
+    end)
+
+    it("waits for an unanswered invite's place instead of inviting into a full party", function()
+        local world = World.new()
+        for i = 1, 8 do
+            world:list("Bg Player" .. i, "D", 919, 22)
+        end
+        local client = world:addClient("Solo Player", { level = 25 })
+        ready(world, client, { "Healer" })
+        client:click("Button", "Party (5)")
+        client:click("CheckButton", "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t I'd like to lead")
+        client:click("Button", "Find players")
+        world:advance(2)
+        assert.are.equal(4, #client.invites)
+        for i = 1, 3 do
+            client:joins(client.invites[i])
+        end
+        world:advance(40)
+        assert.are.same({}, client.refusedInvites)
+        assert.are.equal(4, #client.invites)
+        world:advance(25)
+        assert.are.equal(5, #client.invites)
+        assert.are.same({}, client.refusedInvites)
     end)
 
     it("stops building when the player leaves the group", function()

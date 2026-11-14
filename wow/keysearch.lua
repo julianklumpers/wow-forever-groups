@@ -53,8 +53,17 @@ end
 
 -- Sets the frame up out of combat. If the game would not pass keys through,
 -- the frame stays off so it can never swallow the player's keys.
+local waitingForCombat = false
+
 function KeySearch.init()
-    if frame or InCombatLockdown() then
+    if frame then
+        return
+    end
+    if InCombatLockdown() then
+        if not waitingForCombat then
+            waitingForCombat = true
+            ns.on("PLAYER_REGEN_ENABLED", KeySearch.init)
+        end
         return
     end
     frame = CreateFrame("Frame", "ForeverGroupsKeySearchFrame", UIParent)

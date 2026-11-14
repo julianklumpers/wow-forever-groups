@@ -17,6 +17,7 @@ function Sim.new(config, extra)
         order = {},
         pending = {},
         blocked = {},
+        held = {},
         sent = {},
         config = config,
         extra = extra or {},
@@ -54,11 +55,54 @@ function Sim:engine(name)
     return self.clients[name].engine
 end
 
+-- A small seeded generator, so a lossy run is the same every time.
+local function nextRandom(self)
+    self.seed = (self.seed * 1103515245 + 12345) % 2147483648
+    return self.seed / 2147483648
+end
+
+-- Every message to another client is lost with this chance.
+function Sim:lossy(rate, seed)
+    self.loss, self.seed = rate, seed or 1
+end
+
+-- Messages for which fn(from, to, text) is true are lost, or with hold kept
+-- back until releaseHeld; returns a function that ends the rule.
+function Sim:drop(fn, hold)
+    local rule = { fn = fn, hold = hold }
+    self.rules = self.rules or {}
+    self.rules[#self.rules + 1] = rule
+    return function()
+        rule.fn = function() return false end
+    end
+end
+
+function Sim:releaseHeld()
+    for _, msg in ipairs(self.held) do
+        self.pending[#self.pending + 1] = msg
+    end
+    self.held = {}
+    self:flush()
+end
+
 function Sim:broadcast(from, text)
     self.sent[#self.sent + 1] = { from = from, text = text, at = self.now }
     for _, name in ipairs(self.order) do
         if name ~= from and not self.blocked[from .. ">" .. name] then
-            self.pending[#self.pending + 1] = { from = from, to = name, text = text }
+            local msg, kept = { from = from, to = name, text = text }, nil
+            for _, rule in ipairs(self.rules or {}) do
+                if kept == nil and rule.fn(from, name, text) then
+                    kept = rule.hold and "held" or "lost"
+                end
+            end
+            if kept == nil and self.loss and nextRandom(self) < self.loss then
+                kept = "lost"
+            end
+            if kept == "held" then
+                self.held[#self.held + 1] = msg
+            elseif kept == nil then
+                self.pending[#self.pending + 1] = msg
+            end
         end
     end
 end

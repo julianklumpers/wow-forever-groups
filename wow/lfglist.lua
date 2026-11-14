@@ -33,6 +33,16 @@ local updatedAt
 local searchedAt = -math.huge
 local failedAt = -math.huge
 local listeners = {}
+
+-- One failing listener must not keep the others from the new results.
+local function notify()
+    for _, listener in ipairs(listeners) do
+        local ok, err = pcall(listener)
+        if not ok then
+            geterrorhandler()(err)
+        end
+    end
+end
 local loggedRoleKeys = false
 -- Results go to the dungeon or the zone cache, so a zone search never
 -- replaces the dungeon listings. Which one is told by the results' activities
@@ -213,14 +223,13 @@ local function refreshZones(ids)
     if #result == 0 and secret > 0 then
         return
     end
+    pending = nil
     zoneListings = result
     zoneUpdatedAt = GetTime()
     resultZones = searchingZones
     version = version + 1
     Log.debug("group finder zones: %d usable listings of %d results", #result, #ids)
-    for _, listener in ipairs(listeners) do
-        listener()
-    end
+    notify()
 end
 
 -- A battleground listing's open places: the battleground's size less its
@@ -241,13 +250,12 @@ local function refreshBattlegrounds(ids)
     if #result == 0 and secret > 0 then
         return
     end
+    pending = nil
     battlegroundListings = result
     battlegroundsUpdatedAt = GetTime()
     version = version + 1
     Log.debug("group finder battlegrounds: %d usable listings of %d results", #result, #ids)
-    for _, listener in ipairs(listeners) do
-        listener()
-    end
+    notify()
 end
 
 local function kindOf(ids)
@@ -348,9 +356,7 @@ function LfgList.refresh()
     updatedAt = GetTime()
     Log.debug("group finder: %d results (%s found), %d listings kept, %.1f s after the search", #ids,
         tostring(found), #listings, updatedAt - searchedAt)
-    for _, listener in ipairs(listeners) do
-        listener()
-    end
+    notify()
 end
 
 -- WoW reports a change to one result between searches: someone delisted or
@@ -629,8 +635,8 @@ function LfgList.search(part)
         end
     end
     local activities = part == "rest" and rest or mainPart
-    pending = { part = part, lastPart = lastPart, covered = coveredActivities, searchedAt = searchedAt,
-        anySearchAt = anySearchAt, new = {} }
+    pending = { kind = "dungeons", part = part, lastPart = lastPart, covered = coveredActivities,
+        searchedAt = searchedAt, anySearchAt = anySearchAt, new = {} }
     for _, activity in ipairs(activities) do
         if not searchedActivities[activity] then
             pending.new[#pending.new + 1] = activity
@@ -649,6 +655,7 @@ function LfgList.search(part)
         if not ok and filter then
             Log.debug("group finder search with a role filter failed (%s); without it", tostring(err))
             ok, err = pcall(fn, CATEGORY_DUNGEONS, 0, 0, languageFilter(), false, nil, activities)
+            noteSearch()
         end
         Log.debug("group finder: searching %d dungeons (%s%s)", #activities, part, filter and ", role filter" or "")
         coveredActivities = {}
@@ -686,9 +693,9 @@ function LfgList.searchZones(zones)
     if type(fn) ~= "function" or #activities == 0 or not ns.Features.groupFinder() or not roomToSearch() then
         return false
     end
+    pending = { kind = "zones", searchedAt = zoneSearchedAt, anySearchAt = anySearchAt }
     zoneSearchedAt, anySearchAt = GetTime(), GetTime()
     lastKind = "zones"
-    pending = nil
     searchingZones = {}
     for _, zone in ipairs(zones) do
         searchingZones[zone] = true
@@ -711,9 +718,9 @@ function LfgList.searchBattlegrounds()
     for _, battleground in ipairs(ns.Battlegrounds.list) do
         activities[#activities + 1] = battleground.lfg
     end
+    pending = { kind = "battlegrounds", searchedAt = battlegroundsSearchedAt, anySearchAt = anySearchAt }
     battlegroundsSearchedAt, anySearchAt = GetTime(), GetTime()
     lastKind = "battlegrounds"
-    pending = nil
     local ok, err = pcall(fn, CATEGORY_BATTLEGROUNDS, 0, 0, languageFilter(), false, nil, activities)
     noteSearch()
     if not ok then
@@ -964,9 +971,18 @@ function LfgList.init()
         failedAt = GetTime()
         sentAt[#sentAt] = nil
         Log.debug("group finder search failed: %s", tostring(reason))
-        local undo = lastKind == "dungeons" and pending
+        local undo = pending
         pending = nil
         if not undo then
+            return
+        end
+        -- A refused zone or battleground search counts as not done, so the
+        -- next input asks again instead of waiting on old results.
+        if undo.kind == "zones" then
+            zoneSearchedAt, anySearchAt = undo.searchedAt, undo.anySearchAt
+            return
+        elseif undo.kind == "battlegrounds" then
+            battlegroundsSearchedAt, anySearchAt = undo.searchedAt, undo.anySearchAt
             return
         end
         -- Not searched after all: its part keeps its turn and goes again on

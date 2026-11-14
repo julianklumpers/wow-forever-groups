@@ -2448,6 +2448,155 @@ local function cmdSpecArt()
     log("INFO", "specart: %d found, %d missing; details in the saved log", found, #missing)
 end
 
+-- Race art for the role tiles: atlases and files that might show the
+-- player's race, and the player's own 3D model at tile size, alone and over
+-- the spec art.
+local RACE_ALIASES = { scourge = { "scourge", "undead" }, nightelf = { "nightelf", "night-elf" },
+    bloodelf = { "bloodelf", "blood-elf" } }
+
+local raceArtFrame
+
+local function raceAtlases(race, gender)
+    local names = {}
+    for _, r in ipairs(RACE_ALIASES[race] or { race }) do
+        for _, pattern in ipairs({ "raceicon128-%s-%s", "raceicon-%s-%s", "charactercreate-race-%s-%s",
+            "charactercreate-ring-race-%s-%s", "racebanner-%s-%s" }) do
+            names[#names + 1] = string.format(pattern, r, gender)
+        end
+        for _, pattern in ipairs({ "charactercreate-startingzone-%s", "alliedrace-unlock-%s",
+            "racebanner-%s", "race-%s", "charactercreate-race-%s" }) do
+            names[#names + 1] = string.format(pattern, r)
+        end
+    end
+    return names
+end
+
+local function raceModel(parent, x, y, width, height, label, setup)
+    local cell = CreateFrame("Frame", nil, parent)
+    cell:SetSize(width, height)
+    cell:SetPoint("TOPLEFT", x, y)
+    local back = cell:CreateTexture(nil, "BACKGROUND")
+    back:SetAllPoints()
+    back:SetColorTexture(0.08, 0.08, 0.08, 1)
+    cell.back = back
+    local ok, model = pcall(CreateFrame, "PlayerModel", nil, cell)
+    store("RECV", "raceart: CreateFrame(PlayerModel) ok=%s", show(ok and model ~= nil))
+    if ok and model then
+        model:SetAllPoints()
+        local fine, err = pcall(setup, model, cell)
+        store("RECV", "raceart: model '%s' ok=%s err=%s", label, show(fine), show(err))
+    end
+    local text = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    text:SetPoint("TOP", cell, "BOTTOM", 0, -1)
+    text:SetText(label)
+    return cell
+end
+
+local function cmdRaceArt()
+    local raceName, raceFile = UnitRace("player")
+    local race = string.lower(raceFile or "")
+    local gender = UnitSex("player") == 3 and "female" or "male"
+    local class = select(2, UnitClass("player"))
+    store("RECV", "raceart: UnitRace=%s file=%s sex=%s class=%s", show(raceName), show(raceFile),
+        show(UnitSex("player")), show(class))
+    if raceArtFrame then
+        raceArtFrame:Hide()
+    end
+    local frame = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+    raceArtFrame = frame
+    frame:SetSize(560, 560)
+    frame:SetPoint("CENTER")
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    title:SetPoint("TOP", 0, -5)
+    title:SetText(string.format("Race art for %s %s (%s)  (/fgp raceart)", tostring(raceName), gender, race))
+
+    local W, H = 250, 88
+    local spec = CLASS_SPECS[class] and CLASS_SPECS[class][1]
+    local specAtlas = spec and ("spec-thumbnail-" .. string.lower(class) .. "-" .. spec)
+    raceModel(frame, 16, -34, W, H, "full body", function(model)
+        model:SetUnit("player")
+    end)
+    raceModel(frame, 290, -34, W, H, "portrait zoom 0.7", function(model)
+        model:SetUnit("player")
+        model:SetPortraitZoom(0.7)
+    end)
+    raceModel(frame, 16, -150, W, H, "zoom 0.7 on the right, over faded spec art", function(model, cell)
+        if specAtlas and atlasExists(specAtlas) then
+            cell.back:SetAtlas(specAtlas)
+            cell.back:SetAlpha(0.35)
+        end
+        model:ClearAllPoints()
+        model:SetPoint("TOPRIGHT")
+        model:SetPoint("BOTTOMRIGHT")
+        model:SetWidth(W * 0.55)
+        model:SetUnit("player")
+        model:SetPortraitZoom(0.7)
+    end)
+    raceModel(frame, 290, -150, W, H, "full body, turned, camera further", function(model)
+        model:SetUnit("player")
+        model:SetFacing(0.5)
+        if model.SetCamDistanceScale then
+            model:SetCamDistanceScale(1.3)
+        end
+    end)
+
+    local files = {}
+    for _, path in ipairs({
+        "Interface\\CharacterFrame\\TemporaryPortrait-" .. (gender == "female" and "Female" or "Male") .. "-"
+            .. tostring(raceFile),
+        "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Races",
+        "Interface\\Glues\\CharacterCreate\\CharacterCreate-" .. tostring(raceFile),
+        "Interface\\Glues\\LoadingScreens\\LoadScreen" .. tostring(raceFile),
+    }) do
+        local exists = fileExists(path)
+        store("RECV", "raceart: file %s exists=%s", path, show(exists))
+        if exists ~= false then
+            files[#files + 1] = path
+        end
+    end
+    local found, missing = {}, {}
+    for _, name in ipairs(raceAtlases(race, gender)) do
+        local exists, info = atlasExists(name)
+        if exists then
+            found[#found + 1] = { name = name, info = info }
+            store("RECV", "raceart: atlas %s %dx%d", name, info.width or 0, info.height or 0)
+        else
+            missing[#missing + 1] = name
+        end
+    end
+    store("RECV", "raceart: atlases missing: %s", table.concat(missing, ", "))
+    local ax, ay = 16, -270
+    local function place(width, height)
+        if ax + width > 540 then
+            ax, ay = 16, ay - 130
+        end
+        local cell = classArtCell(frame, ax, ay, width, height)
+        ax = ax + width + 30
+        return cell
+    end
+    for _, path in ipairs(files) do
+        local cell = place(110, 110)
+        cell.image:SetTexture(path)
+        cell.label:SetText(path:match("[^\\]+$"))
+    end
+    for _, atlas in ipairs(found) do
+        local w, h = atlas.info.width or 100, atlas.info.height or 100
+        local scale = math.min(160 / w, 110 / h, 1)
+        local cell = place(math.max(20, w * scale), math.max(20, h * scale))
+        cell.image:SetAtlas(atlas.name)
+        cell.label:SetText(atlas.name)
+    end
+    frame:Show()
+    log("INFO", "raceart: %d files, %d atlases found; details in the saved log. Please take a screenshot.", #files,
+        #found)
+end
+
 -- The art on the category buttons of WoW's Group Finder (Dungeons, Quests &
 -- Zones): reads the textures of the real buttons (open the Group Finder
 -- first) and checks likely atlas names; what exists is drawn.
@@ -2892,6 +3041,7 @@ local COMMANDS = {
     { "chatfilter", "check that our own outgoing whispers can be hidden from chat", cmdChatFilter },
     { "classart", "[class] show the class art this client has (talent backgrounds, icons, atlases)", cmdClassArt },
     { "specart", "check the retail spec art atlases for every class", cmdSpecArt },
+    { "raceart", "your race: race atlases and files, and your own 3D model at role tile size", cmdRaceArt },
     { "finderart", "the art of the Group Finder's category buttons (open the Group Finder first)", cmdFinderArt },
     { "pvp", "battlegrounds: functions, the battlegrounds and the Group Finder's battleground activities", cmdPvp },
     { "mask", "draw art with rounded-corner mask candidates, to see which one fits the frames", cmdMask },

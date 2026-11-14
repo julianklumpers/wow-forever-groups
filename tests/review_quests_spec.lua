@@ -192,7 +192,8 @@ describe("questing in the Group Finder, reviewed", function()
         world:list("Zone Tank", "T", ELWYNN, 20, 300)
         local client = queued(world)
         assert.are.equal(1, #client.ns.LfgList.zoneListings())
-        client.inClick = true
+        world:advance(5)
+        client.inClick, client.clickSearched = true, false
         client.env.C_LFGList.Search(2, 0, 0, nil, false, nil, { 799 })
         client.inClick = false
         world:advance(1)
@@ -254,7 +255,7 @@ describe("the looking counts", function()
         world:list("Listed Heal", "H", 799, 20, 300)
         local client = world:addClient("Solo Player", { level = 20 })
         world:advance(30)
-        client.inClick = true
+        client.inClick, client.clickSearched = true, false
         client.ns.LfgList.search()
         client.inClick = false
         world:advance(1)

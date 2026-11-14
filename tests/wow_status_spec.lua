@@ -45,10 +45,11 @@ describe("Status bar", function()
         assert.is_nil(statusText(client):find("click to search", 1, true))
         local bar = client:frame("ForeverGroupsStatusFrame")
         local searches = client.searches
-        client.inClick = true
+        client.inClick, client.clickSearched = true, false
         bar.scripts.OnClick(bar)
         assert.are.equal(searches + 1, client.searches)
         assert.is_false(client:frame("ForeverGroupsFrame") ~= nil and client:frame("ForeverGroupsFrame").shown)
+        client.clickSearched = false
         bar.scripts.OnClick(bar)
         client.inClick = false
         assert.is_true(client:frame("ForeverGroupsFrame").shown)

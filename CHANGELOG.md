@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Groups form more reliably when chat messages get lost or arrive late. A lost "accept" no
+  longer leaves the leader behind while the others wait for an invite, answers are sent again
+  while a group is being proposed, and a proposal that arrives too late keeps your place instead
+  of dropping you from the queue.
+- A player who left one queue while staying in another no longer lingers in the first one.
+- Battleground and quest groups no longer invite into a full party while an earlier invite is
+  still open (WoW keeps an invite for a minute); a refused invite goes to the same player later.
+- "Find replacement" searches the Group Finder for the run's dungeon.
+- After a refused Group Finder search for quests or battlegrounds, the next key press searches
+  again instead of waiting half a minute.
+- Searching on key presses works again after a /reload during a fight, once the fight ends.
+- One error in a part of the addon no longer stops the rest from running.
+
 ## 0.26.0 (2026-11-14)
 
 - Forever Groups speaks German, Spanish and Russian: the window, tooltips, settings and the chat

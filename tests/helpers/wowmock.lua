@@ -289,6 +289,7 @@ function Client:click(kind, text, root)
         widget.checked = not widget.checked
     end
     self.inClick = true
+    self.clickSearched = false
     widget.scripts.OnClick(widget)
     self.inClick = false
 end
@@ -333,6 +334,7 @@ function Client:slash(text)
         for i = 1, 5 do
             if self.env["SLASH_" .. key .. i] == command then
                 self.inClick = true
+                self.clickSearched = false
                 fn(rest)
                 self.inClick = false
                 return
@@ -376,6 +378,7 @@ end
 function Client:clickWorld(button)
     local frame = self.env.WorldFrame
     self.inClick = true
+    self.clickSearched = false
     for _, fn in ipairs(frame.hooks and frame.hooks.OnMouseDown or {}) do
         fn(frame, button or "LeftButton")
     end
@@ -386,6 +389,7 @@ function Client:press(key)
     local frame = self.env.ForeverGroupsKeySearchFrame
     if frame and frame.keyboard and frame.scripts.OnKeyDown then
         self.inClick = true
+        self.clickSearched = false
         frame.scripts.OnKeyDown(frame, key)
         self.inClick = false
     end
@@ -394,6 +398,7 @@ end
 -- The player moves the mouse onto a window: WoW counts that as input.
 function Client:hover(frame)
     self.inClick = true
+    self.clickSearched = false
     for _, fn in ipairs(frame.hooks and frame.hooks.OnEnter or {}) do
         fn(frame)
     end
@@ -404,6 +409,7 @@ end
 function Client:acceptStaticPopup()
     local which = assert(self.popups[#self.popups], self.name .. " has no popup")
     self.inClick = true
+    self.clickSearched = false
     self.env.StaticPopupDialogs[which].OnAccept()
     self.inClick = false
 end
@@ -457,6 +463,10 @@ function Client:joins(name)
 end
 
 function Client:system(text)
+    local declined = type(text) == "string" and string.match(text, "^(.-) declines your group invitation%.$")
+    if declined then
+        self.answeredInvites[declined] = true
+    end
     self:fire("CHAT_MSG_SYSTEM", text)
 end
 
@@ -1104,6 +1114,27 @@ local function buildEnv(world, client)
             client.leftParty = true
         end,
         InviteUnit = function(name)
+            -- An invite holds a party place until it is answered or expires
+            -- after 60 s; a party with no place left refuses it.
+            local joined, held = {}, 0
+            for _, member in ipairs(client.party) do
+                joined[member] = true
+            end
+            for invited, at in pairs(client.heldInvites) do
+                if joined[invited] or world.time - at >= 60 or client.answeredInvites[invited] then
+                    client.heldInvites[invited] = nil
+                else
+                    held = held + 1
+                end
+            end
+            if not client.inRaid and not client.heldInvites[name] and #client.party + held >= 4 then
+                client.refusedInvites[#client.refusedInvites + 1] = name
+                world:schedule(client, 0.1, function()
+                    client:fire("CHAT_MSG_SYSTEM", env.ERR_GROUP_FULL)
+                end)
+                return
+            end
+            client.heldInvites[name] = world.time
             client.invites[#client.invites + 1] = name
             local target = world:findClient(name)
             if target then
@@ -1131,7 +1162,8 @@ local function buildEnv(world, client)
     env.C_LFGList = {
         Search = function(_, _, _, languages, _, advanced, activities)
             client.searchLanguages = languages
-            if not client.inClick then
+            -- WoW allows one search per input event; a second one is blocked.
+            if not client.inClick or client.clickSearched then
                 client.blockedSearches = client.blockedSearches + 1
                 client:fire("ADDON_ACTION_BLOCKED", "ForeverGroups", "UNKNOWN()")
                 return
@@ -1139,6 +1171,7 @@ local function buildEnv(world, client)
             if activities and client.rejectFilter then
                 error("bad argument #7 to 'Search'")
             end
+            client.clickSearched = true
             client.searches = client.searches + 1
             client.advancedFilter = advanced
             client.searchFilter = nil
@@ -1148,8 +1181,23 @@ local function buildEnv(world, client)
                     client.searchFilter[id] = true
                 end
             end
-            if client.throttle and client.throttle > 0 then
-                client.throttle = client.throttle - 1
+            -- The server's own limit: about 2 searches per 5 s; a refused
+            -- search does not count.
+            local recent = {}
+            for _, at in ipairs(client.serverSearches or {}) do
+                if world.time - at < 5 then
+                    recent[#recent + 1] = at
+                end
+            end
+            client.serverSearches = recent
+            local overLimit = #recent >= 2
+            if not overLimit then
+                recent[#recent + 1] = world.time
+            end
+            if overLimit or (client.throttle and client.throttle > 0) then
+                if not overLimit then
+                    client.throttle = client.throttle - 1
+                end
                 world:schedule(client, 0.2, function()
                     client:fire("LFG_LIST_SEARCH_FAILED", "throttled")
                 end)
@@ -1315,11 +1363,13 @@ function World:addClient(name, opts)
     local client = setmetatable({
         name = name, level = opts.level or 18, inGroup = false, online = true,
         frames = {}, chat = {}, sent = {}, whispers = {}, invites = {}, channels = {}, sendResults = {},
+        heldInvites = {}, answeredInvites = {}, refusedInvites = {},
         widgets = {}, party = {}, partyClasses = {}, isLeader = false, class = opts.class,
         searches = 0, blockedSearches = 0, roles = {}, roleSets = {}, notices = {},
         applicants = {}, applicantInvites = {},
         noEyeTemplate = opts.noEyeTemplate, noDropdownButton = opts.noDropdownButton, chatFilters = {},
         version = opts.version, talents = opts.talents, trial = opts.trial, locale = opts.locale,
+        inCombat = opts.inCombat,
         questLog = opts.questLog or {}, positions = {}, visible = {}, popups = {}, pushed = {},
         inspectTalents = {}, inspects = {}, farAway = {},
         activityLevels = opts.activityLevels or World.ACTIVITY_LEVELS, journalEntrances = opts.journalEntrances or {},

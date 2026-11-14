@@ -13,6 +13,7 @@ local QuestFinder = {}
 
 local STALE = 20
 local INVITE_TIMEOUT = 30
+local PARTY_SIZE = 5
 -- One leader at a time, the next after this long without an invite.
 local MAX_ASKS = 1
 local ASK_WAIT = 20
@@ -147,10 +148,7 @@ local function invite(listing, key, role, quest)
     whisper(listing.name, ns.Messages.text("questInvite", {
         quest = quest.title, zone = quest.zone, size = size, spec = ns.Spec.myLabel(),
     }))
-    local ok, err = pcall(C_PartyInfo.InviteUnit, listing.name)
-    if not ok then
-        Log.warn("Inviting %s failed: %s", listing.name, tostring(err))
-    end
+    ns.Invites.send(listing.name, "quests")
     Log.detail("Invited %s from the Group Finder for %s.", listing.name, quest.title)
 end
 
@@ -219,6 +217,12 @@ function QuestFinder.onResults()
         local quest = questFor(key)
         local _, size = ns.QuestMatch.parse(key)
         local open = quest and size - #current.members - #(current.reserved or "") or 0
+        if not IsInRaid() then
+            -- Invites we stopped waiting for still hold a place in WoW.
+            local free = PARTY_SIZE - (IsInGroup() and math.max(1, GetNumGroupMembers() or 1) or 1)
+                - math.max(#(current.reserved or ""), ns.Invites.held())
+            open = math.min(open, free)
+        end
         if open > 0 then
             local taken = takenRoles(current)
             local picked = 0
@@ -493,7 +497,20 @@ function QuestFinder.onInvite(inviter, tank, healer, dps)
     end
 end
 
+-- WoW turned the invite down, the party being full: that player was not
+-- invited after all and may be picked again.
+local function onRefused(name)
+    if invited[name] then
+        invited[name] = nil
+        tried[name] = nil
+        if focus then
+            updateEntry(focus)
+        end
+    end
+end
+
 function QuestFinder.init()
+    ns.Invites.onRefused("quests", onRefused)
     ns.LfgList.onUpdate(QuestFinder.onResults)
     ns.on("CHAT_MSG_WHISPER", QuestFinder.onWhisper)
     ns.on("PARTY_INVITE_REQUEST", QuestFinder.onInvite)

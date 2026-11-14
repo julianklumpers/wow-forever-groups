@@ -30,7 +30,7 @@ function PlayerMenu.whisper(name)
 end
 
 function PlayerMenu.invite(name)
-    local ok, err = pcall(C_PartyInfo.InviteUnit, name)
+    local ok, err = ns.Invites.send(name, "menu")
     if ok then
         Log.info("Invited %s.", name)
     else

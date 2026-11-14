@@ -97,9 +97,7 @@ local function inviteForDungeon(name, role)
     if not ns.Filler.trackInvite(name, role) then
         return false
     end
-    local ok, err = pcall(C_PartyInfo.InviteUnit, name)
-    if not ok then
-        Log.debug("invite %s failed: %s", name, tostring(err))
+    if not ns.Invites.send(name, "filler") then
         return
     end
     reply(name, ns.Messages.text("whisperYes", { role = string.lower(roleName), dungeon = dungeon }))

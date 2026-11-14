@@ -59,6 +59,7 @@ wow\groupplaces.lua
 wow\rolesync.lua
 wow\partyroles.lua
 wow\ui\widgets.lua
+wow\invites.lua
 wow\filler.lua
 wow\keysearch.lua
 wow\ui\proposal.lua

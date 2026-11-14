@@ -1,7 +1,7 @@
 local World = require("tests.helpers.wowmock")
 
 local function search(client, zones)
-    client.inClick = true
+    client.inClick, client.clickSearched = true, false
     if zones then
         client.ns.QuestFinder.searchNow()
     else

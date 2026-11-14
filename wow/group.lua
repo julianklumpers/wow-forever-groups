@@ -17,7 +17,7 @@ local function whisper(name, text)
 end
 
 local function invite(name)
-    local ok, err = pcall(C_PartyInfo.InviteUnit, name)
+    local ok, err = ns.Invites.send(name, "group")
     if not ok then
         Log.warn("Inviting %s failed: %s", name, tostring(err))
     end

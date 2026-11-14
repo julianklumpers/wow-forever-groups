@@ -370,34 +370,43 @@ end
 
 local ticks = 0
 
+-- One failing step must not stop the steps after it every second; the
+-- error still goes to WoW's error handler.
+local function step(fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok then
+        geterrorhandler()(err)
+    end
+end
+
 local function tick()
     if ns.engine then
-        ns.engine:tick()
+        step(ns.engine.tick, ns.engine)
     end
-    ns.QuestQueue.tick()
-    ns.BgQueue.tick()
-    ns.BgFinder.tick()
+    step(ns.QuestQueue.tick)
+    step(ns.BgQueue.tick)
+    step(ns.BgFinder.tick)
     if syncPending then
-        syncEntry()
+        step(syncEntry)
     end
-    Comm.flush()
-    Filler.tick()
-    ns.Apply.tick()
-    ns.AutoFill.tick()
-    ns.Listing.tick()
-    ns.GroupView.check()
-    ns.Entrances.tick()
-    ns.GroupPlaces.tick()
-    ns.InspectSpec.tick()
-    Status.refresh()
-    ns.MinimapButton.refresh()
+    step(Comm.flush)
+    step(Filler.tick)
+    step(ns.Apply.tick)
+    step(ns.AutoFill.tick)
+    step(ns.Listing.tick)
+    step(ns.GroupView.check)
+    step(ns.Entrances.tick)
+    step(ns.GroupPlaces.tick)
+    step(ns.InspectSpec.tick)
+    step(Status.refresh)
+    step(ns.MinimapButton.refresh)
     ticks = ticks + 1
     if ticks % 5 == 0 then
-        ns.RoleSync.apply()
-        syncEntry()
-        Filler.recompute()
+        step(ns.RoleSync.apply)
+        step(syncEntry)
+        step(Filler.recompute)
     end
-    Window.refresh()
+    step(Window.refresh)
 end
 
 -- The addon used to be called DungeonQueue. While that folder is still
@@ -452,6 +461,7 @@ ns.on("ADDON_LOADED", function(name)
     ns.FinderTab.init()
     Group.init()
     ns.LfgList.init()
+    ns.Invites.init()
     Filler.init()
     Filler.onChange(syncEntry)
     ns.RoleSync.init()

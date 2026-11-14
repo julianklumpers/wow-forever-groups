@@ -48,6 +48,8 @@ local wow_read_globals = {
     "UISpecialFrames",
     "UNKNOWNOBJECT",
     "UnitClass",
+    "UnitRace",
+    "UnitSex",
     "UnitExists",
     "UnitIsUnit",
     "UnitGUID",

@@ -24,6 +24,7 @@ function Queue:upsert(entry, now)
         spec = entry.spec,
         lead = entry.lead,
         lastSeen = now,
+        updatedAt = now,
     }
     self.entries[entry.id] = copy
     self.version = self.version + 1
@@ -34,6 +35,14 @@ function Queue:touch(id, now)
     local entry = self.entries[id]
     if entry then
         entry.lastSeen = now
+    end
+end
+
+-- Keeps an entry alive without a heartbeat (fake test players).
+function Queue:keep(id, now)
+    local entry = self.entries[id]
+    if entry then
+        entry.lastSeen, entry.updatedAt = now, now
     end
 end
 
@@ -50,10 +59,13 @@ function Queue:remove(id)
     return entry
 end
 
+-- An entry lives on its own heartbeats only: other messages from the same
+-- player (its other queues, keep-alives) prove the player is online, not
+-- that it still waits in this queue.
 function Queue:expire(now, keepId)
     local removed = {}
     for id, entry in pairs(self.entries) do
-        if id ~= keepId and now - entry.lastSeen > self.timeout then
+        if id ~= keepId and now - (entry.updatedAt or entry.lastSeen) > self.timeout then
             removed[#removed + 1] = id
         end
     end

@@ -250,6 +250,11 @@ describe("finding a replacement", function()
         assert.is_nil(leader:findText("^Dungeons for level"))
         assert.is_not_nil(leader:findText("^DPS  ·  1 open$"))
         leader:click("Button", "Find replacement")
+        local searched = {}
+        for id in pairs(leader.searchFilter or {}) do
+            searched[#searched + 1] = id
+        end
+        assert.are.same({ 799 }, searched)
         world:advance(2)
         assert.is_true(leader.ns.Filler.isActive())
         assert.are.equal("Dps D", leader.invites[#leader.invites])

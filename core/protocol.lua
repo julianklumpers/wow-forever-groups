@@ -10,7 +10,8 @@
 --       spec is the owner's class and talent tree ("SHAMAN2", core/specs.lua);
 --       lead is "1" when the owner would like to lead the group
 --   v2|K                  keep-alive from a likely matchmaker
---   v2|L                  sender left the queue
+--   v2|L[|<matchmaker>|<seq>]  sender left the queue; with a proposal: it
+--                         left because that proposal formed (counts as Yes)
 --   v2|S[|<nonce>]        sync request; queued players re-send Q. The nonce
 --                         lets a client recognise its own echo and learn the
 --                         exact sender string the server uses for it.
@@ -230,8 +231,14 @@ function encoders.queue(msg, space)
         .. tail
 end
 
-function encoders.leave()
-    return "L"
+function encoders.leave(msg)
+    if msg.matchmaker == nil then
+        return "L"
+    end
+    if not Protocol.isValidName(msg.matchmaker) or toInteger(msg.seq) == nil then
+        return nil, "invalid proposal"
+    end
+    return "L|" .. msg.matchmaker .. "|" .. msg.seq
 end
 
 function encoders.alive()
@@ -406,7 +413,11 @@ decoders.Q = function(fields, space)
     return msg
 end
 
-decoders.L = function()
+decoders.L = function(fields)
+    local seq = toInteger(fields[4])
+    if Protocol.isValidName(fields[3]) and seq then
+        return { kind = "leave", matchmaker = fields[3], seq = seq }
+    end
     return { kind = "leave" }
 end
 

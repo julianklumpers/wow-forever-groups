@@ -42,6 +42,7 @@ function Engine.new(opts)
         seqCounter = 0,
         fakes = {},
         fakeAnswers = {},
+        earlyAnswers = {},
         playstyle = opts.playstyle or Playstyles.ANY,
         spec = opts.spec,
         lead = opts.lead and true or nil,
@@ -296,6 +297,7 @@ end
 function Engine:sendAnswer(proposal, answer)
     if not proposal.isLocal then
         self:send({ kind = "answer", matchmaker = proposal.matchmaker, seq = proposal.seq, answer = answer })
+        self.answerResendAt = self:now() + self.config.ANSWER_RESEND
     end
     proposal:answer(self.name, answer)
     self:notifyProposal(proposal)
@@ -424,6 +426,13 @@ function Engine:handleOwnInvolvement(proposal)
         self:sendAnswer(proposal, "C")
         return
     end
+    -- Reached us after the matchmaker stopped waiting for our reservation:
+    -- it counts us as gone, so step out without losing the place.
+    if proposal.late then
+        self:sendAnswer(proposal, "C")
+        self:sendHeartbeat()
+        return
+    end
     if not self:proposalFitsMyEntry(proposal) then
         self:sendAnswer(proposal, "C")
         self:sendHeartbeat()
@@ -471,11 +480,16 @@ function Engine:addProposal(matchmaker, msg, isLocal)
         return
     end
     local now = self:now()
+    local age = Engine.age(msg.seq, now)
+    if age and age > self.config.PROPOSAL_TIMEOUT then
+        return
+    end
     local proposal = Proposal.new({
         matchmaker = matchmaker, seq = msg.seq, dungeon = msg.dungeon, entries = msg.entries, missing = msg.missing,
         playstyles = msg.playstyles, now = now, createdAt = Engine.createdAt(msg.seq, now, self.config),
     }, self.config)
     proposal.isLocal = isLocal == true
+    proposal.late = not proposal.isLocal and age ~= nil and age > self.config.ACK_TIMEOUT
     proposal.msg = msg
     -- The specs the entry owners sent with their entries, kept for the popup
     -- and the formed group (the entries leave the queue once it forms).
@@ -486,6 +500,10 @@ function Engine:addProposal(matchmaker, msg, isLocal)
     end
     self.proposals[key] = proposal
     self:reserve(proposal)
+    for _, early in ipairs(self.earlyAnswers[key] or {}) do
+        proposal:answer(early.id, early.answer)
+    end
+    self.earlyAnswers[key] = nil
     if proposal:includes(self.name) then
         self:handleOwnInvolvement(proposal)
     end
@@ -506,7 +524,7 @@ function Engine:finishProposal(proposal, outcome)
             local joinedAt = self.myEntry and self.myEntry.joinedAt
             self.myEntry = nil
             self.myProposalKey = nil
-            self:send({ kind = "leave" })
+            self:send({ kind = "leave", matchmaker = proposal.matchmaker, seq = proposal.seq })
             self:emit("proposalEnded", { key = proposal.key, result = "accepted" })
             local view = proposalView(proposal, self.fakes)
             view.isLeader = proposal.leader == self.name
@@ -577,11 +595,14 @@ function handlers.alive(self, sender)
     self.queue:touch(sender, self:now())
 end
 
-function handlers.leave(self, sender)
+-- A leave naming a proposal comes from a player whose group formed from
+-- it: a Yes that may have got lost on the way. Any other leave is a No.
+function handlers.leave(self, sender, msg)
     self.queue:remove(sender)
-    for _, proposal in pairs(self.proposals) do
+    local formed = msg and msg.matchmaker and Proposal.key(msg.matchmaker, msg.seq)
+    for key, proposal in pairs(self.proposals) do
         if not proposal.outcome then
-            proposal:answer(sender, "N")
+            proposal:answer(sender, key == formed and "Y" or "N")
         end
     end
     self:resolveProposals()
@@ -619,12 +640,46 @@ function handlers.propose(self, sender, msg)
     self:addProposal(sender, msg)
 end
 
+-- An answer can overtake the proposal it answers (they come from different
+-- senders); it is kept a little while for when the proposal arrives.
 function handlers.answer(self, sender, msg)
-    self.queue:touch(sender, self:now())
-    local proposal = self.proposals[Proposal.key(msg.matchmaker, msg.seq)]
-    if proposal and proposal:answer(sender, msg.answer) then
+    local now = self:now()
+    self.queue:touch(sender, now)
+    local key = Proposal.key(msg.matchmaker, msg.seq)
+    local proposal = self.proposals[key]
+    if not proposal then
+        local list = self.earlyAnswers[key] or {}
+        list[#list + 1] = { id = sender, answer = msg.answer, at = now }
+        self.earlyAnswers[key] = list
+        return
+    end
+    if msg.answer == "C" then
+        local entry = self.queue:get(sender)
+        if entry then
+            entry.conflictAt = now
+        end
+    end
+    if proposal:answer(sender, msg.answer) then
         self:notifyProposal(proposal)
         self:resolveProposals()
+    end
+    local outcome = proposal.outcome
+    -- The sender still waits on a group that formed here: our Yes may be the
+    -- one it missed. At most once per half resend interval, or two clients
+    -- that both formed the group would answer each other's answers forever.
+    if outcome and outcome.status == "accepted" and not proposal.isLocal and msg.answer ~= "N"
+        and msg.answer ~= "C" and proposal.answers[self.name] == "Y"
+        and now - (proposal.repliedAt or -math.huge) >= self.config.ANSWER_RESEND / 2 then
+        proposal.repliedAt = now
+        self:send({ kind = "answer", matchmaker = proposal.matchmaker, seq = proposal.seq, answer = "Y" })
+    end
+end
+
+function Engine:dropEarlyAnswers(now)
+    for key, list in pairs(self.earlyAnswers) do
+        if now - list[1].at > self.config.ACK_TIMEOUT then
+            self.earlyAnswers[key] = nil
+        end
     end
 end
 
@@ -632,7 +687,7 @@ end
 -- proposals (as if it left).
 function Engine:forget(sender)
     if sender ~= self.name then
-        handlers.leave(self, sender)
+        handlers.leave(self, sender, {})
     end
 end
 
@@ -713,9 +768,22 @@ end
 -- same moment even when the proposal reached them late. Ignored when it
 -- does not look like a recent server time.
 function Engine.createdAt(seq, now, config)
-    local created = math.floor((tonumber(seq) or 0) / 1000)
-    if created <= now and now - created <= config.PROPOSAL_TIMEOUT then
-        return created
+    local age = Engine.age(seq, now)
+    if age and age <= config.PROPOSAL_TIMEOUT then
+        return now - age
+    end
+    return nil
+end
+
+-- How many seconds ago the matchmaker made a proposal, from its sequence
+-- number; nil when the number does not look like a server time of the last
+-- hour.
+local PLAUSIBLE_AGE = 3600
+
+function Engine.age(seq, now)
+    local age = now - math.floor((tonumber(seq) or 0) / 1000)
+    if age >= 0 and age <= PLAUSIBLE_AGE then
+        return age
     end
     return nil
 end
@@ -761,7 +829,11 @@ function Engine:runMatchmaking()
             silent[id] = self:isSilent(id, rank, now)
         end
         for _, entry in ipairs(self.queue:list()) do
-            if not self:isReserved(entry.id) and not self.fakes[entry.id] and not silent[entry.id] then
+            -- After a conflict the entry's new version is on its way; matching
+            -- the old one again would only fail again.
+            local conflicted = entry.conflictAt and now - entry.conflictAt < self.config.CONFLICT_PAUSE
+            if not self:isReserved(entry.id) and not self.fakes[entry.id] and not silent[entry.id]
+                and not conflicted then
                 real[#real + 1] = entry
             end
         end
@@ -869,7 +941,7 @@ end
 function Engine:processFakes(now)
     for id in pairs(self.fakes) do
         if self.queue:get(id) then
-            self.queue:touch(id, now)
+            self.queue:keep(id, now)
         else
             self.fakes[id] = nil
         end
@@ -915,11 +987,16 @@ function Engine:tick()
     end
 
     self:processFakes(now)
+    self:dropEarlyAnswers(now)
     local proposal = self.myProposalKey and self.proposals[self.myProposalKey]
     if proposal and not proposal.outcome and now >= proposal.answerDeadline
         and proposal.answers[self.name] ~= "Y" then
         proposal.timedOut = true
         self:respond(false)
+    elseif proposal and not proposal.outcome and not proposal.isLocal and proposal.answers[self.name]
+        and now >= (self.answerResendAt or 0) then
+        -- Again, in case it got lost: one missing answer fails the group.
+        self:sendAnswer(proposal, proposal.answers[self.name])
     end
     self:resolveProposals()
 

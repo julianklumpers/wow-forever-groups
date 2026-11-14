@@ -521,7 +521,7 @@ describe("searching WoW's Group Finder", function()
         assert.is_true(listed("Wc Dps"))
         solo:slash("/dq join dps dm")
         world:advance(125)
-        solo.inClick = true
+        solo.inClick, solo.clickSearched = true, false
         solo.ns.LfgList.search()
         solo.inClick = false
         world:advance(1)

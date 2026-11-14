@@ -33,14 +33,19 @@ How the addon works inside, for anyone reading or changing the code. The player-
   `LFGForeverBlizzardTab` when present, re-placed on show). It only opens our window and closes theirs
   (`HideUIPanel`, out of combat); that Group Finder is secure code, so its panels are never shown or read
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
+- the one-second tick (`wow/main.lua`) and the Group Finder's result listeners (`wow/lfglist.lua`) run each part in
+  its own `pcall`: an error goes to WoW's error handler and the other parts go on
 - `media/` – `icon.tga` (64×64, 32-bit uncompressed, top-left origin; the only image in the package) and the logo
   for README and download sites (`logo-1024.png`, `logo-400.png`); their SVG sources are in `media/source/`
   (`logo.svg`, `icon.svg`; the ribbon's font is Cinzel from Google Fonts). Render them with headless Chrome
   (`--screenshot --default-background-color=00000000`), scale down with `sips -z`, and write the icon as an
   uncompressed TGA: `sips -s format tga` gives RLE
 - `probe/ForeverGroupsProbe/` – API probe addon for in-game checks (`/fgp help`)
-- `tests/` – busted specs; `tests/helpers/sim.lua` simulates engines on a shared channel,
-  `tests/helpers/wowmock.lua` loads the full addon (per the .toc) into mocked WoW clients
+- `tests/` – busted specs; `tests/helpers/sim.lua` simulates engines on a shared channel, and can lose, hold back
+  and reorder messages (`Sim:drop`, `Sim:lossy` with a seed, `Sim:releaseHeld`); `tests/helpers/wowmock.lua` loads
+  the full addon (per the .toc) into mocked WoW clients, with WoW's limits: one Group Finder search per click or key
+  press, about two per 5 s on the server (`LFG_LIST_SEARCH_FAILED` "throttled"), and an invite holding a party
+  place for 60 s (`ERR_GROUP_FULL` past five)
 
 ## How the network behaves
 
@@ -53,6 +58,20 @@ one stream of keep-alives, not two. A client that joins asks for the state (`v2|
 dungeon protocol's sync too) answer with their
 entry and re-send the open proposals they made or answered, so the newcomer knows who is reserved. Proposals resolve
 on every client, so they complete even if the matchmaker disappears.
+
+Messages can get lost or arrive late, so a proposal is built to end the same way on every client. While it is open
+each member sends its own answer again every 8 s (`Config.ANSWER_RESEND`), and an answer that arrives before its
+proposal is kept for 10 s (`earlyAnswers`). A member whose group formed leaves the queue with
+`v2|L|<matchmaker>|<seq>`, which counts as its Yes (a plain `v2|L` is a No; older clients ignore the extra fields),
+and a client that formed the group answers anyone still sending answers for it with its Yes again (at most every
+4 s). A proposal that reaches a member more than 10 s after it was made (the matchmaker already counts that member as
+gone) is answered with a conflict and a new heartbeat, so the member keeps its place; one older than 30 s is
+ignored. An entry that answered with a conflict is left out of matchmaking for 15 s (`Config.CONFLICT_PAUSE`) or until
+its new heartbeat arrives. A queue entry lives on its own heartbeats only (`updatedAt` in `core/queue.lua`): any
+message keeps a player alive for the keep-alive check, but not their entry, so a lost leave can't keep them in a
+queue they left. `tests/network_spec.lua` covers each case, and a run with 15% of all messages lost (25 seeds) checks
+that nobody leaves the queue without a group and that no leader misses the group its members formed. The answers
+sent again cost about 0.5 messages/s at 30 queued (`LOAD=1` load test).
 
 Every message speaks only for the player WoW names as its sender: a queue entry whose first member is someone else
 is ignored, answers count for the sender only, and a party's queue status is only taken from the party leader. A
@@ -279,7 +298,8 @@ partial group); a player with no partner in sight fills from the Group Finder ri
 An incomplete group stays in the queue (same place) so later Forever Groups players can still join it. Group Finder
 searches need player input: the Find group click, Accept, and, while roles are still open, the player's own key
 presses and clicks in the game world (a keyboard frame that passes every key through, and a hook on the world
-frame's mouse-down; `wow/keysearch.lua`), at most every 10 s and never in combat (`/fg autosearch` turns it off). A click on the status bar or minimap button also searches. While queued or filling, input refreshes results older than 30 s even when no role is open
+frame's mouse-down; `wow/keysearch.lua`), at most every 10 s and never in combat (`/fg autosearch` turns it off;
+after a /reload in combat the keyboard frame is set up once the fight ends, `PLAYER_REGEN_ENABLED`). A click on the status bar or minimap button also searches. While queued or filling, input refreshes results older than 30 s even when no role is open
 right now, so a decliner is replaced from fresh results; the filler keeps using results up to 5 minutes old (players
 who delist drop out of them as WoW reports it) before it waits for input.
 
@@ -298,8 +318,12 @@ dungeon; single-role players first, longest listed first) get a whisper and an i
 join within 30 s is replaced (a player who joins later is kept while a spot is open). The invite follows the whisper
 after 1.5 s, so an away player's automatic reply (`CHAT_MSG_AFK`/`CHAT_MSG_DND`) comes first and they are passed over
 uninvited. Every open invite takes a place in the party, also one given up on: WoW keeps an unanswered invite open
-for exactly 60 s. The filler counts those places and invites no more than the party has room for; after WoW's
-`ERR_GROUP_FULL` ("Your party is full") right after one of its invites it invites nobody for 10 s. A pending invite
+for exactly 60 s. Every invite the addon sends goes through `wow/invites.lua` (the filler, the battleground and quest
+finders, a formed queue group, whisper invites and the player menu), which counts the places open invites hold until
+they are answered, joined or 60 s old. The filler, the battleground finder and the quest finder invite no more than
+the party has room for after those. WoW's `ERR_GROUP_FULL` ("Your party is full") names nobody and belongs to the
+invite sent last (`Invites.onRefused` tells its sender, which may pick that player again); the filler then invites
+nobody for 10 s. A pending invite
 can't be taken back (`C_PartyInfo.UninviteUnit` is protected and left the invite open in the probe). The group card
 fills its open places with `Filler.invites()` by role: the invited player's name with "invited" and the seconds left
 of the 30, or "frees in" and the seconds until WoW drops a given-up invite. `/fg preview` shows both in its sample group. A role that a solo Forever Groups player
@@ -378,7 +402,8 @@ worked, the third within ~5 s always failed). So `LfgList` keeps the times of it
 battlegrounds alike, `roomToSearch`): with two in the last 5.5 s a search waits and goes out on a later input
 (`retryPart`; `Filler.searchAgain` then says so instead of warning). A refused search is undone (its dungeons count
 as not searched, the part keeps its turn, the search times go back) and tried again on input at least 3 s later, at
-most 3 times in a row. Wailing Caverns alone already gives 100 results at a busy time. Results replace only the listings of the dungeons searched
+most 3 times in a row. A refused zone or battleground search gets its search time back too, so the next input asks
+again instead of waiting on the old results. Wailing Caverns alone already gives 100 results at a busy time. Results replace only the listings of the dungeons searched
 (`coveredActivities`), and a listing for dungeons of both parts (it comes back in each search under a new id) is
 kept once per leader, the newest; listings of a part not searched again are dropped after 2 minutes; a search from Blizzard's window replaces them all. Alone and looking with one role, the main
 search uses WoW's advanced filter (`Search`'s sixth argument, built from `C_LFGList.GetAdvancedFilter` with the
@@ -476,7 +501,8 @@ not on the Quests tab.
   `db.autoReplace` that happens without the popup. Only the popup's click searches the Group Finder; without it the
   filler starts from the current results and `wow/keysearch.lua` refreshes them on the next key press. While the
   followed run goes on (`GroupView.isActive`) the window shows no setup (roles, party, dungeons); for the leader with
-  an open place its main button is "Find replacement" (`Run.findReplacement`, the same as the popup's).
+  an open place its main button is "Find replacement" (`Run.findReplacement`, the same as the popup's). Its click
+searches after the filler started, so the one search covers the run's dungeon.
 - **Taking the lead:** a member of a dungeon group with open places whose leader has no Forever Groups (not seen by
   `Presence`) gets a "Make me leader" button next to "Looking now" (`wow/takelead.lua`). It whispers the leader
   the `askLead` message; once the player leads within 10 minutes (`PARTY_LEADER_CHANGED` / `GROUP_ROSTER_UPDATE`),

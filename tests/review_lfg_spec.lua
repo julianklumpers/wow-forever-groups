@@ -59,7 +59,7 @@ describe("Group Finder flows after review", function()
             local world = World.new()
             local solo = world:addClient("Solo Dps", { level = 20 })
             world:advance(30)
-            solo.inClick = true
+            solo.inClick, solo.clickSearched = true, false
             solo.ns.LfgList.search()
             solo.inClick = false
             world:advance(2)

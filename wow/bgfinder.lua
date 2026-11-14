@@ -223,10 +223,7 @@ local function invite(listing)
         state.healerNames[listing.name] = true
     end
     whisper(listing.name, ns.Messages.text("bgInvite", { battleground = englishName(), size = state.size }))
-    local ok, err = pcall(C_PartyInfo.InviteUnit, listing.name)
-    if not ok then
-        Log.debug("invite %s failed: %s", listing.name, tostring(err))
-    end
+    ns.Invites.send(listing.name, "battlegrounds")
     Log.detail("Invited %s from the Group Finder for %s.", listing.name, battlegroundName())
 end
 
@@ -236,7 +233,9 @@ local function fill()
     if not canInvite() then
         return
     end
-    local have, waiting = members(), pendingCount()
+    -- An unanswered invite keeps its place in WoW for a minute, after we
+    -- stopped waiting for it.
+    local have, waiting = members(), math.max(pendingCount(), ns.Invites.held())
     local need = state.size - have - waiting
     if need <= 0 then
         return
@@ -584,7 +583,17 @@ local function loadNames()
     end
 end
 
+-- WoW turned the invite down, the party being full: that player was not
+-- invited after all and may be picked again.
+local function onRefused(name)
+    if state and state.pending[name] then
+        state.pending[name] = nil
+        state.tried[name] = nil
+    end
+end
+
 function BgFinder.init()
+    ns.Invites.onRefused("battlegrounds", onRefused)
     ns.on("PLAYER_LOGIN", loadNames)
     ns.LfgList.onUpdate(BgFinder.onResults)
     ns.on("CHAT_MSG_WHISPER", BgFinder.onWhisper)

@@ -89,31 +89,25 @@ local function sendInvite(name)
         return
     end
     pending.sentAt = GetTime()
-    local ok, err = pcall(C_PartyInfo.InviteUnit, name)
-    if not ok then
-        Log.debug("invite %s failed: %s", name, tostring(err))
-    end
+    ns.Invites.send(name, "filler")
     Log.detail("Invited %s from the Group Finder as %s.", name, Widgets.ROLE_NAMES[pending.role])
 end
 
--- Places left in the party for new invites: the members, the invites on
--- their way and those still open in WoW take theirs; none for a while after
--- WoW said it is full.
+-- Places left in the party for new invites: the members, the invites
+-- about to go out and those still open in WoW (any part's) take theirs; none
+-- for a while after WoW said it is full.
 local function freePlaces()
     local now = GetTime()
     if now - (state.fullAt or -math.huge) < FULL_WAIT then
         return 0
     end
     local taken = IsInGroup() and math.max(1, GetNumGroupMembers() or 1) or 1
-    for _ in pairs(state.pending) do
-        taken = taken + 1
-    end
-    for _, late in pairs(state.late) do
-        if now - late.at < INVITE_LIFETIME then
+    for _, pending in pairs(state.pending) do
+        if not pending.sentAt then
             taken = taken + 1
         end
     end
-    return PARTY_SIZE - taken
+    return PARTY_SIZE - taken - ns.Invites.held()
 end
 
 local function invite(pick)
@@ -370,7 +364,8 @@ function Filler.trackInvite(name, role)
         return false
     end
     state.exclude[name] = true
-    state.pending[name] = { role = role, at = GetTime() }
+    -- The caller sends the invite right away.
+    state.pending[name] = { role = role, at = GetTime(), sentAt = GetTime() }
     state.invited[name] = role
     ns.RoleSync.expect(name, role)
     changed()
@@ -606,21 +601,19 @@ function Filler.declinedName(text)
     return nil
 end
 
--- "Your party is full" right after one of our invites: that one did not go
--- out after all.
+-- WoW turned one of our invites down because the party is full
+-- (wow/invites.lua tells which): it did not go out after all.
+local function onRefused(name)
+    if not state or not state.pending[name] then
+        return
+    end
+    state.pending[name] = nil
+    state.exclude[name] = nil
+    ns.RoleSync.forget(name)
+end
+
 local function onPartyFull()
-    local newest, at
-    for name, pending in pairs(state.pending) do
-        if pending.sentAt and GetTime() - pending.sentAt < 1 and (not at or pending.sentAt > at) then
-            newest, at = name, pending.sentAt
-        end
-    end
     state.fullAt = GetTime()
-    if newest then
-        state.pending[newest] = nil
-        state.exclude[newest] = nil
-        ns.RoleSync.forget(newest)
-    end
     Log.detail("WoW says the party is full: earlier invites are still open. Waiting a moment.")
     changed()
 end
@@ -721,6 +714,7 @@ function Filler.missingFor(members)
 end
 
 function Filler.init()
+    ns.Invites.onRefused("filler", onRefused)
     ns.on("GROUP_ROSTER_UPDATE", onRosterUpdate)
     ns.on("CHAT_MSG_SYSTEM", onSystemMessage)
     ns.on("CHAT_MSG_AFK", onAway)
