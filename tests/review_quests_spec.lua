@@ -165,7 +165,7 @@ describe("questing in the Group Finder, reviewed", function()
         client:press("W")
         assert.are.same({ ELWYNN }, client.listingArgs[1].activityIDs)
         world:list("Listed Heal", "H", 799, 20, 300)
-        client:click("Button", "Also find a dungeon group »")
+        client:click("Button", "Dungeons")
         world:advance(6)
         client:slash("/dq join tank dm")
         world:advance(2)
@@ -203,17 +203,22 @@ describe("questing in the Group Finder, reviewed", function()
 end)
 
 describe("the window, reviewed", function()
-    it("shows a leader's party under the choices while setting up dungeons, on top elsewhere", function()
+    it("shows a leader's party under the choices, above the dungeons, and only on the Dungeons tab", function()
         local world = World.new()
         local client = world:addClient("Lead Player", { level = 20 })
         world:advance(12)
         client.party, client.isLeader = { "Pal Player" }, true
         client:slash("/dq")
-        local card = client.ns.WindowParts.ui.card
+        local W = client.ns.WindowParts
+        local title = W.ui.statusTitle
         local tank = client:find("CheckButton", "Tank")
-        assert.is_true(card.point[5] < tank.point[5])
+        assert.are.equal("Your party: 2/5", title.text)
+        assert.is_true(title.point[5] < tank.point[5])
+        assert.is_true(W.slots[1].shown)
+        assert.is_true(W.ui.dungeonHeader.point[5] < W.slots[1].point[5])
         client:click("Button", "Quests")
-        assert.is_true(card.point[5] > client:find("CheckButton", "Tank").point[5])
+        assert.is_false(title.shown)
+        assert.is_false(W.slots[1].shown)
     end)
 
     it("answers a questing proposal with /dq accept", function()
@@ -289,7 +294,7 @@ describe("keep-alives with both queues", function()
         for i, client in ipairs({ a, b }) do
             client:slash("/dq join dps " .. (i == 1 and "dm" or "wc"))
             client:slash("/dq")
-            client:click("Button", "Also find a questing group »")
+            client:click("Button", "Quests")
             if not client.ns.charDb.lastRoles then
                 client:click("CheckButton", "DPS")
             end

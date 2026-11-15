@@ -584,6 +584,10 @@ local function buildEnv(world, client)
     env.UnitExists = function(unit)
         return unitName(unit) ~= nil
     end
+    env.UnitIsConnected = function(unit)
+        local name = unitName(unit)
+        return name ~= nil and not client.offline[name]
+    end
     env.GetNormalizedRealmName = function()
         return "CAMWOWEU5Realm6PvP"
     end
@@ -758,6 +762,11 @@ local function buildEnv(world, client)
     env.GetBuildInfo = function()
         return "1.60.1", "70888", "Nov 1 2026", 16001
     end
+    env.GameFontHighlightSmall = {
+        GetFont = function()
+            return "Fonts\\FRIZQT__.TTF", 10, ""
+        end,
+    }
     env.GetLocale = function()
         return client.locale or "enUS"
     end
@@ -930,6 +939,21 @@ local function buildEnv(world, client)
     function methods.GetStringWidth(widget)
         return #(widget.text or "") * 7
     end
+    function methods.SetFontObject(widget, font)
+        widget.font = font
+    end
+    -- As in WoW, a font set by hand stays through SetFontObject, and a
+    -- height of 0 or less is an error.
+    function methods.SetFont(widget, file, size, flags)
+        assert(type(size) == "number" and size > 0, "FontString:SetFont(): Invalid font height")
+        widget.fontFile, widget.fontSize, widget.fontFlags = file, size, flags
+    end
+    function methods.GetFont(widget)
+        return widget.fontFile, widget.fontSize, widget.fontFlags
+    end
+    function methods.SetWordWrap(widget, wrap)
+        widget.wordWrap = wrap
+    end
     function methods.SetPropagateKeyboardInput(widget, value)
         widget.propagate = value
     end
@@ -944,6 +968,9 @@ local function buildEnv(world, client)
     end
     function methods.SetHeight(widget, height)
         widget.height = height
+    end
+    function methods.SetWidth(widget, width)
+        widget.width = width
     end
     -- A scroll bar (MinimalScrollBar): like WoW's, setting the place calls
     -- back with it too.
@@ -1462,7 +1489,7 @@ function World:addClient(name, opts)
         name = name, level = opts.level or 18, inGroup = false, online = true,
         frames = {}, chat = {}, sent = {}, whispers = {}, invites = {}, channels = {}, sendResults = {},
         heldInvites = {}, answeredInvites = {}, refusedInvites = {}, guids = {},
-        widgets = {}, party = {}, partyClasses = {}, isLeader = false, class = opts.class,
+        widgets = {}, party = {}, partyClasses = {}, offline = {}, isLeader = false, class = opts.class,
         searches = 0, blockedSearches = 0, roles = {}, roleSets = {}, notices = {},
         applicants = {}, applicantInvites = {},
         noEyeTemplate = opts.noEyeTemplate, noDropdownButton = opts.noDropdownButton, chatFilters = {},

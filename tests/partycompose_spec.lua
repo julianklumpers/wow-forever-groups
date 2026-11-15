@@ -38,7 +38,7 @@ describe("composing the party", function()
         client:click("CheckButton", "Choose the classes in my party")
         local cards = client.ns.WindowParts.composeCards
         assert.are.equal("You", cards[1].lines[1].text)
-        assert.are.equal("Warrior", cards[1].lines[2].text)
+        assert.is_truthy(cards[1].lines[2].text:find("^Warrior"))
         assert.is_false(cards[1].enabled)
         assert.are.equal("Any class", cards[2].text.text)
         local names = {}
@@ -188,7 +188,47 @@ describe("composing the party", function()
         assert.are.same({ "classicon-priest", "classicon-shaman" }, icons(slots[2]))
         assert.are.same({ "classicon-mage" }, icons(slots[3]))
         assert.are.same({}, icons(slots[4]))
-        assert.are.equal("open", slots[2].name.text)
+        assert.are.equal("", slots[2].name.text)
+        assert.is_false(slots[2].dashed)
+        assert.are.equal("open", slots[4].text.text)
+        assert.is_true(slots[4].dashed)
+        assert.is_false(slots[4].plus.shown)
+    end)
+
+    it("puts name and spec in the card's middle, a group's where at the bottom left and quests at the right", function()
+        local world = World.new()
+        local client = world:addClient("Lead Player", { level = 20, class = "WARRIOR",
+            atlases = { ["classicon-warrior"] = true, ["classicon-priest"] = true } })
+        world:advance(CONNECT)
+        client:slash("/dq")
+        local W = client.ns.WindowParts
+        local card = W.slots[1]
+        W.paintPlace(card, { role = "D", invite = { name = "Zephy Rin", left = 25 } },
+            { width = 100, layout = { distance = true, quests = true } })
+        local function middle()
+            return -math.floor((card.placeHeight - (12 + 15)) / 2)
+        end
+        assert.are.equal(middle(), card.lines[1].point[5])
+        W.paintPlace(card, { role = "D", name = "Swole Mcg", classToken = "WARRIOR" }, { width = 100, layout = {} })
+        assert.are.equal("DPS", card.lines[2].text)
+        assert.are.equal(middle(), card.lines[1].point[5])
+        W.paintPlace(card, { role = "H", name = "Zephy Rin", classToken = "PRIEST", specIndex = 3 },
+            { width = 100, layout = {} })
+        assert.are.equal("Healer", card.lines[2].text)
+        W.paintPlace(card, { role = "D", name = "Swole Mcg", classToken = "WARRIOR", distance = 120, quests = 3 },
+            { width = 100, layout = { distance = true, quests = true } })
+        assert.are.equal(middle(), card.lines[1].point[5])
+        assert.are.same({ "BOTTOMRIGHT", "BOTTOMRIGHT" }, { card.quests.point[1], card.quests.point[3] })
+        assert.are.same({ "BOTTOMLEFT", "BOTTOMLEFT" }, { card.distance.point[1], card.distance.point[3] })
+        assert.are.equal(card.quests.point[5], card.distance.point[5])
+        assert.is_true(card.distance.point[4] + card.distance.width + card.quests.width + 8 <= card.placeWidth)
+        assert.are.equal(7, card.distance.fontSize)
+        assert.are.equal(7, card.quests.fontSize)
+        assert.are.equal(8, card.lines[2].fontSize)
+        W.paintPlace(card, { role = "D", name = "No Addon", classToken = "WARRIOR", distance = 120, quests = "none" },
+            { width = 100, layout = { distance = true, quests = true } })
+        assert.is_false(card.quests.shown)
+        assert.are.equal("BOTTOMLEFT", card.distance.point[1])
     end)
 
     it("lets the filler invite only players of a wished class for that place", function()
@@ -549,5 +589,59 @@ describe("a queue message too long for the language", function()
         Protocol.encode = encode
         assert.are.equal(language, client.ns.engine.myEntry.language)
         assert.are.equal(language, client.ns.engine.language)
+    end)
+end)
+
+describe("the place cards", function()
+    local function placeOf(cards, name)
+        for _, card in ipairs(cards) do
+            if card.shown and card.name.text == name then
+                return card
+            end
+        end
+    end
+
+    local function heights(cards)
+        local seen, count = {}, 0
+        for _, card in ipairs(cards) do
+            if not seen[card.height] then
+                seen[card.height], count = true, count + 1
+            end
+        end
+        return count
+    end
+
+    it("share one height in a row, the name in the small font on one line right after the class icon", function()
+        local world = World.new()
+        local client = world:addClient("Lead Player", { level = 20, class = "WARRIOR",
+            atlases = { ["classicon-warrior"] = true, ["classicon-mage"] = true } })
+        world:advance(CONNECT)
+        client:slash("/dq")
+        client:click("CheckButton", "Tank")
+        client.party, client.isLeader = { "Maximiliana Longname" }, true
+        client.partyClasses["Maximiliana Longname"] = "MAGE"
+        client:fire("GROUP_ROSTER_UPDATE")
+        local W = client.ns.WindowParts
+        assert.are.equal(1, heights(W.slots))
+        assert.are.equal(W.PLACE_HEIGHT, W.slots[1].height)
+        local card = placeOf(W.slots, "Maximiliana Longname")
+        assert.is_not_nil(card)
+        assert.are.equal("GameFontHighlightSmall", card.name.font)
+        assert.is_false(card.name.wordWrap)
+        assert.is_true(card.nameIcon.shown)
+        assert.are.equal("classicon-mage", card.nameIcon.atlas)
+        assert.are.equal(card.nameIcon.point[4] + 16, card.name.point[4])
+        assert.is_true(card.nameIcon.point[4] >= 0)
+        assert.is_true(math.abs(card.nameIcon.point[5] - card.name.point[5]) <= 2)
+        local mine = placeOf(W.slots, "Lead Player")
+        assert.are.equal("GameFontHighlightSmall", mine.name.font)
+
+        client:click("CheckButton", "Choose the classes in my party")
+        assert.are.equal(1, heights(W.composeCards))
+        assert.are.equal(W.PLACE_HEIGHT, W.composeCards[1].height)
+        local friend = placeOf(W.composeCards, "Maximiliana Longname")
+        assert.are.equal("GameFontHighlightSmall", friend.name.font)
+        assert.are.equal(friend.nameIcon.point[4] + 16, friend.name.point[4])
+        assert.are.equal("GameFontHighlightSmall", placeOf(W.composeCards, "You").name.font)
     end)
 end)

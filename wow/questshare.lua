@@ -422,6 +422,16 @@ local function rosterKey()
     return tostring(ns.GroupView.trackedDungeon()) .. "|" .. table.concat(names, ",")
 end
 
+-- Once connected: the others' lists live in memory only, and party messages
+-- are only read once the own name is known (wow/comm.lua), so after a login
+-- or /reload the lists are asked for again from here; else the card shows "?"
+-- until someone joins or leaves.
+function QuestShare.onReady()
+    if IsInGroup() and ns.GroupView.trackedDungeon() then
+        sendSoon(true)
+    end
+end
+
 function QuestShare.init()
     ns.on("GROUP_ROSTER_UPDATE", function()
         if not IsInGroup() then

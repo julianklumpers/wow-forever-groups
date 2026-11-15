@@ -25,18 +25,15 @@ local ROLE_COUNTS = W.ROLE_COUNTS
 local GOLD, GREEN = { 1, 0.82, 0 }, { 0.4, 1, 0.4 }
 local TILE_GAP = W.TILE_GAP
 local TILE_WIDTH = W.TILE_WIDTH
-local QUEUE_ROWS = W.QUEUE_ROWS
-local QUEUE_ROW_HEIGHT = W.QUEUE_ROW_HEIGHT
 local ERRORS = W.ERRORS
 local SEGMENT_HEIGHT = 22
 local BOX_HEIGHT, BOX_PAD, ARROW_SIZE = 22, 8, 15
 local ui = W.ui
 local roleToggles = W.roleToggles
 local dungeonCells = W.dungeonCells
-local queueRows = W.queueRows
 
--- Choosing roles, playstyle and dungeons, and the queued
--- dungeons summary.
+-- Choosing roles, playstyle and dungeons; while searching the choices stay
+-- in sight, locked, and the list makes way.
 
 function W.selectedDungeons()
     if not ns.charDb.lastDungeons then
@@ -99,7 +96,8 @@ function W.selectedVisibleIds()
     return ids
 end
 
-function W.refreshRoles(queued)
+-- locked: the tiles can't be changed (W.locked).
+function W.refreshRoles(locked)
     local myClass = Party.playerClass()
     ns.charDb.lastRoles = Classes.filter(W.selectedRoles(), myClass)
     local current = ns.Spec.current()
@@ -107,7 +105,7 @@ function W.refreshRoles(queued)
         local allowed = Classes.canPlay(myClass, role)
         tile.reason = not allowed and CLASS_REASON or nil
         Widgets.setTileLook(tile, allowed and ns.Specs.forRole(myClass, role, current and current.index) or nil)
-        Widgets.paintTile(tile, W.hasRole(W.selectedRoles(), role), not queued and allowed)
+        Widgets.paintTile(tile, W.hasRole(W.shownRoles(W.currentTab()), role), allowed, locked)
     end
 end
 
@@ -214,38 +212,39 @@ function W.refreshDungeons()
     return #levelList, #otherList
 end
 
-function W.setSetupShown(shown)
-    for _, widget in ipairs(ui.setupWidgets) do
-        widget:SetShown(shown)
-        if widget.line then
-            widget.line:SetShown(shown)
-        end
+-- The roles, join or lead, playstyle and what goes with them.
+function W.hideChoices()
+    for _, role in ipairs(Widgets.ROLES) do
+        roleToggles[role]:Hide()
     end
-    ui.dungeonLinks:SetShown(shown)
-    if not shown then
-        ui.roleHint:Hide()
-        ui.joinChoice:Hide()
-        ui.leadChoice:Hide()
-        ui.partyLeads:Hide()
-        ui.playstyleButton:Hide()
-        ui.playstyleLabel:Hide()
-        W.hidePlaystyleMenu()
-        W.hideCompose()
-        W.hideLevels()
-        ui.headerLookingDot:Hide()
-        ui.headerLooking:Hide()
-        ui.headerLookingGroups:Hide()
-    end
-    if not shown then
-        for _, cell in ipairs(dungeonCells) do
-            cell:Hide()
-        end
-        ui.empty:Hide()
-    end
+    ui.roleHint:Hide()
+    ui.joinChoice:Hide()
+    ui.leadChoice:Hide()
+    ui.playstyleButton:Hide()
+    ui.playstyleLabel:Hide()
+    W.hidePlaystyleMenu()
+    W.hideBattlegroundSize()
+    W.hideCompose()
+    W.hideLevels()
 end
 
--- Places the role, party and dungeon choices from y downwards; returns the
--- new y.
+function W.hideHeaderLooking()
+    ui.headerLookingDot:Hide()
+    ui.headerLooking:Hide()
+    ui.headerLookingGroups:Hide()
+end
+
+function W.hideDungeonList()
+    ui.dungeonHeader:Hide()
+    ui.dungeonHeader.line:Hide()
+    ui.otherToggle:Hide()
+    ui.dungeonLinks:Hide()
+    for _, cell in ipairs(dungeonCells) do
+        cell:Hide()
+    end
+    ui.empty:Hide()
+end
+
 -- "5 groups" after a dungeon's counts: listed groups that need one of the
 -- player's roles; empty when none.
 -- How much the player's roles are wanted for a dungeon right now: listed
@@ -298,7 +297,9 @@ end
 
 -- The roles, shared by both tabs, and the playstyle (dungeons only);
 -- returns the new y.
-function W.layoutChoices(y, withPlaystyle)
+-- shareLine: a party leader has no join or lead choice, so the status title
+-- that follows goes on the playstyle's line; returns that title's y.
+function W.layoutChoices(y, withPlaystyle, shareLine)
     for _, role in ipairs(Widgets.ROLES) do
         roleToggles[role]:Show()
     end
@@ -334,6 +335,8 @@ function W.layoutChoices(y, withPlaystyle)
         end
         local width = BOX_PAD + longest + 6 + ARROW_SIZE + 3
         button:SetWidth(width)
+        button.boxWidth = width
+        Widgets.setEnabled(button, not W.locked("dungeons"))
         W.place(button, W.RIGHT - width, y)
         ui.playstyleLabel:ClearAllPoints()
         ui.playstyleLabel:SetPoint("RIGHT", ui.playstyleButton, "LEFT", -6, 0)
@@ -341,9 +344,11 @@ function W.layoutChoices(y, withPlaystyle)
         W.hidePlaystyleMenu()
     end
     W.placeBattlegroundSize(W.RIGHT, y)
-    y = y - BOX_HEIGHT - 10
     ui.roleHint:Hide()
-    return y
+    if shareLine then
+        return y - 4
+    end
+    return y - BOX_HEIGHT - 10
 end
 
 local function paintChoice(button, chosen)
@@ -356,23 +361,28 @@ local function paintChoice(button, chosen)
     end
 end
 
+-- The width the playstyle and its label take at the right of their line.
+function W.playstyleRoom()
+    return (ui.playstyleButton.boxWidth or 0) + 6 + math.ceil(ui.playstyleLabel:GetStringWidth() or 0) + 12
+end
+
 -- Join or lead at the left of the line under the tiles, alone; a party
--- leader leads already.
+-- always leads its group, so it gets no choice.
 function W.layoutLead(y)
     local state = Party.state()
-    local solo, leader = state == "solo", state == "leader"
+    local solo = state == "solo"
     ui.joinChoice:SetShown(solo)
     ui.leadChoice:SetShown(solo)
-    ui.partyLeads:SetShown(leader)
     if solo then
         local lead = W.wantsLead(W.currentTab()) == true
+        local locked = W.locked(W.currentTab())
         paintChoice(ui.joinChoice, not lead)
         paintChoice(ui.leadChoice, lead)
+        Widgets.setEnabled(ui.joinChoice, not locked)
+        Widgets.setEnabled(ui.leadChoice, not locked)
         W.place(ui.joinChoice, PAD, y)
         ui.leadChoice:ClearAllPoints()
         ui.leadChoice:SetPoint("LEFT", ui.joinChoice, "RIGHT", -1, 0)
-    elseif leader then
-        W.place(ui.partyLeads, PAD, y - 4)
     end
 end
 
@@ -395,15 +405,14 @@ function W.layoutCells(y, first, count)
     return y - math.ceil(count / COLUMNS) * CELL_HEIGHT
 end
 
-function W.layoutSetup(y, levelCount, otherCount)
-    y = W.layoutChoices(y, true)
-    y = W.layoutCompose(y)
-    y = W.layoutLevels(y, "dungeons", W.selectedVisibleIds()) - 12
-    if W.cardBelowRoles then
-        y = W.cardBelowRoles(y)
-    end
+-- The dungeons' header and list from y down; returns the new y.
+function W.layoutDungeonList(y)
+    local levelCount, otherCount = W.refreshDungeons()
+    ui.dungeonHeader:Show()
+    ui.dungeonHeader.line:Show()
+    ui.dungeonLinks:Show()
     W.place(ui.dungeonHeader, PAD, y)
-    W.layoutHeaderLooking()
+    W.layoutHeaderLooking(ui.dungeonHeader, "dungeons")
     ui.dungeonLinks:ClearAllPoints()
     ui.dungeonLinks:SetPoint("TOPRIGHT", W.frame, "TOPRIGHT", W.RIGHT_OFFSET, y + 1)
     y = y - W.HEADER_STEP
@@ -417,16 +426,25 @@ function W.layoutSetup(y, levelCount, otherCount)
     return W.layoutCells(y, levelCount + 1, otherCount) - 8
 end
 
--- "· 🛡 n ✚ n ⚔ n · 2 groups need you" after the header's text.
-function W.layoutHeaderLooking()
+-- "· 🛡 n ✚ n ⚔ n · 2 groups need you" after a list header's text: who is
+-- looking for what the tab has ticked. subject: "dungeons", "quests" or
+-- "battlegrounds".
+function W.layoutHeaderLooking(header, subject)
     local dot, counts, groups = ui.headerLookingDot, ui.headerLooking, ui.headerLookingGroups
     dot:ClearAllPoints()
-    dot:SetPoint("LEFT", ui.dungeonHeader, "RIGHT", 8, 0)
+    dot:SetPoint("LEFT", header, "RIGHT", 8, 0)
     counts:ClearAllPoints()
     counts:SetPoint("LEFT", dot, "RIGHT", 8, 0)
-    local wanted = ns.QueueWindow.wantedDungeons()
-    Widgets.setRoleCounts(counts, ns.Features.countsKnown() and ns.QueueWindow.lookingCounts(wanted, "dungeons"))
-    local needing = #ns.QueueWindow.groupsNeedingMe(wanted, "dungeons")
+    local wanted, known
+    if subject == "quests" then
+        wanted, known = ns.QueueWindow.wantedQuests(), ns.QueueWindow.questCountsKnown()
+    elseif subject == "battlegrounds" then
+        wanted, known = ns.QueueWindow.wantedBattlegrounds(), ns.LfgList.battlegroundsSearched()
+    else
+        wanted, known = ns.QueueWindow.wantedDungeons(), ns.Features.countsKnown()
+    end
+    Widgets.setRoleCounts(counts, known and ns.QueueWindow.lookingCounts(wanted, subject))
+    local needing = #ns.QueueWindow.groupsNeedingMe(wanted, subject)
     groups:ClearAllPoints()
     groups:SetPoint("LEFT", counts, "RIGHT", 6, 0)
     groups:SetText(needing > 0 and ("·  " .. ns.Locale.count(needing, "%d group needs you", "%d groups need you"))
@@ -434,43 +452,6 @@ function W.layoutHeaderLooking()
     for _, widget in ipairs({ dot, counts, groups }) do
         widget:Show()
     end
-end
-
--- The dungeons searched for, laid out like the table you picked them from.
-function W.layoutQueued(y, entry)
-    local count = #entry.dungeons
-    local header = ns.Locale.count(count, "Searching %d dungeon", "Searching %d dungeons")
-    local styles = entry.playstyle and entry.playstyle ~= ns.Playstyles.ANY
-        and ns.Playstyle.describe({ entry.playstyle, unpack(ns.Playstyles.partners(entry.playstyle)) },
-            " " .. L["or"] .. " ")
-    ui.queueHeader:SetText(styles and (header .. "  ·  " .. styles) or header)
-    W.place(ui.queueHeader, PAD, y)
-    y = y - W.HEADER_STEP
-    local known = ns.Features.countsKnown()
-    local shown = count > QUEUE_ROWS and QUEUE_ROWS - 1 or count
-    for i, row in ipairs(queueRows) do
-        local dungeon = i <= shown and Dungeons.get(entry.dungeons[i])
-        if dungeon then
-            row.name:SetText(Dungeons.name(dungeon.id))
-            row.name:SetTextColor(Widgets.levelColor(Party.playerLevel(), dungeon.min, dungeon.max))
-            row.range:SetText(Dungeons.rangeText(dungeon))
-            Widgets.setRoleCounts(row.counts, known and ns.QueueWindow.lookingCounts({ [dungeon.id] = true }))
-            W.paintDemand(row.groups, dungeon.id)
-            W.place(row, PAD - CHECK_INSET, y)
-            row:Show()
-            y = y - QUEUE_ROW_HEIGHT
-        else
-            row:Hide()
-        end
-    end
-    ui.queueMore:SetShown(count > shown)
-    if count > shown then
-        ui.queueMore:SetText(string.format(L["and %d more: %s"], count - shown,
-            W.shortNames({ unpack(entry.dungeons, shown + 1) })))
-        W.place(ui.queueMore, PAD, y - 4)
-        y = y - QUEUE_ROW_HEIGHT
-    end
-    return y - 6
 end
 
 function W.collectMembers()
@@ -538,9 +519,6 @@ function W.buildRoles()
         Locale.mark("Lead a group"), Locale.mark("You become the group's leader when a group forms with you, unless a "
         .. "party already has a leader. Forever Groups won't ask listed groups to invite you: it builds the group "
         .. "for you, with you as its leader."))
-    ui.partyLeads = Widgets.text(W.frame, "GameFontNormalSmall")
-    ui.partyLeads:SetText(L["|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t You lead this party"])
-    ui.partyLeads:Hide()
     for _, role in ipairs(Widgets.ROLES) do
         roleToggles[role] = Widgets.roleTile(W.frame, role, TILE_WIDTH, function(self)
             ns.charDb.lastRoles = Widgets.toggleRole(W.selectedRoles(), role, self:GetChecked())

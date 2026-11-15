@@ -6,13 +6,19 @@ local Log = ns.Log
 -- The player's spec: the talent tree with the most points, read from
 -- Forever's talent tree. It ticks the matching roles when the spec changes,
 -- warns when the queued roles fit none of it, and is named in whispers, the
--- proposal popup and the group card.
+-- proposal popup and the group's places.
 local Spec = {}
 
 local cached
 local dirty = true
 -- Specs of other players, from the proposals they were in this session.
 local known = {}
+-- Their points per tree, where inspecting told them.
+local pointsKnown = {}
+-- Next to the tree with the most points, another counts in a hybrid spec
+-- ("Shadow/Holy") with at least this share of all points: a level 20 player
+-- has only 11 points.
+local HYBRID_SHARE = 1 / 3
 
 local function isSecret(value)
     if canaccessvalue ~= nil then
@@ -69,8 +75,52 @@ function Spec.learn(name, classToken, points)
     local code = index and Specs.encode(classToken, index)
     if name and code then
         known[name] = code
+        pointsKnown[name] = { classToken = classToken, points = { points[1] or 0, points[2] or 0, points[3] or 0 } }
     end
     return code
+end
+
+-- The tree with the most points and any other with at least HYBRID_SHARE of
+-- all points, most points first, as their names ("Shadow/Holy", "Holy"); nil
+-- when the points are not known (only the main tree came with the queue, or
+-- nobody inspected them yet) or none are spent.
+function Spec.treesOf(name)
+    local classToken, points
+    if name == ns.selfName then
+        classToken, points = ns.Party.playerClass(), Spec.points()
+    elseif pointsKnown[name] then
+        classToken, points = pointsKnown[name].classToken, pointsKnown[name].points
+    end
+    if not classToken or type(points) ~= "table" then
+        return nil
+    end
+    local total, most = 0, 0
+    for index = 1, 3 do
+        total = total + (points[index] or 0)
+        most = math.max(most, points[index] or 0)
+    end
+    if most == 0 then
+        return nil
+    end
+    local trees = {}
+    for index = 1, 3 do
+        local spent = points[index] or 0
+        local tree = spent > 0 and (spent == most or spent >= total * HYBRID_SHARE) and Specs.tree(classToken, index)
+        if tree then
+            trees[#trees + 1] = { name = tree.name, points = spent, index = index }
+        end
+    end
+    table.sort(trees, function(a, b)
+        if a.points ~= b.points then
+            return a.points > b.points
+        end
+        return a.index < b.index
+    end)
+    local names = {}
+    for i, tree in ipairs(trees) do
+        names[i] = tree.name
+    end
+    return names
 end
 
 local function classToken()
@@ -192,7 +242,7 @@ function Spec.englishClass(token)
     return englishClass(token)
 end
 
--- The tree name for a group card slot ("Enhancement"), or nil.
+-- The tree name for one of the group's places ("Enhancement"), or nil.
 function Spec.treeOf(name)
     if name == ns.selfName then
         local spec = Spec.current()

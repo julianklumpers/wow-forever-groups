@@ -54,6 +54,7 @@ local wow_read_globals = {
     "UnitRace",
     "UnitSex",
     "UnitExists",
+    "UnitIsConnected",
     "UnitIsUnit",
     "UnitGUID",
     "UnitIsPlayer",

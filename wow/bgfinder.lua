@@ -360,7 +360,7 @@ function BgFinder.isRecruiting()
     return state ~= nil and state.phase == "build" and next(state.listedRoles) ~= nil
 end
 
--- For the card: { phase, battleground, size, members, asked, invited,
+-- For the window's status: { phase, battleground, size, members, asked, invited,
 -- healersShort }.
 function BgFinder.summary()
     if not state then

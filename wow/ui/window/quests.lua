@@ -11,7 +11,6 @@ local RANGE_X = W.RANGE_X
 local MAX_QUEST_ROWS = W.MAX_QUEST_ROWS
 local QUEST_ROW_HEIGHT = W.QUEST_ROW_HEIGHT
 local ui = W.ui
-local queueRows = W.queueRows
 local questRows = W.questRows
 
 -- The Quests tab: group and elite quests to queue for.
@@ -44,12 +43,13 @@ function W.hideQuestWidgets()
     end
 end
 
-function W.showQuestRow(row, key, quest, y, enabled)
+function W.showQuestRow(row, quest, y)
+    local key = quest.key
     local _, size = ns.QuestMatch.parse(key)
     row.key = key
-    row.label:SetText(quest and quest.title or ns.Quests.nameOf(key))
-    row.range:SetText(string.format(L["%s · group of %d"], L[quest and quest.label or "Group"], size or 0))
-    row.zoneName = quest and quest.zone
+    row.label:SetText(quest.title or ns.Quests.nameOf(key))
+    row.range:SetText(string.format(L["%s · group of %d"], L[quest.label or "Group"], size or 0))
+    row.zoneName = quest.zone
     row.waitingCount = ns.QuestQueue.waitingFor(key)
     local wanted = { [key] = true }
     Widgets.setRoleCounts(row.counts, ns.QueueWindow.questCountsKnown(row.zoneName)
@@ -57,52 +57,53 @@ function W.showQuestRow(row, key, quest, y, enabled)
     local groups = #ns.QueueWindow.groupsNeedingMe(wanted, "quest")
     row.groups:SetText(groups > 0 and ns.Locale.count(groups, "%d group", "%d groups") or "")
     row:SetChecked(not W.questUnticked()[key])
-    Widgets.setEnabled(row, enabled)
     W.place(row, PAD - CHECK_INSET, y)
     row:Show()
 end
 
--- The Quests tab below the card; returns the new y.
+-- The Quests tab from y down; returns the new y. While searching the roles
+-- stay, locked, and the list makes way.
 function W.layoutQuests(y, state)
-    local entry = ns.QuestQueue.entry()
     W.hideQuestWidgets()
-    if entry then
-        local count = #entry.dungeons
-        ui.questHeader:SetText(L["Looking for a questing group"] .. "  ·  "
-            .. ns.Locale.count(count, "%d quest", "%d quests"))
-        W.place(ui.questHeader, PAD, y)
-        ui.questHeader:Show()
-        ui.questHeader.line:Show()
-        y = y - W.HEADER_STEP
-        for i, key in ipairs(entry.dungeons) do
-            if questRows[i] then
-                W.showQuestRow(questRows[i], key, nil, y, false)
-                y = y - QUEST_ROW_HEIGHT
-            end
-        end
-        return y - 6
-    end
+    W.hideCompose()
     if state ~= "solo" and state ~= "leader" then
+        W.hideChoices()
+        W.hideHeaderLooking()
+        y = W.layoutStatus(y - 10, "quests", state)
         ui.questEmpty:SetText(L["Your party leader looks for questing groups."])
         W.place(ui.questEmpty, PAD, y)
         ui.questEmpty:Show()
         return y - 30
     end
-    W.refreshRoles(false)
-    y = W.layoutChoices(y, false)
-    y = W.layoutLevels(y, "quests")
-    if W.cardBelowRoles then
-        y = W.cardBelowRoles(y)
+    local busy = ns.QuestQueue.isQueued() or ns.QuestGroup.current() ~= nil
+    if busy then
+        W.hideChoices()
+        y = y - 10
+    else
+        W.refreshRoles(W.locked("quests"))
+        y = W.layoutChoices(y, false)
     end
+    y = W.layoutStatus(y, "quests", state)
+    if busy then
+        W.hideLevels()
+    else
+        y = W.layoutLevels(y, "quests")
+    end
+    if ns.QuestQueue.isQueued() then
+        W.layoutLookingAfterStatus("quests")
+        return y
+    end
+    y = y - 12
     local quests = ns.Quests.groupQuests()
     ui.questHeader:SetText(string.format(L["Group and elite quests  ·  %d selected"], #W.tickedQuestKeys()))
     W.place(ui.questHeader, PAD, y)
     ui.questHeader:Show()
     ui.questHeader.line:Show()
+    W.layoutHeaderLooking(ui.questHeader, "quests")
     y = y - W.HEADER_STEP
     for i, row in ipairs(questRows) do
         if quests[i] then
-            W.showQuestRow(row, quests[i].key, quests[i], y, true)
+            W.showQuestRow(row, quests[i], y)
             y = y - QUEST_ROW_HEIGHT
         else
             row:Hide()
@@ -118,33 +119,29 @@ function W.layoutQuests(y, state)
 end
 
 function W.refreshQuestsTab(y, state)
-    W.setSetupShown(false)
-    ui.queueHeader:Hide()
-    ui.queueHeader.line:Hide()
-    for _, row in ipairs(queueRows) do
-        row:Hide()
-    end
-    ui.queueMore:Hide()
     y = W.layoutQuests(y, state)
-    y = W.placeOtherQueueLink(y, state)
-    local queued = ns.QuestQueue.isQueued()
+    local entry = ns.QuestQueue.entry()
+    local queued = entry ~= nil
     local setup = not queued and (state == "solo" or state == "leader")
     local ready = queued or (W.selectedRoles() ~= nil and #W.tickedQuestKeys() > 0)
     ui.join:SetText(L[queued and "Stop" or not ns.questEngine and "Connecting..."
         or (W.leadWord("quests") and "Find questing players" or "Find questing group")])
     ui.join:SetShown(queued or setup)
-    ui.joinSummary:SetShown(setup and ready)
-    if setup and ready then
+    local summary
+    if queued then
+        summary = W.searchSummary(entry.members[1].roles,
+            { ns.Locale.count(#entry.dungeons, "%d quest", "%d quests") }, entry.joinedAt)
+    elseif setup and ready then
         local parts = { Widgets.describeRoles(W.selectedRoles()), W.leadWord("quests") }
         local count = #W.tickedQuestKeys()
         parts[#parts + 1] = ns.Locale.count(count, "%d quest", "%d quests")
-        ui.joinSummary:SetText(table.concat(parts, "  ·  "))
+        summary = table.concat(parts, "  ·  ")
     end
+    ui.joinSummary:SetText(summary or "")
+    ui.joinSummary:SetShown(summary ~= nil)
     Widgets.setEnabled(ui.join, ns.questEngine ~= nil and ready)
     ui.ready:SetText("Choose a role and at least one quest.")
     ui.ready:SetShown(setup and not ready and (ui.hint:GetText() or "") == "")
-    ui.fill:Hide()
-    ui.delist:Hide()
     return y
 end
 

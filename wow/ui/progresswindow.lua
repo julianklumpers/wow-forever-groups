@@ -5,7 +5,7 @@ local L = ns.L
 local Widgets = ns.Widgets
 
 -- How far everyone in the group is with the group's quests, folded out
--- under the status bar. The bar's quest progress icon, the card's "Quest
+-- under the status bar. The bar's quest progress icon, the window's "Quest
 -- progress" button and /fg progress fold it out or in; it folds out by
 -- itself when a group with quests forms. Whether it is out is saved.
 local ProgressWindow = {}

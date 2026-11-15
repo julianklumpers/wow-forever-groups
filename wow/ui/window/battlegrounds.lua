@@ -11,7 +11,6 @@ local ROW_WIDTH = W.ROW_WIDTH
 local RANGE_X = W.RANGE_X
 local ROW_HEIGHT = W.QUEST_ROW_HEIGHT
 local ui = W.ui
-local queueRows = W.queueRows
 
 local GOLD = { 1, 0.82, 0 }
 local GREY = { 0.6, 0.6, 0.6 }
@@ -77,7 +76,7 @@ local function queueText(queue)
     return title, GOLD
 end
 
-function W.battlegroundCardContent(state)
+function W.battlegroundStatus(state)
     local queue = ns.BgFinder.queueStatus()
     if queue then
         local title, color = queueText(queue)
@@ -117,16 +116,24 @@ function W.battlegroundCardContent(state)
         lead = state ~= "solo" and leads(state) }
 end
 
--- The group size, as two small boxes on the line under the role tiles.
--- right: where the line ends; the size boxes end there.
-function W.placeBattlegroundSize(right, y)
-    local shown = W.currentTab() == "battlegrounds" and not looking()
-    ui.battlegroundSizeLabel:SetShown(shown)
+function W.hideBattlegroundSize()
+    ui.battlegroundSizeLabel:Hide()
     for _, size in ipairs(SIZES) do
-        ui.battlegroundSizes[size]:SetShown(shown)
+        ui.battlegroundSizes[size]:Hide()
     end
-    if not shown then
+end
+
+-- The group size, as two small boxes on the line under the role tiles;
+-- not while looking, as the Group Finder builds a group of the size chosen
+-- at the start. right: where the line ends; the size boxes end there.
+function W.placeBattlegroundSize(right, y)
+    if W.currentTab() ~= "battlegrounds" or looking() then
+        W.hideBattlegroundSize()
         return
+    end
+    ui.battlegroundSizeLabel:Show()
+    for _, size in ipairs(SIZES) do
+        ui.battlegroundSizes[size]:Show()
     end
     local total = (ui.battlegroundSizeLabel:GetStringWidth() or 40) + 8
     for i, size in ipairs(SIZES) do
@@ -224,25 +231,38 @@ local function showRow(row, battleground, y)
     Widgets.setRoleCounts(row.counts, known and ns.QueueWindow.lookingCounts(wanted, "battlegrounds"))
     paintDemand(row, wanted, known)
     row:SetChecked(not W.battlegroundUnticked()[battleground.id])
-    Widgets.setEnabled(row, not looking())
     W.place(row, PAD - CHECK_INSET, y)
     row:Show()
 end
 
--- The tab below the card; returns the new y.
+-- The tab from y down; returns the new y. While looking the roles stay,
+-- locked, and the list makes way.
 local function layout(y, state)
     W.hideBattlegroundWidgets()
+    W.hideCompose()
     if not leads(state) then
+        W.hideChoices()
+        W.hideHeaderLooking()
+        y = W.layoutStatus(y - 10, "battlegrounds", state)
         ui.battlegroundEmpty:SetText(L["Your group's leader signs the group up at a battlemaster."])
         W.place(ui.battlegroundEmpty, PAD, y)
         ui.battlegroundEmpty:Show()
         return y - 30
     end
-    W.refreshRoles(looking())
-    y = W.layoutChoices(y, false)
-    if W.cardBelowRoles then
-        y = W.cardBelowRoles(y)
+    W.hideLevels()
+    if looking() then
+        W.hideChoices()
+        y = y - 10
+    else
+        W.refreshRoles(W.locked("battlegrounds"))
+        y = W.layoutChoices(y, false)
     end
+    y = W.layoutStatus(y, "battlegrounds", state)
+    if looking() then
+        W.layoutLookingAfterStatus("battlegrounds")
+        return y
+    end
+    y = y - 12
     local level = ns.Party.playerLevel()
     local list = Battlegrounds.forLevel(level)
     ui.battlegroundHeader:SetText(string.format(L["Battlegrounds for level %d  ·  %d selected"], level,
@@ -250,6 +270,7 @@ local function layout(y, state)
     W.place(ui.battlegroundHeader, PAD, y)
     ui.battlegroundHeader:Show()
     ui.battlegroundHeader.line:Show()
+    W.layoutHeaderLooking(ui.battlegroundHeader, "battlegrounds")
     y = y - W.HEADER_STEP
     for i, row in ipairs(rows) do
         if list[i] then
@@ -268,32 +289,29 @@ local function layout(y, state)
 end
 
 function W.refreshBattlegroundsTab(y, state)
-    W.setSetupShown(false)
-    ui.queueHeader:Hide()
-    ui.queueHeader.line:Hide()
-    for _, row in ipairs(queueRows) do
-        row:Hide()
-    end
-    ui.queueMore:Hide()
     y = layout(y, state)
-    y = W.placeOtherQueueLink(y, state)
     local active = looking()
     local setup = not active and leads(state)
     local ready = W.selectedRoles() ~= nil and #W.tickedBattlegroundIds() > 0
     ui.join:SetText(L[active and "Stop" or (W.leadWord("battlegrounds") and "Find players" or "Find group")])
     ui.join:SetShown(active or setup)
-    ui.joinSummary:SetShown(setup and ready)
-    if setup and ready then
+    local summary
+    if active then
+        local entry = ns.BgQueue.entry()
+        local ids = entry and entry.dungeons or W.tickedBattlegroundIds()
+        summary = W.searchSummary(entry and entry.members[1].roles or W.selectedRoles(),
+            { #ids == 1 and names(ids) or string.format(L["%d battlegrounds"], #ids) }, entry and entry.joinedAt)
+    elseif setup and ready then
         local ticked = W.tickedBattlegroundIds()
         local parts = { Widgets.describeRoles(W.selectedRoles()), L[SIZE_LABELS[W.battlegroundSize()]],
             #ticked == 1 and names(ticked) or string.format(L["%d battlegrounds"], #ticked) }
-        ui.joinSummary:SetText(table.concat(parts, "  ·  "))
+        summary = table.concat(parts, "  ·  ")
     end
+    ui.joinSummary:SetText(summary or "")
+    ui.joinSummary:SetShown(summary ~= nil)
     Widgets.setEnabled(ui.join, active or ready)
     ui.ready:SetText(L["Choose a role and a battleground."])
     ui.ready:SetShown(setup and not ready and (ui.hint:GetText() or "") == "")
-    ui.fill:Hide()
-    ui.delist:Hide()
     return y
 end
 

@@ -2,11 +2,49 @@
 
 ## Unreleased
 
-- The group card shows each member's class as a round icon before their name, with only the spec right under it
-  ("Feral" instead of "Druid Feral"); where they are and their quests ("at entrance", "no addon") sit at the
-  bottom of the place. The cards of "Choose the classes in my party" show you and your party members the same way.
+- A party leader no longer sees "You lead this party" or "Queue your party below…": "Your party: 2/5"
+  moves up onto the playstyle's line instead.
+- "End run" next to Find replacement while Forever Groups follows a run: it stops following the group without
+  leaving it, so the roles, the choices and the tabs come back, and nobody leaving later brings the replacement
+  question back for that run.
+- In a run with an open place, the leader can click the place to choose which classes the replacement may be, the
+  same menu as the class choices; Find replacement then only invites those classes. While it searches the choice is
+  locked.
+- A group member who went offline shows "offline" in red where the distance goes on the group card.
+- After a /reload in a group, the quests of the other Forever Groups players show again instead of "?": their
+  lists were asked for before Forever Groups was connected, and the answers were lost.
+- Under each group member's name: their talent trees once Forever Groups has inspected them, the tree with the
+  most points and any other with at least a third of their points, most first ("Shadow/Holy" for a hybrid priest,
+  "Holy" for a pure one, also at low level), in a font a size smaller than the name. Without those points, a
+  spec that doesn't fit the place (a Shadow priest healing) or none known yet shows the place's role ("Healer",
+  "DPS") instead of nothing.
+- The window keeps one screen while you choose, wait and play, on all three tabs: there is no separate queue card
+  or group card any more. While you wait, and in a formed group, the choices make way (the roles, join or lead, the
+  playstyle and the level limit come back with Stop, which is how you change them), the group's
+  five places show under them where the class choices sit when you lead (who is in, who is invited with the time
+  left, open places), with "In queue 4:31 as DPS" above them and who is looking right after it; the list makes way
+  until you stop. The Find group button becomes Stop, with your roles, how much you search for and the time in
+  the queue.
+- The tabs stay while you wait, as you can wait for a dungeon, a quest and a battleground at once, so the "Also
+  find a questing group »" links are gone. Once a dungeon run or questing group forms, the window shows its tab
+  without the others (a group leaves the other queues); they come back when it is over.
+- In a group the screen stays the same too: the roles, the group's places with distance and quests under "The
+  Deadmines · Group complete · ...", and Waypoint to entrance, Share my quests and Quest progress where the dungeon
+  list is. Make me leader moves to the bottom of the window. "Looking now" sits on the header line of the
+  dungeons, quests and battlegrounds.
+- The group's places and the cards of "Choose the classes in my party" are now one and the same card: rounded,
+  the role in the top left corner as on the role tiles, the spec art filling it, the name and spec in the middle (in
+  a group where they are at the bottom left and their quests at the bottom right); an invited player
+  dimmed with the time left, an open place dashed ("open", or "Any class" where you can choose), a wished place
+  with a gold edge and the classes' icons. Every name uses the same small font on one line, cut off with "..."
+  when it doesn't fit, with the class icon right before it; this fixes a class icon that ended up at the left
+  edge next to a name on two lines, and names cut off although there was room. All five cards in a row have the
+  same height.
+- The group's places show each member's class as a round icon before their name, with only the spec right under it
+  ("Feral" instead of "Druid Feral"); where they are sits at the bottom left ("at entrance") and their quests at
+  the bottom right ("3 quests"; nothing for a player without Forever Groups, whose quests aren't known). The cards of "Choose the classes in my party" show you and your party members the same way.
 - While you build your group, an open place your class choices keep for some classes shows those classes' icons
-  on the group card (up to five, then "+n"), so you can see what it waits for.
+  among the group's places (up to five, then "+n"), so you can see what it waits for.
 - Opening the window in a group in the first seconds after logging in or a /reload no longer gives an error
   ("card.lua: table index is nil").
 

@@ -305,6 +305,18 @@ function Run.findReplacement(fromClick)
     return true
 end
 
+-- The player ends the run while still in the group: Forever Groups stops
+-- following it and asks for no more replacements; the bosses still count.
+function Run.endFollowing()
+    if run then
+        run.ended = true
+        ns.charDb.run = run
+    end
+    pcall(StaticPopup_Hide, POPUP)
+    ns.GroupView.forget()
+    Log.info("You ended the run; Forever Groups no longer follows this group.")
+end
+
 -- Fills the open places of a group the player just took the lead of.
 function Run.fillGroup()
     local dungeon, open = queueGroup(false)
@@ -353,6 +365,10 @@ local function onRosterUpdate()
     end
     local tracked = ns.GroupView.trackedDungeon()
     local current = run and (not tracked or run.dungeon == tracked) and run or nil
+    if current and current.ended then
+        Log.info("Someone left; you ended this run, so no replacement is asked for.")
+        return
+    end
     local dungeon = current and current.dungeon or ns.GroupView.dungeon()
     if not dungeon then
         return

@@ -82,8 +82,12 @@ function W.layoutLevels(y, tab, dungeonIds)
         return y
     end
     local on = PartyLevels.isOn()
+    local locked = W.locked(tab)
     ui.levelsToggle:Show()
     ui.levelsToggle:SetChecked(on)
+    for _, widget in ipairs({ ui.levelsToggle, ui.levelsMin, ui.levelsMax }) do
+        Widgets.setEnabled(widget, not locked)
+    end
     W.place(ui.levelsToggle, PAD - W.CHECK_INSET, y)
     for _, widget in ipairs({ ui.levelsFrom, ui.levelsMin, ui.levelsTo, ui.levelsMax }) do
         widget:SetShown(on)

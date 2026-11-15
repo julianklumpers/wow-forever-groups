@@ -583,13 +583,16 @@ local function layTile(tile, art)
     end
 end
 
-function Widgets.paintTile(tile, checked, enabled)
+-- enabled: the class can play the role; locked: shown as chosen but not
+-- clickable (while searching), the roles not chosen dimmed.
+function Widgets.paintTile(tile, checked, enabled, locked)
     tile:SetChecked(checked and enabled)
-    if enabled then
+    if enabled and not locked then
         tile:Enable()
     else
         tile:Disable()
     end
+    tile:SetAlpha(locked and enabled and not checked and 0.5 or 1)
     local color = ROLE_COLORS[tile.role]
     local background, borderColor
     if not enabled then
@@ -946,14 +949,6 @@ function Widgets.setRoleCounts(counts, values)
     end
 end
 
--- One place in the group: role icon with the player's name in class colour,
--- or a dim icon with "open".
--- Room inside a member place's rounded border, above the icon and below the
--- last line.
-local SLOT_PADDING = 9
-
-Widgets.SLOT_WIDTH = 106
-
 -- A member's spec art, or their class's emblem while the spec is not known,
 -- under a shade that keeps the text readable (Widgets.paintArt).
 function Widgets.addArt(frame)
@@ -970,51 +965,12 @@ function Widgets.addArt(frame)
     frame.shade:Hide()
 end
 
-function Widgets.slot(parent)
-    local slot = backdropFrame("Frame", parent)
-    slot:SetSize(Widgets.SLOT_WIDTH, 50)
-    addOutline(slot)
-    paintOutline(slot, { 1, 1, 1, 0.05 }, { 1, 1, 1, 0.14 })
-    Widgets.addArt(slot)
-    slot.icon = Widgets.roleIcon(slot, "D", 20)
-    slot.icon:SetPoint("TOP", 0, -SLOT_PADDING)
-    slot.name = Widgets.text(slot, "GameFontHighlightSmall", "CENTER")
-    slot.name:SetPoint("TOP", slot.icon, "BOTTOM", 0, -3)
-    slot.name:SetWidth(Widgets.SLOT_WIDTH - 6)
-    if slot.name.SetMaxLines then
-        pcall(slot.name.SetMaxLines, slot.name, 2)
-    end
-    -- Class and spec on one line, the spec smaller and gold, like the role
-    -- tiles.
-    slot.spec = CreateFrame("Frame", nil, slot)
-    slot.spec:SetSize(Widgets.SLOT_WIDTH - 6, 12)
-    slot.className = Widgets.text(slot.spec, "GameFontHighlightSmall")
-    slot.specName = Widgets.text(slot.spec, "GameFontNormalSmall")
-    slot.specName:SetTextColor(0.9, 0.76, 0.45)
-    slot.spec.SetText = function(_, class, spec)
-        slot.className:SetText(class or "")
-        slot.specName:SetText(spec or "")
-        local gap = (spec and spec ~= "" and class and class ~= "") and 4 or 0
-        local width = (slot.className:GetStringWidth() or 0) + gap + (slot.specName:GetStringWidth() or 0)
-        slot.className:ClearAllPoints()
-        slot.className:SetPoint("LEFT", slot.spec, "CENTER", -math.floor(width / 2), 0)
-        slot.specName:ClearAllPoints()
-        slot.specName:SetPoint("LEFT", slot.className, "RIGHT", gap, 0)
-    end
-    slot.distance = Widgets.text(slot, "GameFontDisableSmall", "CENTER")
-    slot.distanceDot = Widgets.dot(slot, 7)
-    slot.distanceDot:SetPoint("RIGHT", slot.distance, "LEFT", -3, 0)
-    slot.quests = Widgets.text(slot, "GameFontDisableSmall", "CENTER")
-    slot.quests:SetWidth(Widgets.SLOT_WIDTH - 6)
-    return slot
-end
-
 -- How a member looks in their place: their own spec when it plays the
 -- place's role; else the tree their class plays that role with (a Feral
 -- druid healing is Restoration), or nothing when there are several (the
 -- class shows); their own spec in a place their class cannot play. Returns
 -- the art's atlas and the tree's name.
-local function slotLook(data)
+local function placeLook(data)
     if not (data.name and data.classToken) then
         return nil, nil
     end
@@ -1029,42 +985,41 @@ local function slotLook(data)
     return nil, nil
 end
 
--- The look above as art when there is one, else the class's emblem, dimmed;
--- both fill the place. Nothing for an open place.
-local function paintSlotArt(slot, data, height, frameWidth)
-    local width, inner = (frameWidth or Widgets.SLOT_WIDTH) - 2 * slot.artInset, height - 2 * slot.artInset
-    local atlas = slotLook(data)
-    local art = atlas and Widgets.coverAtlas(slot.art, atlas, width, inner) or false
+-- data: { name, classToken, role, specIndex }; on a frame given
+-- Widgets.addArt. The look above as art when there is one, else the class's
+-- emblem, dimmed; both fill the frame. Returns the spec's name, or nil.
+function Widgets.paintArt(frame, data, width, height)
+    local inner, innerHeight = width - 2 * frame.artInset, height - 2 * frame.artInset
+    local atlas, specName = placeLook(data)
+    local art = atlas and Widgets.coverAtlas(frame.art, atlas, inner, innerHeight) or false
     local emblem = false
     if not art and data.name and data.classToken then
-        emblem = Widgets.coverAtlas(slot.art, "classicon-" .. string.lower(data.classToken), width, inner)
+        emblem = Widgets.coverAtlas(frame.art, "classicon-" .. string.lower(data.classToken), inner, innerHeight)
     end
-    slot.art:SetShown(art or emblem)
-    slot.art:SetAlpha(art and 1 or 0.45)
-    slot.shade:SetShown(art or emblem)
-    slot.emblem = emblem
-end
-
--- data: { name, classToken, role, specIndex }; on a frame given Widgets.addArt.
--- Returns the spec's name, or nil.
-function Widgets.paintArt(frame, data, width, height)
-    paintSlotArt(frame, data, height, width)
-    local _, specName = slotLook(data)
+    frame.art:SetShown(art or emblem)
+    frame.art:SetAlpha(art and 1 or 0.45)
+    frame.shade:SetShown(art or emblem)
+    frame.emblem = emblem
     return specName
 end
 
 function Widgets.hideArt(frame)
     frame.art:Hide()
     frame.shade:Hide()
+    frame.emblem = false
 end
 
 local NEAR = 1000
-local DISTANCE_COLORS = { here = { 0.3, 1, 0.3 }, near = { 1, 0.82, 0 }, far = { 0.55, 0.55, 0.55 } }
+local DISTANCE_COLORS = { here = { 0.3, 1, 0.3 }, near = { 1, 0.82, 0 }, far = { 0.55, 0.55, 0.55 },
+    offline = { 1, 0.3, 0.3 } }
 
 -- "inside", "at entrance", "620 yd", "far away" or "unknown", and the dot's
--- colour.
-local function describeDistance(yards)
-    if yards == "in" then
+-- colour. yards: a number, "in" (inside), false (far away), "?" (unknown)
+-- or "none" (nothing to say).
+function Widgets.describeDistance(yards)
+    if yards == "offline" then
+        return ns.L["offline"], DISTANCE_COLORS.offline
+    elseif yards == "in" then
         return ns.L["inside"], DISTANCE_COLORS.here
     elseif yards == "?" then
         return ns.L["unknown"], DISTANCE_COLORS.far
@@ -1080,184 +1035,15 @@ local function describeDistance(yards)
     return string.format(ns.L["%.1fk yd"], yards / 1000), DISTANCE_COLORS.far
 end
 
-local CLASS_ICON_SIZE, CLASS_ICON_GAP, MAX_CLASS_ICONS = 14, 2, 5
-local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
-
-local function classIcon(slot, i)
-    slot.classIcons = slot.classIcons or {}
-    local icon = slot.classIcons[i]
-    if not icon then
-        icon = slot:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(CLASS_ICON_SIZE, CLASS_ICON_SIZE)
-        if type(slot.CreateMaskTexture) == "function" then
-            local ok, mask = pcall(slot.CreateMaskTexture, slot)
-            if ok and mask and pcall(mask.SetTexture, mask, ROUND_MASK, "CLAMPTOBLACKADDITIVE",
-                "CLAMPTOBLACKADDITIVE") then
-                mask:SetAllPoints(icon)
-                icon:AddMaskTexture(mask)
-            end
-        end
-        slot.classIcons[i] = icon
-    end
-    return icon
-end
-
--- An open place a leader's class choices keep for some classes: their icons
--- in a row (up to five, then "+n"), or their names on a client without the
--- icons. Returns whether it showed any.
-local function paintWishedClasses(slot, classes)
-    for _, icon in ipairs(slot.classIcons or {}) do
-        icon:Hide()
-    end
-    if slot.moreClasses then
-        slot.moreClasses:Hide()
-    end
-    if not classes or #classes == 0 then
-        return false
-    end
-    if not atlasExists("classicon-" .. string.lower(classes[1])) then
-        local names = {}
-        for i, class in ipairs(classes) do
-            names[i] = ns.Spec.className(class)
-        end
-        slot.spec:SetText(table.concat(names, ", "), nil)
-        return true
-    end
-    slot.spec:SetText("", nil)
-    local shown = math.min(#classes, MAX_CLASS_ICONS)
-    local more = #classes - shown
-    slot.moreClasses = slot.moreClasses or Widgets.text(slot, "GameFontDisableSmall")
-    slot.moreClasses:SetText(more > 0 and ("+" .. more) or "")
-    local moreWidth = more > 0 and ((slot.moreClasses:GetStringWidth() or 12) + CLASS_ICON_GAP) or 0
-    local width = shown * CLASS_ICON_SIZE + (shown - 1) * CLASS_ICON_GAP + moreWidth
-    local left = math.floor((Widgets.SLOT_WIDTH - width) / 2)
-    for i = 1, shown do
-        local icon = classIcon(slot, i)
-        icon:SetAtlas("classicon-" .. string.lower(classes[i]))
-        icon:ClearAllPoints()
-        icon:SetPoint("TOPLEFT", slot.spec, "TOPLEFT", left - 3 + (i - 1) * (CLASS_ICON_SIZE + CLASS_ICON_GAP), 1)
-        icon:Show()
-    end
-    if more > 0 then
-        slot.moreClasses:ClearAllPoints()
-        slot.moreClasses:SetPoint("LEFT", slot.classIcons[shown], "RIGHT", CLASS_ICON_GAP, 0)
-        slot.moreClasses:Show()
-    end
-    return true
-end
-
--- The member's class icon just before their name (the name stays centred
--- with it); nil hides it. A wrapped name takes the icon by its first line.
-local function paintNameIcon(slot, atlas)
-    local width = Widgets.SLOT_WIDTH - 6
-    slot.name:ClearAllPoints()
-    if not atlas then
-        if slot.nameIcon then
-            slot.nameIcon:Hide()
-        end
-        slot.name:SetWidth(width)
-        slot.name:SetPoint("TOP", slot.icon, "BOTTOM", 0, -3)
-        slot.nameOffset = 0
-        return
-    end
-    local room = width - CLASS_ICON_SIZE - CLASS_ICON_GAP
-    slot.name:SetWidth(room)
-    slot.nameOffset = math.floor((CLASS_ICON_SIZE + CLASS_ICON_GAP) / 2)
-    slot.name:SetPoint("TOP", slot.icon, "BOTTOM", slot.nameOffset, -3)
-    if not slot.nameIcon then
-        slot.nameIcon = classIcon(slot, "name")
-    end
-    local text = math.min(slot.name:GetStringWidth() or room, room)
-    local left = math.floor((Widgets.SLOT_WIDTH - (text + CLASS_ICON_SIZE + CLASS_ICON_GAP)) / 2)
-    slot.nameIcon:SetAtlas(atlas)
-    slot.nameIcon:ClearAllPoints()
-    slot.nameIcon:SetPoint("TOPLEFT", slot, "TOPLEFT", left, -(SLOT_PADDING + 20 + 3) + 1)
-    slot.nameIcon:Show()
-end
-
--- data: { role, name, classToken, spec (its tree's name), specIndex,
--- distance (yards, "in" = inside,
--- false = far away, "?" = unknown, "none" = left empty),
--- quests (a count, or "?"), classes (the classes an open place is kept
--- for) }; layout: which lines the row of slots shows
--- ({ spec, distance, quests } true/false), so every slot has the same lines
--- in the same place. Returns the slot's height.
-function Widgets.paintSlot(slot, data, layout)
-    Widgets.setRoleIcon(slot.icon, data.role)
-    local classAtlas = data.name and data.classToken and "classicon-" .. string.lower(data.classToken)
-    if classAtlas and not atlasExists(classAtlas) then
-        classAtlas = nil
-    end
-    if data.name then
-        slot.icon:SetAlpha(1)
-        slot.name:SetText(data.name)
-        slot.name:SetTextColor(Widgets.classColor(data.classToken))
-    elseif data.invite then
-        slot.icon:SetAlpha(0.6)
-        slot.name:SetText(data.invite.name)
-        slot.name:SetTextColor(0.75, 0.75, 0.75)
-    else
-        slot.icon:SetAlpha(0.3)
-        slot.name:SetText(ns.L["open"])
-        slot.name:SetTextColor(0.5, 0.5, 0.5)
-    end
-    paintNameIcon(slot, classAtlas)
-    -- The spec right under the name; where they are and their quests at the
-    -- bottom of the place. Every place of a row keeps the same height.
-    slot.spec:SetShown(layout.spec)
-    if not (layout.spec and not data.name and not data.invite and data.classes) then
-        paintWishedClasses(slot, nil)
-    end
-    if layout.spec then
-        slot.spec:ClearAllPoints()
-        slot.spec:SetPoint("TOP", slot.name, "BOTTOM", -(slot.nameOffset or 0), -5)
-        local _, specName = slotLook(data)
-        if data.invite and not data.name then
-            slot.spec:SetText(ns.L[data.invite.held and "frees in" or "invited"],
-                Widgets.formatTime(data.invite.left))
-        elseif not data.name and data.classes then
-            paintWishedClasses(slot, data.classes)
-        else
-            slot.spec:SetText(data.name and data.classToken and not classAtlas and ns.Spec.className(data.classToken)
-                or "", specName and ns.L[specName])
-        end
-    end
-    local text, color = describeDistance(data.distance)
-    local showDistance = layout.distance and data.name ~= nil and data.distance ~= "none"
-    slot.distance:SetText(showDistance and text or "")
-    slot.distanceDot:SetShown(showDistance)
-    if showDistance then
-        slot.distance:SetTextColor(color[1], color[2], color[3])
-        Widgets.paintDot(slot.distanceDot, color)
-    end
-    local quests = data.quests
-    local questText
-    if not data.name or quests == nil then
-        questText = ""
-    elseif quests == "none" then
-        questText = ns.L["no addon"]
+-- A member's quests for the group's dungeon: a count or "?"; "" for nil and
+-- for "none" (a member without the addon: their quests aren't known).
+function Widgets.describeQuests(quests)
+    if quests == nil or quests == "none" then
+        return ""
     elseif quests == "?" then
-        questText = "?"
-    else
-        questText = ns.Locale.count(quests, "%d quest", "%d quests")
+        return "?"
     end
-    slot.quests:SetText(questText)
-    local bottom = {}
-    for _, item in ipairs({ { slot.distance, layout.distance }, { slot.quests, layout.quests } }) do
-        item[1]:SetShown(item[2] and true or false)
-        if item[2] then
-            bottom[#bottom + 1] = item[1]
-        end
-    end
-    for i, widget in ipairs(bottom) do
-        widget:ClearAllPoints()
-        widget:SetPoint("BOTTOM", slot, "BOTTOM", widget == slot.distance and 5 or 0,
-            SLOT_PADDING + (#bottom - i) * 13)
-    end
-    local height = 50 + 2 * SLOT_PADDING + (layout.spec and 13 or 0) + #bottom * 13
-    slot:SetHeight(height)
-    paintSlotArt(slot, data, height)
-    return height
+    return ns.Locale.count(quests, "%d quest", "%d quests")
 end
 
 function Widgets.formatTime(seconds)

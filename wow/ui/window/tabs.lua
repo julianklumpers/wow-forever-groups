@@ -6,7 +6,7 @@ local PAD = W.PAD
 local TAB_WIDTH = W.TAB_WIDTH
 local ui = W.ui
 
--- The Dungeons and Quests tabs, with each queue's status dot.
+-- The Dungeons, Quests and Battlegrounds tabs, with each queue's status dot.
 
 -- What a queue is doing, for its tab: kind and short text, or nil.
 function W.queueStatus(engine)
@@ -99,10 +99,10 @@ end
 
 -- The tab row's base line runs under every tab but the chosen one, which
 -- stays open into the content below.
--- Returns whether the tabs are shown.
+-- Returns whether the tabs show: not in a group Forever Groups follows.
 function W.paintTabs(y)
-    local shown = W.fixedTab() == nil
-    for _, widget in ipairs({ ui.tabLines[1], ui.tabLines[2], ui.tabArt, ui.tabArtSolid }) do
+    local shown = W.groupTab() == nil
+    for _, widget in ipairs({ ui.tabLines[1], ui.tabLines[2] }) do
         widget:SetShown(shown)
     end
     for _, tab in pairs(ui.tabs) do
@@ -114,6 +114,8 @@ function W.paintTabs(y)
         end
     end
     if not shown then
+        ui.tabArt:Hide()
+        ui.tabArtSolid:Hide()
         return false
     end
     local chosen = ui.tabs[W.currentTab()]
@@ -158,19 +160,6 @@ function W.buildTabs()
             end
             ns.Window.refresh()
         end)
-    end
-    ui.otherQueues = {}
-    for i = 1, 2 do
-        ui.otherQueues[i] = Widgets.link(W.frame, "", function(self)
-            W.browsingOther = true
-            ns.charDb.tab = self.target
-            W.setHint("")
-            if not ns.Input.run() then
-                ns.QueueWindow.searchIfStale(0, self.target)
-            end
-            ns.Window.refresh()
-        end)
-        ui.otherQueues[i]:Hide()
     end
     local panel = type(W.frame.Inset) == "table" and W.frame.Inset or W.frame
     ui.tabArtSolid = panel:CreateTexture(nil, "BACKGROUND", nil, 2)

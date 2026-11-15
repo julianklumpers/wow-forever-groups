@@ -155,6 +155,10 @@ local STEPS = ns.Locale.mark({
             target = cardSlots,
         },
         {
+            text = "While you wait your choices are locked; to change them, press Stop and find a group again.",
+            target = joinButton,
+        },
+        {
             text = "While you wait, just keep playing: your key presses and clicks refresh WoW's Group Finder. /fg "
                 .. "or the minimap button opens this window again.",
             target = joinButton,
@@ -179,16 +183,15 @@ local STEPS = ns.Locale.mark({
     },
     {
         {
-            text = "The card shows everyone's role and spec, how far they are from the entrance and how many quests "
-                .. "they have for the dungeon.",
+            text = "The places show everyone's role and spec, how far they are from the entrance and how many "
+                .. "quests they have for the dungeon.",
             target = cardSlots,
         },
         {
             text = "Set a waypoint to the entrance, share your quests with whoever lacks them, or follow everyone's "
                 .. "quest progress.",
             target = function()
-                local card = ns.WindowParts.ui.card
-                return span(card and card.actions or {})
+                return span(ns.WindowParts.ui.actions or {})
             end,
         },
     },
@@ -636,6 +639,9 @@ local function patchAll()
     patch(ns.Spec, "current", function()
         return SPEC
     end)
+    patch(ns.Spec, "treesOf", function()
+        return nil
+    end)
     patch(ns.Spec, "treeOf", function(name)
         return select(2, treeOf(name))
     end)
@@ -917,7 +923,7 @@ local function showScene(index, at)
     ns.GroupView.swapContext(world.context)
     ns.db.progressExpanded = world.progress == true
     local W = ns.WindowParts
-    W.showOthers, W.browsingOther, W.lastQueueTab = false, false, nil
+    W.showOthers, W.lastGroupTab = false, nil
     ns.Window.show()
     ns.QueueWindow.setShown(world.drawer)
     ns.Window.refresh()
@@ -1123,7 +1129,7 @@ function Demo.start(auto)
     saved = {
         selfName = ns.selfName, db = ns.db, charDb = ns.charDb, engine = ns.engine, questEngine = ns.questEngine,
         bgEngine = ns.bgEngine, windowShown = ns.Window.isShown(), drawerShown = ns.QueueWindow.isShown(),
-        showOthers = W.showOthers, browsingOther = W.browsingOther, lastQueueTab = W.lastQueueTab,
+        showOthers = W.showOthers, lastGroupTab = W.lastGroupTab,
     }
     on = true
     saved.context = ns.GroupView.swapContext(nil)
@@ -1166,7 +1172,7 @@ function Demo.stop()
     ns.selfName, ns.db, ns.charDb = saved.selfName, saved.db, saved.charDb
     ns.engine, ns.questEngine, ns.bgEngine = saved.engine, saved.questEngine, saved.bgEngine
     local W = ns.WindowParts
-    W.showOthers, W.browsingOther, W.lastQueueTab = saved.showOthers, saved.browsingOther, saved.lastQueueTab
+    W.showOthers, W.lastGroupTab = saved.showOthers, saved.lastGroupTab
     world, saved, specs = nil, nil, {}
     on = false
     welcoming = false

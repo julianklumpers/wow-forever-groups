@@ -5,24 +5,15 @@ local Widgets = ns.Widgets
 local Party = ns.Party
 local WIDTH = W.WIDTH
 local PAD = W.PAD
-local CHECK_INSET = W.CHECK_INSET
-local CARD_PADDING = W.CARD_PADDING
-local ROW_WIDTH = W.ROW_WIDTH
-local COUNT_SIZE = W.COUNT_SIZE
-local RANGE_X = W.RANGE_X
-local COUNTS_X = W.COUNTS_X
-local QUEUE_ROWS = W.QUEUE_ROWS
-local QUEUE_ROW_HEIGHT = W.QUEUE_ROW_HEIGHT
 local ui = W.ui
-local roleToggles = W.roleToggles
-local queueRows = W.queueRows
 local L = ns.L
 
--- The main window: the connection and two tabs (Dungeons, Quests) on top, a
--- status card per tab, and below it only what fits the moment: choosing
--- roles and dungeons, a queue summary, or nothing extra once the group is
--- complete. Its parts live in wow/ui/window/ (shared, card, setup, quests,
--- tabs); this file puts them together.
+-- The main window: the connection in the title bar, three tabs (Dungeons,
+-- Quests, Battlegrounds), and one screen per tab that stays the same while
+-- choosing, searching and in a group: the roles, what the queue or group is
+-- doing with the group's places, and the list to tick (or, in a group, its
+-- actions). Its parts live in wow/ui/window/ (shared, card, setup, compose,
+-- levels, quests, battlegrounds, tabs); this file puts them together.
 local Window = {}
 
 function Window.selectedBattlegroundIds()
@@ -41,7 +32,7 @@ end
 
 -- Sets the frame height from the content and the bottom buttons.
 function W.fitHeight(y)
-    local hasButtons = ui.join:IsShown() or ui.delist:IsShown()
+    local hasButtons = ui.join:IsShown() or ui.delist:IsShown() or ui.takeLead:IsShown() or ui.endRun:IsShown()
     local hasHint = (ui.hint:GetText() or "") ~= ""
     ui.hint:ClearAllPoints()
     ui.hint:SetPoint("BOTTOMLEFT", PAD, hasButtons and 54 or 12)
@@ -59,69 +50,139 @@ function W.fitHeight(y)
     end
 end
 
+local function dungeonSummary()
+    local parts = { Widgets.describeRoles(W.selectedRoles()) }
+    if ns.Playstyle.mine() ~= ns.Playstyles.ANY then
+        parts[#parts + 1] = ns.Playstyle.word(ns.Playstyle.mine())
+    end
+    parts[#parts + 1] = W.leadWord("dungeons")
+    parts[#parts + 1] = ns.Locale.count(#W.selectedVisibleIds(), "%d dungeon", "%d dungeons")
+    return table.concat(parts, "  ·  ")
+end
+
+local END_RUN_WIDTH = 110
+
+-- The main button, with End run on its right while a followed run goes on.
+local function fitJoin(ending)
+    ui.endRun:SetShown(ending)
+    ui.join:ClearAllPoints()
+    if ending then
+        ui.join:SetWidth(W.CONTENT - END_RUN_WIDTH - W.SPACE.s)
+        ui.join:SetPoint("BOTTOMLEFT", PAD, 16)
+    else
+        ui.join:SetWidth(W.CONTENT)
+        ui.join:SetPoint("BOTTOM", 0, 16)
+    end
+end
+
+-- The Dungeons tab from y down; returns the new y. The roles (locked while
+-- searching: Stop to change them), the queue's or group's status with its
+-- places, the class choices while choosing, the level limit, then the
+-- dungeons to tick while choosing, or the group's actions once Forever
+-- Groups follows a group.
+local function refreshDungeonsTab(y, state)
+    local engine = ns.engine
+    local entry = engine and engine.myEntry
+    local searching = entry ~= nil or ns.Filler.isActive()
+    local canLead = state == "solo" or state == "leader"
+    local composition = ns.GroupView.composition()
+    local full = state ~= "solo" and #composition.members >= 5
+    -- In a run Forever Groups follows, an open place calls for a
+    -- replacement, not for ticking dungeons.
+    local following = ns.GroupView.isActive()
+    local listed = canLead and not full and not following and not searching
+    local locked = W.locked("dungeons")
+    local open = following and state == "leader" and not searching and composition.open or ""
+    -- Searching or in a formed group nothing is chosen: the choices make
+    -- way and come back with Stop.
+    local busy = searching or full or following
+    if canLead and not busy then
+        W.refreshRoles(locked)
+        y = W.layoutChoices(y, true, state == "leader")
+    else
+        W.hideChoices()
+        y = y - 10
+    end
+    local composing = listed and ns.PartyCompose.isBuilder()
+    y = W.layoutStatus(y, "dungeons", state, { places = not (composing and ns.PartyCompose.isOn()),
+        roleInfo = state == "leader" and not searching, chooseReplacements = open ~= "",
+        rightRoom = state == "leader" and not busy and W.playstyleRoom() or nil })
+    if composing then
+        y = W.layoutCompose(y)
+    else
+        W.hideCompose()
+    end
+    if canLead and not busy then
+        y = W.layoutLevels(y, "dungeons", W.selectedVisibleIds())
+    else
+        W.hideLevels()
+    end
+    y = W.layoutActions(y)
+    if listed then
+        y = W.layoutDungeonList(y - 12)
+    else
+        W.hideDungeonList()
+        if searching and canLead then
+            W.layoutLookingAfterStatus("dungeons")
+        else
+            W.hideHeaderLooking()
+        end
+    end
+
+    local replace = open ~= ""
+    fitJoin(following and not searching)
+    ui.join:SetText(L[searching and "Stop" or not engine and "Connecting..." or (replace and "Find replacement")
+        or (W.leadWord("dungeons") and "Find players" or "Find group")])
+    ui.join:SetShown(searching or listed or replace)
+    local ready = searching or replace or (W.selectedRoles() ~= nil and #W.selectedVisibleIds() > 0)
+    local summary
+    if searching and entry then
+        local styles = entry.playstyle and entry.playstyle ~= ns.Playstyles.ANY
+            and ns.Playstyle.describe({ entry.playstyle, unpack(ns.Playstyles.partners(entry.playstyle)) },
+                " " .. L["or"] .. " ")
+        summary = W.searchSummary(entry.members[1].roles,
+            { styles or nil, ns.Locale.count(#entry.dungeons, "%d dungeon", "%d dungeons") }, entry.joinedAt)
+    elseif replace then
+        summary = string.format(L["%s  ·  %d open"], Widgets.describeRoles(open), #open)
+    elseif listed and ready then
+        summary = dungeonSummary()
+    end
+    ui.joinSummary:SetText(summary or "")
+    ui.joinSummary:SetShown(summary ~= nil)
+    Widgets.setEnabled(ui.join, engine ~= nil and ready)
+    ui.ready:SetText(L["Choose a role and at least one dungeon."])
+    ui.ready:SetShown(listed and not searching and not ready and (ui.hint:GetText() or "") == "")
+    ui.delist:SetShown(not ui.join:IsShown() and ns.GroupView.isListed()
+        and (Party.inGroup() or ns.GroupView.isTracking()) and state ~= "member" and state ~= "raid")
+    local leader = not full and ns.TakeLead.leader()
+    ui.takeLead:SetShown(leader and true or false)
+    if leader then
+        local asked = ns.TakeLead.isAsked()
+        ui.takeLead:SetText(L[asked and "Asked to lead" or "Make me leader"])
+        Widgets.setEnabled(ui.takeLead, not asked)
+    end
+    return y
+end
+
 local function refreshMain()
     if not W.frame or not W.frame:IsShown() then
         return
     end
-    local engine = ns.engine
-    local entry = engine and engine.myEntry
-    local queued = entry ~= nil
+    W.followGroupTab()
     local state = Party.state()
-    local canLead = state == "solo" or state == "leader"
-    local full = state ~= "solo" and #ns.GroupView.composition().members >= 5
-    -- In a run Forever Groups follows, an open place calls for a
-    -- replacement, not for setting up a new search.
-    local following = ns.GroupView.isActive()
-    local setup = canLead and not queued and not full and not ns.Filler.isActive() and not following
-    local open = following and state == "leader" and not queued and not ns.Filler.isActive()
-        and ns.GroupView.composition().open or ""
-
-    local y = W.TABS_TOP
-    local tabs = W.paintTabs(y)
+    local tabs = W.paintTabs(W.TABS_TOP)
     W.fitInset(tabs)
-    if tabs then
-        y = y - 38
-    else
-        y = W.insetTop() or (y - 10)
-    end
-    local cardBottom
-    local function placeCard(top)
-        ui.card:Show()
-        W.place(ui.card, PAD - CARD_PADDING, top)
-        cardBottom = top - W.refreshCard(state, full, W.currentTab())
-        return cardBottom - 12
-    end
-    -- Alone and choosing, the roles come first and the card (then only
-    -- "Looking now") follows them; otherwise the card leads.
-    local questsQueued = ns.QuestQueue.isQueued()
+    W.refreshConnection()
+    local y = tabs and (W.TABS_TOP - 38) or (W.insetTop() or (W.TABS_TOP - 10))
     local tab = W.currentTab()
-    local choosing = state == "solo" and not ns.Filler.isActive()
-        and ((tab == "quests" and not questsQueued) or tab == "battlegrounds" or (tab == "dungeons" and not queued))
-    -- Choosing dungeons, "Looking now" sits on the dungeons' header line
-    -- instead of in the card; alone, the card then has nothing to show.
-    W.lookingInHeader = tab == "dungeons" and setup
-    -- A leader choosing dungeons for a party they made: the party under the
-    -- choices, where it is set up; without its places while the class cards
-    -- show them.
-    local leaderChoosing = state == "leader" and tab == "dungeons" and setup
-    W.cardRoles = leaderChoosing
-    W.cardWithoutPlaces = leaderChoosing and ns.PartyCompose.isOn()
-    if leaderChoosing then
-        W.cardBelowRoles = placeCard
-        y = y - 10
-    elseif choosing and W.lookingInHeader then
-        W.cardBelowRoles = nil
-        W.refreshCard(state, full, tab)
-        ui.card:Hide()
-        y = y - 10
-    elseif choosing then
-        W.cardBelowRoles = placeCard
-        y = y - 10
-    else
-        W.cardBelowRoles = nil
-        y = placeCard(y)
+    if tab ~= "dungeons" then
+        W.hideDungeonList()
+        W.hideActions()
+        ui.takeLead:Hide()
+        ui.fill:Hide()
+        ui.delist:Hide()
+        fitJoin(false)
     end
-
     if tab == "quests" then
         W.hideBattlegroundWidgets()
         W.fitHeight(W.refreshQuestsTab(y, state))
@@ -134,54 +195,8 @@ local function refreshMain()
     end
     W.hideQuestWidgets()
     W.hideBattlegroundWidgets()
-    ui.ready:SetText(L["Choose a role and at least one dungeon."])
-    W.setSetupShown(setup)
-    ui.queueHeader:SetShown(queued)
-    ui.queueHeader.line:SetShown(queued)
-    if not queued then
-        for _, row in ipairs(queueRows) do
-            row:Hide()
-        end
-        ui.queueMore:Hide()
-    end
-    if setup then
-        W.refreshRoles(queued)
-        local levelCount, otherCount = W.refreshDungeons()
-        y = W.layoutSetup(y, levelCount, otherCount)
-    elseif queued then
-        y = W.layoutQueued(y, entry)
-    end
-    y = W.placeOtherQueueLink(y, state)
-
-    local searching = queued or ns.Filler.isActive()
-    local replace = open ~= ""
-    ui.join:SetText(L[searching and "Stop" or not engine and "Connecting..." or (replace and "Find replacement")
-        or (W.leadWord("dungeons") and "Find players" or "Find group")])
-    ui.join:SetShown(searching or setup or replace)
-    local ready = searching or replace or (W.selectedRoles() ~= nil and #W.selectedVisibleIds() > 0)
-    ui.joinSummary:SetShown((setup or replace) and not searching and ready)
-    if replace then
-        ui.joinSummary:SetText(string.format(L["%s  ·  %d open"], Widgets.describeRoles(open), #open))
-    end
-    if setup and ready then
-        local dungeonCount = #W.selectedVisibleIds()
-        local parts = { Widgets.describeRoles(W.selectedRoles()) }
-        if ns.Playstyle.mine() ~= ns.Playstyles.ANY then
-            parts[#parts + 1] = ns.Playstyle.word(ns.Playstyle.mine())
-        end
-        parts[#parts + 1] = W.leadWord("dungeons")
-        parts[#parts + 1] = ns.Locale.count(dungeonCount, "%d dungeon", "%d dungeons")
-        ui.joinSummary:SetText(table.concat(parts, "  ·  "))
-    end
-    Widgets.setEnabled(ui.join, engine ~= nil and ready)
-    ui.ready:SetShown(setup and not ready and (ui.hint:GetText() or "") == "")
     ui.fill:Hide()
-    ui.delist:SetShown(not ui.join:IsShown() and ns.GroupView.isListed()
-        and (Party.inGroup() or ns.GroupView.isTracking()) and state ~= "member" and state ~= "raid")
-    if not setup and not queued and not replace and not ui.join:IsShown() and not ui.delist:IsShown() then
-        y = cardBottom - 2
-    end
-    W.fitHeight(y)
+    W.fitHeight(refreshDungeonsTab(y, state))
 end
 
 -- The Who is looking drawer shows what the main window chooses (tab,
@@ -304,7 +319,7 @@ function W.build()
     ns.KeySearch.watch(W.frame)
     ns.QueueWindow.attach(W.frame)
     W.buildTabs()
-    W.buildCard()
+    W.buildStatus()
     W.buildRoles()
     W.buildCompose()
     W.buildLevels()
@@ -312,26 +327,6 @@ function W.build()
     W.buildQuests()
     W.buildBattlegrounds()
     W.buildDungeons()
-    ui.setupWidgets = { ui.dungeonHeader, ui.otherToggle }
-    for _, role in ipairs(Widgets.ROLES) do
-        ui.setupWidgets[#ui.setupWidgets + 1] = roleToggles[role]
-    end
-    ui.queueHeader = Widgets.header(W.frame, "Searching", PAD, W.HEADER_GAP)
-    for i = 1, QUEUE_ROWS do
-        local row = CreateFrame("Frame", nil, W.frame)
-        row:SetSize(ROW_WIDTH, QUEUE_ROW_HEIGHT)
-        row.name = Widgets.text(row, "GameFontHighlightSmall")
-        row.name:SetPoint("LEFT", CHECK_INSET, 0)
-        row.range = Widgets.text(row, "GameFontDisableSmall")
-        row.range:SetPoint("LEFT", RANGE_X, 0)
-        row.counts = Widgets.roleCounts(row, COUNT_SIZE)
-        row.counts:SetPoint("LEFT", COUNTS_X, 0)
-        row.groups = Widgets.text(row, "GameFontNormalSmall", "RIGHT")
-        row.groups:SetPoint("RIGHT", row.counts, "LEFT", -14, 0)
-        queueRows[i] = row
-    end
-    ui.queueMore = Widgets.text(W.frame, "GameFontDisableSmall")
-    ui.queueMore:SetWidth(W.CONTENT)
     ui.hint = Widgets.text(W.frame, "GameFontNormalSmall")
     ui.hint:SetPoint("BOTTOMLEFT", PAD, 54)
     ui.hint:SetWidth(W.CONTENT)
@@ -345,6 +340,16 @@ function W.build()
     ui.join:SetScript("OnClick", Window.onJoinClicked)
     Widgets.tooltip(ui.join, "Find group", "Matches you with other Forever Groups players and fills the rest "
         .. "from WoW's Group Finder, whichever is first.")
+    ui.endRun = Widgets.button(W.frame, "End run", END_RUN_WIDTH)
+    ui.endRun:SetHeight(30)
+    ui.endRun:SetPoint("BOTTOMRIGHT", -PAD, 16)
+    ui.endRun:SetScript("OnClick", function()
+        ns.Run.endFollowing()
+        Window.refresh()
+    end)
+    Widgets.tooltip(ui.endRun, "End run", "Stops following this group: no more replacements, and your choices and "
+        .. "tabs come back. You stay in the group.")
+    ui.endRun:Hide()
     ui.ready = Widgets.text(W.frame, "GameFontDisableSmall")
     ui.ready:SetPoint("BOTTOMLEFT", PAD, 54)
     ui.ready:SetText(L["Choose a role and at least one dungeon."])
@@ -357,6 +362,8 @@ function W.build()
     ui.delist:SetPoint("BOTTOMLEFT", PAD, 14)
     Widgets.tooltip(ui.delist, "Remove LFG listing", "Removes your own listing from WoW's Group Finder, now "
         .. "that your group is formed.")
+    ui.takeLead:ClearAllPoints()
+    ui.takeLead:SetPoint("BOTTOMLEFT", PAD, 14)
     ui.delist:SetScript("OnClick", function()
         ns.GroupView.removeListing()
         Window.refresh()

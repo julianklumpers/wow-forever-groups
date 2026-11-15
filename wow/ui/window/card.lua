@@ -7,45 +7,27 @@ local Widgets = ns.Widgets
 local Dungeons = ns.Dungeons
 local Party = ns.Party
 local Roles = ns.Roles
-local WIDTH = W.WIDTH
 local PAD = W.PAD
-local CARD_PADDING = W.CARD_PADDING
-local SLOT_WIDTH = W.SLOT_WIDTH
-local SLOT_GAP = W.SLOT_GAP
 local GREEN = W.GREEN
 local GOLD = W.GOLD
 local CONNECTION_COLORS = W.CONNECTION_COLORS
 local SLOT_ROLES = W.SLOT_ROLES
+local SLOT_GAP = W.SPACE.s
+local ACTION_HEIGHT = 24
 local ui = W.ui
 local slots = W.slots
--- The group's dungeon as a banner behind the card's title: the picture of
--- the group-found popup (Dungeons.art, cropped there for 304 x 112), shaded
--- behind the text and fading into the card below.
-local BANNER_HEIGHT, BANNER_FADE = 74, 30
--- The row of member places, centred in the card.
-local SLOTS_LEFT = math.floor((WIDTH - 28 - (5 * SLOT_WIDTH + 4 * SLOT_GAP)) / 2)
-local POPUP_ASPECT = 304 / 112
 
--- The status card under the tabs: what the queue, the group or the party is
--- doing, the group's places and links.
+-- What the queue, the group or the party is doing, under the roles on every
+-- tab: a title line with a line or two under it and, on the Dungeons tab,
+-- the group's five places where the class choices sit while choosing. Once
+-- there is a group, its actions take the place of the dungeon list.
 
-function W.shortNames(ids)
-    local names = {}
-    for i, id in ipairs(ids) do
-        local dungeon = Dungeons.get(id)
-        names[i] = dungeon and dungeon.short or id
-    end
-    return table.concat(names, ", ")
-end
-
--- What the status card shows: { title, subtitle, detail, lead, color }.
-function W.cardContent(state)
+-- What the status shows: { title, subtitle, detail, lead, color }, or
+-- { group, lead, color } for a group Forever Groups follows.
+function W.dungeonStatus(state)
     local status = ns.Status.current("dungeons")
     if status and status.group then
-        -- The dungeon as the title; refreshCard writes the line under it,
-        -- which counts the players at the entrance.
-        return { title = Dungeons.name(status.group.dungeon), group = status.group, lead = status.lead,
-            color = status.done and GREEN or GOLD }
+        return { group = status.group, lead = status.lead, color = status.done and GREEN or GOLD }
     end
     if status then
         local color = (status.done and GREEN) or GOLD
@@ -62,19 +44,15 @@ function W.cardContent(state)
             return { title = "Your party is complete (5/5)", color = GREEN, lead = state == "leader",
                 subtitle = run and (Dungeons.name(run.dungeon) .. ": " .. ns.Run.describe(run)) or "No need to queue." }
         end
-        local subtitle = state == "leader" and "Queue your party below, or fill it from WoW's Group Finder."
-            or "Your party leader queues for the group."
-        if state == "raid" then
-            subtitle = "You are in a raid: leave it to queue."
-        end
+        local subtitle = state ~= "leader" and "Your party leader queues for the group." or nil
         return { title = string.format(L["Your party: %d/5"], size), subtitle = subtitle, color = GOLD,
             lead = state == "leader" }
     end
     return { color = GOLD }
 end
 
--- The Quests tab's card: the questing queue, a proposal, or the group.
-function W.questCardContent(state)
+-- The Quests tab's status: the questing queue, a proposal, or the group.
+function W.questStatus(state)
     -- Still connecting: the window simply shows what it can (the title
     -- bar's dot says it is connecting).
     if not ns.questEngine then
@@ -122,14 +100,11 @@ function W.questCardContent(state)
             subtitle = table.concat(parts, "  ·  "), color = GOLD, lead = #entry.members > 1,
         }
     end
-    if state == "member" or state == "raid" then
-        return { title = "Your party leader looks for questing groups", color = GOLD }
-    end
     return { color = GOLD }
 end
 
 function W.refreshConnection()
-    local card = ui.card
+    local bar = ui.connectionBar
     local connection = ns.Comm.connection()
     local newer = ns.Version.newer()
     if newer then
@@ -139,24 +114,23 @@ function W.refreshConnection()
                 tostring(ns.Version.mine()))
     end
     local color = CONNECTION_COLORS[connection.state]
-    Widgets.paintDot(card.dot, color)
+    Widgets.paintDot(bar.dot, color)
     local plain = connection.state == "connected" and not newer
-    card.connection:SetText(plain and "" or L[connection.text])
-    card.connection:SetTextColor(color[1], color[2], color[3])
-    card.connectionInfo = connection
+    bar.label:SetText(plain and "" or L[connection.text])
+    bar.label:SetTextColor(color[1], color[2], color[3])
+    bar.info = connection
     -- The dot pulses while connecting, so the window shows it is on its way.
-    local bar = ui.connectionBar
     if connection.state == "connecting" then
         if not bar.pulsing then
             bar.pulsing = true
             bar:SetScript("OnUpdate", function()
-                card.dot:SetAlpha(0.35 + 0.65 * math.abs(math.sin(GetTime() * 2.5)))
+                bar.dot:SetAlpha(0.35 + 0.65 * math.abs(math.sin(GetTime() * 2.5)))
             end)
         end
     elseif bar.pulsing then
         bar.pulsing = false
         bar:SetScript("OnUpdate", nil)
-        card.dot:SetAlpha(1)
+        bar.dot:SetAlpha(1)
     end
 end
 
@@ -175,8 +149,12 @@ function W.queuedComposition(entry)
         for _, slot in ipairs(places) do
             if slot.role == role and not slot.taken then
                 slot.taken = true
-                slot.name = member.reserved and "invited" or member.name
-                slot.classToken = member.name == ns.selfName and Party.playerClass() or nil
+                if member.reserved then
+                    slot.reserved = true
+                else
+                    slot.name = member.name
+                    slot.classToken = member.name == ns.selfName and Party.playerClass() or nil
+                end
                 break
             end
         end
@@ -184,334 +162,320 @@ function W.queuedComposition(entry)
     return { slots = places }
 end
 
--- Fills the card and returns its height. full: the party is complete, so the
--- queue numbers are left out.
--- tab: "dungeons", "quests" or "battlegrounds"; the card shows that tab's
--- status.
-function W.refreshCard(state, full, tab)
-    local card = ui.card
-    W.refreshConnection()
-    local questTab = tab == "quests"
-    local battlegroundTab = tab == "battlegrounds"
-    -- The group's dungeon, its picture, places and actions belong to the
-    -- Dungeons tab only.
-    local otherTab = questTab or battlegroundTab
-    local content = (questTab and W.questCardContent(state))
-        or (battlegroundTab and W.battlegroundCardContent(state)) or W.cardContent(state)
-    local y = -10
-    card.crown:SetShown(content.lead == true)
-    card.progressLink:SetShown(questTab and ns.QuestGroup.current() ~= nil and #ns.QuestGroup.rows() > 0)
-    local x = content.lead and 32 or 12
-    card.title:SetShown(content.title ~= nil)
-    if content.title then
-        card.title:ClearAllPoints()
-        card.title:SetPoint("TOPLEFT", card, "TOPLEFT", x, y)
-        card.title:SetText(L[content.title])
-        card.title:SetTextColor(content.color[1], content.color[2], content.color[3])
-        y = y - 22
-    end
-    for _, field in ipairs({ "subtitle", "detail" }) do
-        local text = card[field]
-        if content.group then
-            text:Hide()
-        elseif content[field] then
-            text:ClearAllPoints()
-            text:SetPoint("TOPLEFT", card, "TOPLEFT", 12, y)
-            text:SetText(L[content[field]])
-            text:Show()
-            local height = text:GetStringHeight()
-            y = y - math.max(16, (type(height) == "number" and height or 0) + 3)
-        else
-            text:Hide()
-        end
-    end
-    local bannerDungeon = content.group and not otherTab and ns.GroupView.trackedDungeon()
-    local banner = W.paintBanner(bannerDungeon)
-    local composition
-    if otherTab then
-        composition = nil
-    elseif Party.inGroup() or ns.GroupView.isTracking() then
-        composition = ns.GroupView.composition()
+-- The places on the Dungeons tab: the party or group, else the queue
+-- entry's; nil when there is neither.
+local function composition()
+    if Party.inGroup() or ns.GroupView.isTracking() then
+        return ns.GroupView.composition()
     elseif ns.engine and ns.engine.myEntry then
-        composition = W.queuedComposition(ns.engine.myEntry)
+        return W.queuedComposition(ns.engine.myEntry)
     end
-    local groupDungeon = not otherTab and ns.GroupView.trackedDungeon()
-    local entranceFor = not otherTab and ns.GroupView.dungeon()
-    local entrance = entranceFor and not IsInInstance() and ns.Entrances.get(entranceFor)
+    return nil
+end
+
+-- The data W.paintPlace draws the places with, the extra lines they share,
+-- and how many members are at the entrance and inside.
+-- roleInfo: the roles each party member is queued for go in their tooltip.
+-- choosing: the leader of a run may pick the classes for its open places
+-- (the party's class choices, wow/partycompose.lua) before Find replacement.
+local function placeRows(places, roleInfo, choosing)
+    local groupDungeon = ns.GroupView.trackedDungeon()
     local quests = groupDungeon and ns.QuestShare.summary(groupDungeon)
     local inside = IsInInstance() and true or false
-    local places = groupDungeon and (inside or ns.Entrances.get(groupDungeon) ~= nil)
-    local atEntrance, insideCount = 0, 0
-    if W.cardWithoutPlaces then
-        composition = nil
+    local distances = groupDungeon and (inside or ns.Entrances.get(groupDungeon) ~= nil)
+    local counts = {}
+    if quests then
+        -- The own name comes with the channel handshake, a few seconds
+        -- after login; the window may open before.
+        if ns.selfName then
+            counts[ns.selfName] = quests.mine
+        end
+        for _, member in ipairs(quests.members) do
+            counts[member.name] = member.count or (ns.Presence.isOnline(member.name) and "?" or "none")
+        end
     end
-    local partyMembers = W.cardRoles and Party.members() or {}
-    if composition then
-        local counts = {}
-        if quests then
-            -- The own name comes with the channel handshake, a few seconds
-            -- after login; the window may open before.
-            if ns.selfName then
-                counts[ns.selfName] = quests.mine
-            end
-            for _, member in ipairs(quests.members) do
-                counts[member.name] = member.count or (ns.Presence.isOnline(member.name) and "?" or "none")
+    local partyMembers = roleInfo and Party.members() or {}
+    local rows, layout = {}, { distance = distances and true or false, quests = quests and true }
+    local facts = { atEntrance = 0, inside = 0, insideAll = inside, distances = distances }
+    local invites = ns.Filler.invites()
+    for i, data in ipairs(places.slots) do
+        local row = { role = data.role, name = data.name, classToken = data.classToken }
+        for _, member in ipairs(partyMembers) do
+            if member.name == data.name then
+                row.roleInfo = Widgets.describeRoles(ns.PartyRoles.rolesOf(member)) .. "  ("
+                    .. L[ns.PartyRoles.sourceOf(member)] .. ")"
             end
         end
-        local rows, layout = {}, { spec = false, distance = places and true or false, quests = quests and true }
-        local invites = ns.Filler.invites()
-        for i, data in ipairs(composition.slots) do
-            local row = { role = data.role, name = data.name, classToken = data.classToken }
-            for _, member in ipairs(partyMembers or {}) do
-                if member.name == data.name then
-                    row.roleInfo = Widgets.describeRoles(ns.PartyRoles.rolesOf(member)) .. "  ("
-                        .. L[ns.PartyRoles.sourceOf(member)] .. ")"
+        if not data.name then
+            for n, invite in ipairs(invites) do
+                if invite.role == data.role then
+                    row.invite = table.remove(invites, n)
+                    break
                 end
             end
-            if not data.name then
-                for n, invite in ipairs(invites) do
-                    if invite.role == data.role then
-                        row.invite = table.remove(invites, n)
-                        layout.spec = true
-                        break
-                    end
-                end
+            if data.reserved and not row.invite then
+                row.invite = {}
             end
-            if data.name then
-                row.spec = data.spec or ns.Spec.treeOf(data.name)
-                row.specIndex = data.specIndex or ns.Spec.indexOf(data.name)
-                row.quests = counts[data.name]
-                if places then
-                    local place = ns.GroupPlaces.of(data.name, data.unit, groupDungeon)
-                    if place == nil and not inside then
-                        place = false
-                    elseif place == nil then
-                        place = counts[data.name] == "none" and "none" or "?"
-                    end
-                    row.distance = place
-                    if place == "in" then
-                        insideCount = insideCount + 1
-                    elseif type(place) == "number" and ns.Entrances.isAt(place) then
-                        atEntrance = atEntrance + 1
-                    end
-                end
-            end
-            layout.spec = layout.spec or row.spec ~= nil or (data.name ~= nil and data.classToken ~= nil)
-            rows[i] = row
         end
-        -- An open place the class choices keep for some classes shows them.
-        local free = ns.PartyCompose.freePlaces()
-        if free then
-            local byRole = {}
-            for _, place in ipairs(free) do
-                byRole[place.role] = byRole[place.role] or {}
-                table.insert(byRole[place.role], place)
+        if data.name then
+            row.specIndex = data.specIndex or ns.Spec.indexOf(data.name)
+            row.quests = counts[data.name]
+            local offline = false
+            if data.unit and type(UnitIsConnected) == "function" then
+                local ok, connected = pcall(UnitIsConnected, data.unit)
+                offline = ok and connected == false
             end
-            for _, row in ipairs(rows) do
-                local place = not row.name and not row.invite and table.remove(byRole[row.role] or {}, 1)
-                if place and place.mask ~= 0 then
-                    row.classes = ns.Compose.classesOf(place.mask)
-                    layout.spec = true
+            if offline then
+                row.distance = "offline"
+            elseif distances then
+                local place = ns.GroupPlaces.of(data.name, data.unit, groupDungeon)
+                if place == nil and not inside then
+                    place = false
+                elseif place == nil then
+                    place = counts[data.name] == "none" and "none" or "?"
+                end
+                row.distance = place
+                if place == "in" then
+                    facts.inside = facts.inside + 1
+                elseif type(place) == "number" and ns.Entrances.isAt(place) then
+                    facts.atEntrance = facts.atEntrance + 1
                 end
             end
         end
-        -- Everyone inside: the line under the title says so, the places
-        -- leave it out.
-        if inside and composition.members and insideCount == #composition.members then
-            layout.distance = false
+        rows[i] = row
+    end
+    -- An open place the class choices keep for some classes shows them.
+    local free = not choosing and ns.PartyCompose.freePlaces()
+    if choosing then
+        local fixed = ns.PartyCompose.fixed()
+        local masks = ns.PartyCompose.isOn() and ns.PartyCompose.settings().masks or {}
+        local openByRole = {}
+        for slot, role in ipairs(ns.Compose.SLOT_ROLES) do
+            if not fixed[slot] then
+                openByRole[role] = openByRole[role] or {}
+                table.insert(openByRole[role], slot)
+            end
         end
+        for _, row in ipairs(rows) do
+            local slot = not row.name and not row.invite and table.remove(openByRole[row.role] or {}, 1)
+            if slot then
+                row.wishSlot = slot
+                local mask = masks[slot] or 0
+                row.classes = mask ~= 0 and ns.Compose.classesOf(mask) or nil
+            end
+        end
+    elseif free then
+        local byRole = {}
+        for _, place in ipairs(free) do
+            byRole[place.role] = byRole[place.role] or {}
+            table.insert(byRole[place.role], place)
+        end
+        for _, row in ipairs(rows) do
+            local place = not row.name and not row.invite and table.remove(byRole[row.role] or {}, 1)
+            if place and place.mask ~= 0 then
+                row.classes = ns.Compose.classesOf(place.mask)
+            end
+        end
+    end
+    -- Everyone inside: the title line says so, the places leave it out.
+    if inside and places.members and facts.inside == #places.members then
+        layout.distance = false
+    end
+    -- A member who went offline says so where the distance goes, also while
+    -- the row shows no distances.
+    for _, row in ipairs(rows) do
+        if row.distance == "offline" then
+            layout.distance = true
+        end
+    end
+    return rows, layout, facts
+end
+
+-- "Group complete  ·  Relaxed  ·  you lead  ·  3 of 5 at the entrance",
+-- after the group's dungeon on the title line.
+local function groupLine(content, facts)
+    local group = content.group
+    local parts = { group.complete and L["Group complete"]
+        or string.format(L["%d/5, open: %s"], group.count, group.openText) }
+    local styles = ns.Playstyle.describe(group.playstyles, " / ")
+    if styles then
+        parts[#parts + 1] = styles
+    end
+    if content.lead then
+        parts[#parts + 1] = L["you lead"]
+    end
+    if facts.insideAll then
+        parts[#parts + 1] = string.format(L["%d of %d inside"], facts.inside, group.count)
+    elseif facts.distances then
+        parts[#parts + 1] = string.format(L["%d of %d at the entrance"], facts.atEntrance, group.count)
+        if facts.inside > 0 then
+            parts[#parts + 1] = string.format(L["%d inside"], facts.inside)
+        end
+    end
+    if group.run then
+        parts[#parts + 1] = group.run
+    end
+    return table.concat(parts, "  ·  ")
+end
+
+function W.hideStatus()
+    for _, widget in ipairs({ ui.statusCrown, ui.statusTitle, ui.statusLine, ui.statusInfo, ui.statusSubtitle,
+        ui.statusDetail, ui.progressLink }) do
+        widget:Hide()
+    end
+    for _, slot in ipairs(slots) do
+        slot:Hide()
+        W.closeClassCard(slot)
+    end
+end
+
+-- Places the status from y down; returns the new y. tab: "dungeons",
+-- "quests" or "battlegrounds". options.places: show the group's places
+-- (Dungeons tab); options.roleInfo: a leader setting up the party sees each
+-- member's queued roles on hovering their place.
+function W.layoutStatus(y, tab, state, options)
+    options = options or {}
+    local content = (tab == "quests" and W.questStatus(state))
+        or (tab == "battlegrounds" and W.battlegroundStatus(state)) or W.dungeonStatus(state)
+    local places = tab == "dungeons" and options.places and composition() or nil
+    local rows, layout, facts
+    if places then
+        rows, layout, facts = placeRows(places, options.roleInfo, options.chooseReplacements)
+    end
+    local hasTitle = content.title ~= nil or content.group ~= nil
+    if not hasTitle and not places then
+        W.hideStatus()
+        return y
+    end
+    local x = PAD
+    ui.statusCrown:SetShown(hasTitle and content.lead == true)
+    if hasTitle and content.lead then
+        ui.statusCrown:ClearAllPoints()
+        ui.statusCrown:SetPoint("RIGHT", ui.statusTitle, "LEFT", -4, 0)
+        x = PAD + 20
+    end
+    local progress = hasTitle and tab == "quests" and ns.QuestGroup.current() ~= nil and #ns.QuestGroup.rows() > 0
+    ui.progressLink:SetShown(progress)
+    if progress then
+        ui.progressLink:ClearAllPoints()
+        ui.progressLink:SetPoint("TOPRIGHT", W.frame, "TOPRIGHT", W.RIGHT_OFFSET, y - 3)
+    end
+    local title, info = ui.statusTitle, ui.statusInfo
+    title:SetShown(hasTitle)
+    ui.statusLine:SetShown(hasTitle)
+    info:SetShown(hasTitle and content.group ~= nil)
+    ui.statusSubtitle:Hide()
+    ui.statusDetail:Hide()
+    if hasTitle then
+        title:SetTextColor(content.color[1], content.color[2], content.color[3])
+        W.place(title, x, y)
         if content.group then
-            local parts = { content.group.complete and L["Group complete"]
-                or string.format(L["%d/5, open: %s"], content.group.count, content.group.openText) }
-            local styles = ns.Playstyle.describe(content.group.playstyles, " / ")
-            if styles then
-                parts[#parts + 1] = styles
-            end
-            if content.lead then
-                parts[#parts + 1] = L["you lead"]
-            end
-            if inside then
-                parts[#parts + 1] = string.format(L["%d of %d inside"], insideCount, content.group.count)
-            elseif places then
-                parts[#parts + 1] = string.format(L["%d of %d at the entrance"], atEntrance, content.group.count)
-                if insideCount > 0 then
-                    parts[#parts + 1] = string.format(L["%d inside"], insideCount)
-                end
-            end
-            if content.group.run then
-                parts[#parts + 1] = content.group.run
-            end
-            card.subtitle:ClearAllPoints()
-            card.subtitle:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -32)
-            card.subtitle:SetText(table.concat(parts, "  ·  "))
-            card.subtitle:Show()
-            y = -52
+            title:SetText(Dungeons.name(content.group.dungeon))
+            local width = math.ceil(title:GetStringWidth() or 0)
+            title:SetWidth(width + 2)
+            info:SetText(groupLine(content, facts or { atEntrance = 0, inside = 0 }))
+            info:SetWidth(math.max(40, W.RIGHT - x - width - 12))
+            info:ClearAllPoints()
+            info:SetPoint("LEFT", title, "RIGHT", 10, 0)
+        else
+            title:SetText(L[content.title])
+            title:SetWidth(W.RIGHT - x - (progress and 130 or 0) - (options.rightRoom or 0))
         end
-        -- Under the banner's fade, not in it.
-        y = banner and -(BANNER_HEIGHT + 4) or (y - 4)
-        local left = SLOTS_LEFT
-        local tallest = 0
-        for i, slot in ipairs(slots) do
-            tallest = math.max(tallest, Widgets.paintSlot(slot, rows[i], layout))
+        -- Underlined like the section headers ("Dungeons for level 20").
+        ui.statusLine:ClearAllPoints()
+        ui.statusLine:SetPoint("TOPLEFT", title, "BOTTOMLEFT", PAD - x, -W.HEADER_GAP)
+        ui.statusLine:SetPoint("RIGHT", W.frame, "RIGHT", -PAD, 0)
+        y = y - W.HEADER_STEP
+        for _, field in ipairs({ "subtitle", "detail" }) do
+            local text = field == "subtitle" and ui.statusSubtitle or ui.statusDetail
+            if not content.group and content[field] then
+                text:SetText(L[content[field]])
+                W.place(text, PAD, y)
+                text:Show()
+                local height = text:GetStringHeight()
+                y = y - math.max(16, (type(height) == "number" and height or 0) + 3)
+            end
+        end
+    end
+    if places then
+        y = y - W.SPACE.xs
+        for i, column in ipairs(W.columns(#slots, SLOT_GAP)) do
+            local slot = slots[i]
+            W.paintPlace(slot, rows[i], { width = column.width, layout = layout, editable = rows[i].wishSlot ~= nil })
             slot.roleInfo = rows[i].roleInfo
-            slot:ClearAllPoints()
-            slot:SetPoint("TOPLEFT", card, "TOPLEFT", left + (i - 1) * (SLOT_WIDTH + SLOT_GAP), y)
+            slot.wishSlot = rows[i].wishSlot
+            slot.arrow:SetShown(slot.wishSlot ~= nil)
+            Widgets.setEnabled(slot, slot.wishSlot ~= nil)
+            if not slot.wishSlot then
+                W.closeClassCard(slot)
+            end
+            W.place(slot, column.x, y)
             slot:Show()
         end
-        y = y - tallest - 8
+        y = y - W.PLACE_HEIGHT - W.SPACE.m
     else
         for _, slot in ipairs(slots) do
             slot:Hide()
+            W.closeClassCard(slot)
         end
     end
-    local looking = not full and not W.lookingInHeader
-    for _, widget in ipairs({ card.lookingLabel, card.looking, card.lookingGroups }) do
-        widget:SetShown(looking)
+    return y - W.SPACE.s
+end
+
+-- While searching the list makes way: who is looking for what the tab
+-- searches follows the status title instead of the list's header.
+function W.layoutLookingAfterStatus(subject)
+    local title = ui.statusTitle
+    if not title:IsShown() then
+        W.hideHeaderLooking()
+        return
     end
-    -- The group's actions, as one row of buttons.
-    local actions = card.actions
-    local showActions = groupDungeon and true or false
+    title:SetWidth(math.ceil(title:GetStringWidth() or 0) + 2)
+    W.layoutHeaderLooking(title, subject)
+end
+
+function W.hideActions()
+    for _, button in ipairs(ui.actions) do
+        button:Hide()
+    end
+end
+
+-- The group's actions as one row of buttons, where the dungeon list is
+-- while choosing; returns the new y.
+function W.layoutActions(y)
+    local actions = ui.actions
+    local groupDungeon = ns.GroupView.trackedDungeon()
+    if not groupDungeon then
+        W.hideActions()
+        return y
+    end
+    local entranceFor = ns.GroupView.dungeon()
+    local entrance = entranceFor and not IsInInstance() and ns.Entrances.get(entranceFor)
+    local quests = ns.QuestShare.summary(groupDungeon)
     local shown = {}
     for _, button in ipairs(actions) do
-        local visible = showActions and (button ~= actions.waypoint or entranceFor ~= nil)
+        local visible = button ~= actions.waypoint or entranceFor ~= nil
         button:SetShown(visible)
         if visible then
             shown[#shown + 1] = button
         end
     end
-    if showActions then
-        Widgets.setEnabled(actions.waypoint, entrance and true or false)
-        Widgets.setEnabled(actions.share, quests ~= nil and quests.mine > 0)
-        Widgets.setEnabled(actions.progress, ns.QuestGroup.current() ~= nil and #ns.QuestGroup.rows() > 0)
-        card.questsInfo = quests
-        local width = math.floor((W.CONTENT - 2 * 8) / 3)
-        for i, button in ipairs(shown) do
-            button:SetWidth(width)
-            button:ClearAllPoints()
-            button:SetPoint("TOPLEFT", card, "TOPLEFT", 12 + (i - 1) * (width + 8), y)
-        end
-        y = y - 30
+    Widgets.setEnabled(actions.waypoint, entrance and true or false)
+    Widgets.setEnabled(actions.share, quests ~= nil and quests.mine > 0)
+    Widgets.setEnabled(actions.progress, ns.QuestGroup.current() ~= nil and #ns.QuestGroup.rows() > 0)
+    actions.questsInfo = quests
+    for i, column in ipairs(W.columns(#shown, W.SPACE.m)) do
+        local button = shown[i]
+        button:SetWidth(column.width)
+        W.place(button, column.x, y)
     end
-    local leader = not full and not otherTab and ns.TakeLead.leader()
-    card.takeLead:SetShown(leader and true or false)
-    if not full then
-        y = y - 4
-        if leader then
-            local asked = ns.TakeLead.isAsked()
-            card.takeLead:SetText(L[asked and "Asked to lead" or "Make me leader"])
-            Widgets.setEnabled(card.takeLead, not asked)
-            card.takeLead:ClearAllPoints()
-            card.takeLead:SetPoint("TOPRIGHT", card, "TOPRIGHT", -12, y + 3)
-        end
-    end
-    if looking then
-        card.lookingLabel:ClearAllPoints()
-        card.lookingLabel:SetPoint("TOPLEFT", card, "TOPLEFT", 12, y - 2)
-        card.looking:ClearAllPoints()
-        card.looking:SetPoint("LEFT", card.lookingLabel, "RIGHT", 10, 0)
-        local subject, wanted, known
-        if questTab then
-            subject, wanted, known = "quests", ns.QueueWindow.wantedQuests(), ns.QueueWindow.questCountsKnown()
-        elseif battlegroundTab then
-            subject, wanted = "battlegrounds", ns.QueueWindow.wantedBattlegrounds()
-            known = ns.LfgList.battlegroundsSearched()
-        else
-            subject, wanted, known = "dungeons", ns.QueueWindow.wantedDungeons(), ns.Features.countsKnown()
-        end
-        Widgets.setRoleCounts(card.looking, known and ns.QueueWindow.lookingCounts(wanted, subject))
-        local needing = #ns.QueueWindow.groupsNeedingMe(wanted, subject)
-        card.lookingGroups:ClearAllPoints()
-        card.lookingGroups:SetPoint("LEFT", card.looking, "RIGHT", 6, 0)
-        card.lookingGroups:SetText(needing > 0
-            and ("·  " .. ns.Locale.count(needing, "%d group needs you", "%d groups need you")) or "")
-    end
-    if looking or leader then
-        y = y - 20
-    end
-    local height = -(y - 6)
-    card:SetHeight(height)
-    return height
+    return y - ACTION_HEIGHT - W.SPACE.l
 end
 
--- dungeon: the group's dungeon id, or nil for no banner.
-function W.paintBanner(dungeon)
-    local card = ui.card
-    local art, crop = nil, nil
-    if dungeon then
-        art, crop = Dungeons.art(dungeon)
-    end
-    for _, part in ipairs({ card.bannerTop, card.bannerFade, card.bannerShade }) do
-        part:SetShown(art ~= nil)
-    end
-    if not art then
-        card.background:ClearAllPoints()
-        card.background:SetAllPoints()
-        return false
-    end
-    -- The popup's crop, its height narrowed to this wider banner around the
-    -- same middle; the faded part continues the picture downwards.
-    -- Across the whole inner panel, and the card's background with it.
-    local left, right = W.cardBleed()
-    for _, part in ipairs({ card.bannerTop, card.background }) do
-        part:ClearAllPoints()
-        part:SetPoint("TOPLEFT", card, "TOPLEFT", -left, 0)
-    end
-    card.bannerTop:SetPoint("TOPRIGHT", card, "TOPRIGHT", right, 0)
-    card.background:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", right, 0)
-    local aspect = (WIDTH - 2 * (PAD - CARD_PADDING) + left + right) / BANNER_HEIGHT
-    local middle = (crop[3] + crop[4]) / 2
-    local half = (crop[4] - crop[3]) / 2 * POPUP_ASPECT / aspect
-    local top, bottom = middle - half, middle + half
-    local split = top + (bottom - top) * (BANNER_HEIGHT - BANNER_FADE) / BANNER_HEIGHT
-    card.bannerTop:SetTexture(art)
-    card.bannerTop:SetTexCoord(crop[1], crop[2], top, split)
-    card.bannerFade:SetTexture(art)
-    card.bannerFade:SetTexCoord(crop[1], crop[2], split, bottom)
-    if not (card.bannerFaded and pcall(card.bannerFade.SetGradient, card.bannerFade, "VERTICAL",
-        CreateColor(1, 1, 1, 0), CreateColor(1, 1, 1, 1))) then
-        card.bannerFade:SetAlpha(0.5)
-    end
-    return true
-end
-
-function W.buildCard()
-    local card = CreateFrame("Frame", nil, W.frame)
-    card:SetSize(WIDTH - 2 * (PAD - CARD_PADDING), 100)
-    -- As wide as the banner, so nothing sticks out (W.paintBanner).
-    card.background = card:CreateTexture(nil, "BACKGROUND")
-    card.background:SetAllPoints()
-    card.background:SetColorTexture(0, 0, 0, 0.35)
-    card.bannerTop = card:CreateTexture(nil, "BACKGROUND", nil, 1)
-    card.bannerTop:SetPoint("TOPLEFT")
-    card.bannerTop:SetPoint("TOPRIGHT")
-    card.bannerTop:SetHeight(BANNER_HEIGHT - BANNER_FADE)
-    card.bannerFade = card:CreateTexture(nil, "BACKGROUND", nil, 1)
-    card.bannerFade:SetPoint("TOPLEFT", card.bannerTop, "BOTTOMLEFT")
-    card.bannerFade:SetPoint("TOPRIGHT", card.bannerTop, "BOTTOMRIGHT")
-    card.bannerFade:SetHeight(BANNER_FADE)
-    card.bannerShade = card:CreateTexture(nil, "BACKGROUND", nil, 2)
-    card.bannerShade:SetPoint("TOPLEFT", card.bannerTop, "TOPLEFT")
-    card.bannerShade:SetPoint("TOPRIGHT", card.bannerTop, "TOPRIGHT")
-    card.bannerShade:SetHeight(BANNER_HEIGHT)
-    card.bannerShade:SetColorTexture(1, 1, 1, 1)
-    local hasGradient = type(CreateColor) == "function"
-    -- Dark behind the title on the left, clear on the right.
-    if not (hasGradient and pcall(card.bannerShade.SetGradient, card.bannerShade, "HORIZONTAL",
-        CreateColor(0, 0, 0, 0.75), CreateColor(0, 0, 0, 0.1))) then
-        card.bannerShade:SetColorTexture(0, 0, 0, 0.45)
-    end
-    card.bannerFaded = hasGradient
-    card.crown = card:CreateTexture(nil, "ARTWORK")
-    card.crown:SetSize(16, 16)
-    card.crown:SetPoint("TOPLEFT", 12, -11)
-    card.crown:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
-    card.progressLink = Widgets.link(card, "Quest progress »", function()
-        ns.ProgressWindow.toggle()
-    end)
-    card.progressLink:SetPoint("TOPRIGHT", -12, -13)
-    -- The channel connection in the title bar, left of the close button: a
-    -- dot in the state's colour, with its word only while it is not simply
-    -- connected (connecting, a problem, an update out); details on hover.
+-- The channel connection in the title bar, left of the close button: a dot
+-- in the state's colour, with its word only while it is not simply
+-- connected (connecting, a problem, an update out); details on hover.
+local function buildConnection()
     local bar = CreateFrame("Frame", nil, W.frame)
     bar:SetSize(1, 16)
     if W.frame.CloseButton then
@@ -526,16 +490,16 @@ function W.buildCard()
         bar:SetPoint("TOPRIGHT", W.frame, "TOPRIGHT", -32, -4)
     end
     ui.connectionBar = bar
-    card.connection = Widgets.text(bar, "GameFontNormalSmall", "RIGHT")
-    card.connection:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
-    card.dot = Widgets.dot(bar)
-    card.dot:SetPoint("RIGHT", card.connection, "LEFT", -5, 0)
+    bar.label = Widgets.text(bar, "GameFontNormalSmall", "RIGHT")
+    bar.label:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
+    bar.dot = Widgets.dot(bar)
+    bar.dot:SetPoint("RIGHT", bar.label, "LEFT", -5, 0)
     local hover = CreateFrame("Frame", nil, bar)
-    hover:SetPoint("TOPLEFT", card.dot, "TOPLEFT", -6, 6)
+    hover:SetPoint("TOPLEFT", bar.dot, "TOPLEFT", -6, 6)
     hover:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 4, -2)
     hover:EnableMouse(true)
     hover:SetScript("OnEnter", function(self)
-        local info = card.connectionInfo
+        local info = bar.info
         if info and GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
             GameTooltip:SetText(string.format(L["Forever Groups channel: %s"], L[info.text]))
@@ -568,46 +532,57 @@ function W.buildCard()
             GameTooltip:Hide()
         end
     end)
-    card.title = Widgets.text(card, "GameFontNormalLarge")
-    card.title:SetWidth(WIDTH - 200)
-    card.title:SetWordWrap(false)
-    card.subtitle = Widgets.text(card, "GameFontHighlight")
-    card.subtitle:SetWidth(WIDTH - 52)
-    card.detail = Widgets.text(card, "GameFontHighlightSmall")
-    card.detail:SetWidth(WIDTH - 52)
-    card.detail:SetTextColor(0.8, 0.8, 0.8)
-    card.lookingLabel = Widgets.text(card, "GameFontNormalSmall")
-    card.lookingLabel:SetText(L["Looking now:"])
-    card.looking = Widgets.roleCounts(card, 14)
-    card.looking:EnableMouse(true)
-    card.lookingGroups = Widgets.text(card, "GameFontNormalSmall")
-    Widgets.tooltip(card.looking, "Looking now", "Tanks, healers and DPS looking for your dungeons: other "
-        .. "Forever Groups players and solo players in WoW's Group Finder. Someone who can play more roles counts "
-        .. "for each.")
-    local function action(key, label, onClick, tip)
-        local button = Widgets.button(card, label, 160)
-        button:SetHeight(22)
-        button:SetScript("OnClick", onClick)
-        if tip then
-            button:SetScript("OnEnter", tip)
-            button:SetScript("OnLeave", function()
-                if GameTooltip then
-                    GameTooltip:Hide()
-                end
-            end)
-        end
-        card.actions[#card.actions + 1] = button
-        card.actions[key] = button
+end
+
+local function hideTooltip()
+    if GameTooltip then
+        GameTooltip:Hide()
     end
-    card.takeLead = Widgets.button(card, "Make me leader", 140)
-    card.takeLead:SetHeight(22)
-    card.takeLead:SetScript("OnClick", function()
+end
+
+function W.buildStatus()
+    buildConnection()
+    local frame = W.frame
+    ui.statusCrown = frame:CreateTexture(nil, "ARTWORK")
+    ui.statusCrown:SetSize(16, 16)
+    ui.statusCrown:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
+    ui.statusTitle = Widgets.text(frame, "GameFontNormal")
+    ui.statusTitle:SetWordWrap(false)
+    ui.statusLine = frame:CreateTexture(nil, "ARTWORK")
+    ui.statusLine:SetHeight(1)
+    ui.statusLine:SetColorTexture(1, 0.82, 0, 0.25)
+    ui.statusInfo = Widgets.text(frame, "GameFontHighlight")
+    ui.statusInfo:SetWordWrap(false)
+    ui.statusSubtitle = Widgets.text(frame, "GameFontHighlight")
+    ui.statusSubtitle:SetWidth(W.CONTENT)
+    ui.statusDetail = Widgets.text(frame, "GameFontHighlightSmall")
+    ui.statusDetail:SetWidth(W.CONTENT)
+    ui.statusDetail:SetTextColor(0.8, 0.8, 0.8)
+    ui.progressLink = Widgets.link(frame, "Quest progress »", function()
+        ns.ProgressWindow.toggle()
+    end)
+    ui.takeLead = Widgets.button(frame, "Make me leader", 150)
+    ui.takeLead:SetScript("OnClick", function()
         ns.TakeLead.ask()
         ns.Window.refresh()
     end)
-    Widgets.tooltip(card.takeLead, "Make me leader", "Your leader has no Forever Groups. This whispers them to "
+    Widgets.tooltip(ui.takeLead, "Make me leader", "Your leader has no Forever Groups. This whispers them to "
         .. "make you leader; once you lead, Forever Groups fills the open places.")
-    card.actions = {}
+    ui.takeLead:Hide()
+    local actions = {}
+    ui.actions = actions
+    local function action(key, label, onClick, tip)
+        local button = Widgets.button(frame, label, 160)
+        button:SetHeight(ACTION_HEIGHT)
+        button:SetScript("OnClick", onClick)
+        if tip then
+            button:SetScript("OnEnter", tip)
+            button:SetScript("OnLeave", hideTooltip)
+        end
+        button:Hide()
+        actions[#actions + 1] = button
+        actions[key] = button
+    end
     action("waypoint", "Waypoint to entrance", function()
         local dungeon = ns.GroupView.dungeon()
         if dungeon and not ns.Entrances.setWaypoint(dungeon) then
@@ -617,14 +592,14 @@ function W.buildCard()
     action("share", "Share my quests", function()
         ns.QuestShare.shareMine(ns.GroupView.trackedDungeon())
     end, function(self)
-        local info = card.questsInfo
+        local info = actions.questsInfo
         if not info or not GameTooltip then
             return
         end
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         GameTooltip:SetText(L["Share my quests"], 1, 0.82, 0)
         GameTooltip:AddLine(L["Shares your quests for this dungeon with the group, one at a time. Under each "
-            .. "player: their quests for it (? without Forever Groups)."], 1, 1, 1, true)
+            .. "player with Forever Groups: their quests for it."], 1, 1, 1, true)
         if #info.theyHave > 0 then
             GameTooltip:AddLine(L["Others have, you don't:"], 1, 0.82, 0)
             for _, title in ipairs(info.theyHave) do
@@ -638,9 +613,21 @@ function W.buildCard()
     end)
     -- While the leader sets up the party: the roles each member is queued
     -- for, and where they come from.
-    for i = 1, 5 do
-        local slot = Widgets.slot(card)
-        slot:EnableMouse(true)
+    for i = 1, #SLOT_ROLES do
+        -- An open place of a run its leader may fill again: the classes for
+        -- the replacement, kept as the party's class choices.
+        local slot = W.newClassCard(frame, function(self)
+            return self.wishSlot
+        end, function(place, classes)
+            if not ns.PartyCompose.isOn() then
+                ns.PartyCompose.reset()
+                ns.PartyCompose.setOn(true)
+            end
+            ns.PartyCompose.setClasses(place, classes)
+            ns.PartyLevels.noteStart("dungeons")
+            ns.Window.refresh()
+        end)
+        slot.arrow:Hide()
         slot:HookScript("OnEnter", function(self)
             if not self.roleInfo or not GameTooltip then
                 return
@@ -651,12 +638,9 @@ function W.buildCard()
             GameTooltip:AddLine(L["Roles follow each member's role in WoW."], 0.75, 0.75, 0.75, true)
             GameTooltip:Show()
         end)
-        slot:HookScript("OnLeave", function()
-            if GameTooltip then
-                GameTooltip:Hide()
-            end
-        end)
+        slot:HookScript("OnLeave", hideTooltip)
+        slot:Hide()
         slots[i] = slot
     end
-    ui.card = card
+    W.hideStatus()
 end

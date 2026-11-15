@@ -104,6 +104,9 @@ describe("dungeon entrances", function()
         assert.is_not_nil(leader:findText("^far away$"))
         assert.is_not_nil(leader:findText("of 5 at the entrance"))
         assert.is_not_nil(leader:find("Button", "Waypoint to entrance"))
+        local W = leader.ns.WindowParts
+        assert.is_false(W.ui.playstyleButton.shown)
+        assert.is_false(W.ui.levelsToggle.shown)
     end)
 end)
 
@@ -129,7 +132,7 @@ describe("finding a replacement", function()
         return world, leader
     end
 
-    it("keeps the group card, its quest buttons and the status bar inside", function()
+    it("keeps the group's places, its quest buttons and the status bar inside", function()
         local world, leader = inDungeon()
         leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
         world:advance(1)
@@ -143,20 +146,23 @@ describe("finding a replacement", function()
         assert.is_nil(leader:findText("^Your party is complete"))
     end)
 
-    it("shows the group's dungeon as a banner behind the card's title, and none without a group", function()
-        local world, leader = inDungeon()
+    it("shows the group's places and its actions in place of the roles and the dungeon list", function()
+        local _, leader = inDungeon()
         leader:slash("/dq")
-        local card = leader.ns.WindowParts.ui.card
-        assert.is_true(card.bannerTop.shown)
-        assert.are.equal("Interface\\Glues\\LoadingScreens\\LoadScreenDeadmines", card.bannerTop.texture)
-        assert.are.equal(card.bannerTop.texture, card.bannerFade.texture)
-        local slot = leader.ns.WindowParts.slots[1]
-        assert.is_true(slot.point[5] <= -(card.bannerTop.height + card.bannerFade.height))
-        leader.party = {}
-        leader:fire("GROUP_ROSTER_UPDATE")
-        world:advance(1)
+        local W = leader.ns.WindowParts
+        local slot = W.slots[1]
+        assert.is_false(W.roleToggles.T.shown)
+        assert.is_true(slot.shown)
+        assert.are.equal("Tanky Mctank", slot.name.text)
+        local share = leader:find("Button", "Share my quests")
+        assert.is_true(share.point[5] < slot.point[5] - slot.height)
+        assert.is_nil(leader:findText("^Dungeons for level"))
+        assert.is_false(W.ui.dungeonHeader.shown)
+        assert.is_nil(leader:find("Button", "Find group"))
+        leader.ns.charDb.composeOn = true
         leader.ns.Window.refresh()
-        assert.is_false(card.bannerTop.shown)
+        assert.is_true(slot.shown)
+        assert.is_false(W.composeCards[1].shown)
     end)
 
     it("starts over for a new group, and after the same boss is killed again", function()
@@ -198,14 +204,16 @@ describe("finding a replacement", function()
         assert.are.equal(8, leader.ns.Run.bossTotal("5"))
     end)
 
-    it("shows the tabs again once the group came back out of the dungeon", function()
+    it("turns to the Dungeons tab for the group, without the other tabs until the run is over", function()
         local world, leader = inDungeon()
+        leader.ns.charDb.tab = "quests"
         leader.ns.Window.show()
-        assert.is_true(leader.ns.Window.isShown())
+        assert.are.equal("dungeons", leader.ns.WindowParts.currentTab())
         assert.is_nil(leader:find("Button", "Quests", leader:frame("ForeverGroupsFrame")))
         leader.inInstance = false
         leader:fire("PLAYER_ENTERING_WORLD")
         world:advance(1)
+        leader.ns.Window.refresh()
         assert.is_not_nil(leader:find("Button", "Quests", leader:frame("ForeverGroupsFrame")))
     end)
 
@@ -240,13 +248,13 @@ describe("finding a replacement", function()
         assert.are.equal(4, #leader.ns.engine.myEntry.members)
     end)
 
-    it("shows the card with a Find replacement button, not the setup, while the run goes on", function()
+    it("shows a Find replacement button, not the dungeon list, while the run goes on", function()
         local world, leader = inDungeon()
         leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
         leader:leaves("Dps A")
         world:advance(1)
         leader:slash("/dq")
-        assert.is_false(leader.ns.WindowParts.roleToggles.T.shown == true)
+        assert.is_false(leader.ns.WindowParts.roleToggles.T.shown)
         assert.is_nil(leader:findText("^Dungeons for level"))
         assert.is_not_nil(leader:findText("^DPS  ·  1 open$"))
         leader:click("Button", "Find replacement")
@@ -259,6 +267,76 @@ describe("finding a replacement", function()
         assert.is_true(leader.ns.Filler.isActive())
         assert.are.equal("Dps D", leader.invites[#leader.invites])
         assert.is_not_nil(leader:find("Button", "Stop"))
+    end)
+
+    it("lets the leader choose the classes for an open place before finding a replacement", function()
+        local world, leader = inDungeon()
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        leader:leaves("Dps A")
+        world:advance(1)
+        leader:slash("/dq")
+        local open
+        for _, slot in ipairs(leader.ns.WindowParts.slots) do
+            if slot.shown and slot.wishSlot then
+                open = slot
+            end
+        end
+        assert.is_not_nil(open)
+        assert.is_true(open.arrow.shown)
+        assert.is_true(open.enabled)
+        leader.ns.charDb.compose = { masks = { 0, 16, 0, 0, 0 } }
+        for _, item in ipairs(leader:dropdownItems(open)) do
+            if item.text == "Mage" then
+                item.pick()
+            end
+        end
+        local PartyCompose = leader.ns.PartyCompose
+        assert.is_true(PartyCompose.isOn())
+        assert.are.same({ "MAGE" }, leader.ns.Compose.classesOf(PartyCompose.settings().masks[open.wishSlot]))
+        assert.are.equal(0, PartyCompose.settings().masks[2])
+        leader:click("Button", "Find replacement")
+        world:advance(1)
+        assert.is_not_nil(leader.ns.engine.myEntry.compose)
+    end)
+
+    it("stops looking for a replacement with Stop, and offers it again", function()
+        local world, leader = inDungeon()
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        leader:leaves("Dps A")
+        world:advance(1)
+        leader:slash("/dq")
+        leader:click("Button", "Find replacement")
+        world:advance(1)
+        local invites = #leader.invites
+        leader:click("Button", "Stop")
+        world:advance(60)
+        assert.is_nil(leader.ns.engine.myEntry)
+        assert.is_false(leader.ns.Filler.isActive())
+        assert.are.equal(invites, #leader.invites)
+        assert.is_not_nil(leader:find("Button", "Find replacement"))
+        assert.is_not_nil(leader:findText("^DPS  ·  1 open$"))
+    end)
+
+    it("ends the run on request: the choices come back in the group and nobody is asked for again", function()
+        local world, leader = inDungeon()
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        leader:leaves("Dps A")
+        world:advance(1)
+        leader:slash("/dq")
+        assert.is_not_nil(leader:find("Button", "Find replacement"))
+        leader:click("Button", "End run")
+        assert.is_false(leader.ns.GroupView.isActive())
+        assert.is_nil(leader:find("Button", "End run"))
+        assert.is_nil(leader:find("Button", "Find replacement"))
+        assert.is_true(leader.ns.WindowParts.roleToggles.T.shown)
+        local popups = #leader.popups
+        leader:joins("Dps D")
+        world:advance(1)
+        leader:fire("PLAYER_ENTERING_WORLD")
+        leader:leaves("Dps D")
+        world:advance(5)
+        assert.are.equal(popups, #leader.popups)
+        assert.is_false(leader.ns.Filler.isActive())
     end)
 
     it("finds a replacement without asking when the leader chose that, without searching on its own", function()
@@ -390,7 +468,55 @@ describe("sharing dungeon quests in a new group", function()
         leader:slash("/dq")
         assert.is_not_nil(leader:findText("^3 quests$"))
         assert.is_not_nil(leader:findText("^1 quest$"))
-        assert.is_not_nil(leader:findText("^no addon$"))
+        assert.is_nil(leader:findText("^no addon$"))
+    end)
+
+    it("asks the party for their quest lists again after a /reload", function()
+        local world, leader = party()
+        local saved = leader:logout()
+        local again = world:addClient("Tanky Mctank", { level = 20, saved = saved, questLog = leader.questLog,
+            beforeLogin = function(c)
+                c.party, c.isLeader = { "Heally Mcheal", "No Addon" }, true
+            end })
+        again:fire("PLAYER_ENTERING_WORLD")
+        world:advance(20)
+        local counts = {}
+        for _, member in ipairs(again.ns.QuestShare.summary("5").members) do
+            counts[member.name] = member.count or "?"
+        end
+        assert.are.equal(1, counts["Heally Mcheal"])
+    end)
+
+    it("shows the line under a member's name a size smaller, however often the window refreshes", function()
+        local _, leader = party()
+        leader:slash("/dq")
+        for _ = 1, 10 do
+            leader.ns.Window.refresh()
+        end
+        local card = leader.ns.WindowParts.slots[1]
+        assert.are.equal(8, card.lines[2].fontSize)
+        assert.is_nil(card.lines[1].fontSize)
+    end)
+
+    it("says in red where the distance goes when a member is offline", function()
+        local _, leader = party()
+        leader.offline["Heally Mcheal"] = true
+        leader:slash("/dq")
+        leader.ns.Window.refresh()
+        local W = leader.ns.WindowParts
+        local card
+        for _, slot in ipairs(W.slots) do
+            if slot.name.text == "Heally Mcheal" then
+                card = slot
+            end
+        end
+        assert.are.equal("offline", card.distance.text)
+        assert.is_true(card.distance.shown)
+        for _, slot in ipairs(W.slots) do
+            if slot ~= card and slot.name.text == "Tanky Mctank" then
+                assert.are_not.equal("offline", slot.distance.text)
+            end
+        end
     end)
 
     it("shows the group card before the addon knows the player's own name", function()
@@ -574,7 +700,7 @@ describe("the group card", function()
         assert.are.same({ "Vaielia Poisonblade" }, leader.inspects)
         assert.is_nil(leader.inspected)
         leader:slash("/dq")
-        assert.is_not_nil(leader:findText("^Combat$"))
+        assert.is_not_nil(leader:findText("|cffe6c273Combat/Assassination|r$"))
         world:advance(30)
         assert.are.same({ "Vaielia Poisonblade" }, leader.inspects)
     end)
@@ -597,7 +723,7 @@ describe("the group card", function()
         leader:slash("/dq")
         assert.is_not_nil(leader:findText("^inside$"))
         assert.is_not_nil(leader:findText("^%d+ yd$"))
-        assert.is_not_nil(leader:findText("^no addon$"))
+        assert.is_nil(leader:findText("^no addon$"))
         assert.is_nil(leader:findText("^unknown$"))
         assert.is_not_nil(leader:findText("1 of 3 inside"))
 
@@ -618,7 +744,7 @@ describe("the group card", function()
         assert.is_not_nil(leader:findText("3 of 3 inside"))
     end)
 
-    it("has equal places, the line under the title, and the actions as buttons", function()
+    it("has equal places, the group's line after its dungeon, and the actions in place of the list", function()
         local world = World.new()
         local leader = world:addClient("Tanky Mctank", { level = 20, class = "WARRIOR",
             talents = { { 9500, 5 } } })
@@ -636,11 +762,17 @@ describe("the group card", function()
         leader:slash("/dq")
         assert.is_nil(leader:find("Button", "Dungeons", leader:frame("ForeverGroupsFrame")))
         assert.is_nil(leader:find("Button", "Quests", leader:frame("ForeverGroupsFrame")))
-        assert.are.equal("connected", leader.ns.WindowParts.ui.card.connectionInfo.state)
-        assert.are.equal("", leader.ns.WindowParts.ui.card.connection.text)
+        assert.is_false(leader.ns.WindowParts.roleToggles.T.shown)
+        assert.is_nil(leader:findText("^Dungeons for level"))
+        assert.are.equal("connected", leader.ns.WindowParts.ui.connectionBar.info.state)
+        assert.are.equal("", leader.ns.WindowParts.ui.connectionBar.label.text)
         assert.is_not_nil(leader:findText("^The Deadmines$"))
         assert.is_not_nil(leader:findText("^Group complete  ·  you lead  ·  %d of 5 at the entrance$"))
-        assert.is_not_nil(leader:findText("^Protection$"))
+        assert.is_truthy(leader.ns.WindowParts.slots[1].lines[2].text:find("Protection", 1, true))
+        local W = leader.ns.WindowParts
+        assert.are.equal(W.PLACE_HEIGHT, W.slots[1].height)
+        assert.is_true(W.slots[1].distance.shown)
+        assert.are.equal("BOTTOMLEFT", W.slots[1].distance.point[1])
         local heights = {}
         for _, slot in ipairs(leader.ns.WindowParts.slots) do
             heights[slot.height] = true

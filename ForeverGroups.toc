@@ -91,6 +91,7 @@ wow\queues.lua
 wow\partystatus.lua
 wow\status.lua
 wow\ui\window\shared.lua
+wow\ui\window\placecard.lua
 wow\ui\window\card.lua
 wow\ui\window\setup.lua
 wow\ui\window\compose.lua

@@ -373,7 +373,7 @@ function Filler.room()
     return state and freePlaces() or 0
 end
 
--- The invites for the group card's open places: { name, role, held, left }
+-- The invites for the group's open places in the window: { name, role, held, left }
 -- per player invited (left: seconds until the filler moves on), and per
 -- player given up on whose invite WoW still holds open (held = true, left:
 -- seconds until that place is free), oldest first.

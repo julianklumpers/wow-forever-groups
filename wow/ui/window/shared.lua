@@ -1,10 +1,11 @@
 local _, ns = ...
 
 local L = ns.L
+local Widgets = ns.Widgets
 
 -- What the main window's parts share: sizes, the widgets made once, and
--- small helpers. The parts (card, setup, quests, tabs) and window.lua add
--- their functions to this table.
+-- small helpers. The parts (card, setup, compose, levels, quests,
+-- battlegrounds, tabs) and window.lua add their functions to this table.
 local W = {}
 ns.WindowParts = W
 
@@ -46,7 +47,6 @@ function W.columns(count, gap, width, left)
     return list
 end
 W.CHECK_INSET = 3
-W.CARD_PADDING = 12
 W.CELL_WIDTH, W.CELL_HEIGHT = W.CONTENT / 2, 22
 W.DETAIL_LIMIT, W.DETAIL_HEIGHT = 10, 24
 W.ROW_WIDTH = W.CONTENT + W.CHECK_INSET
@@ -57,7 +57,6 @@ W.ROLE_COUNTS = ns.Locale.mark({ T = { "%d tank", "%d tanks" }, H = { "%d healer
     D = { "%d DPS", "%d DPS" } })
 W.TILE_GAP = W.SPACE.s
 W.TILE_WIDTH = math.floor((W.CONTENT - 2 * W.TILE_GAP) / 3)
-W.SLOT_WIDTH, W.SLOT_GAP = ns.Widgets.SLOT_WIDTH, 8
 -- The main window's section headers: room under the text for the controls
 -- on the header line (playstyle, I'd like to lead, All / None) before the
 -- line, and the step from a header to what follows it.
@@ -73,12 +72,10 @@ W.CONNECTION_COLORS = {
 W.ui = {}
 W.roleToggles = {}
 W.dungeonCells = {}
-W.queueRows = {}
 W.questRows = {}
 W.MAX_QUEST_ROWS = 10
 W.QUEST_ROW_HEIGHT = 24
 W.TAB_WIDTH = 150
-W.QUEUE_ROWS, W.QUEUE_ROW_HEIGHT = 8, 22
 W.SLOT_ROLES = { "T", "H", "D", "D", "D" }
 W.slots = {}
 W.showOthers = false
@@ -95,6 +92,20 @@ function W.selectedRoles()
     end
     ns.charDb.lastRole = nil
     return ns.charDb.lastRoles
+end
+
+-- The roles the tiles show on a tab: those its queue entry searches with,
+-- else the ones last chosen.
+function W.shownRoles(tab)
+    local entry
+    if tab == "quests" then
+        entry = ns.QuestQueue.entry()
+    elseif tab == "battlegrounds" then
+        entry = ns.BgQueue.entry()
+    else
+        entry = ns.engine and ns.engine.myEntry
+    end
+    return entry and entry.members[1].roles or W.selectedRoles()
 end
 
 function W.hasRole(roles, role)
@@ -146,121 +157,85 @@ function W.place(widget, x, y)
     widget:SetPoint("TOPLEFT", W.frame, "TOPLEFT", x, y)
 end
 
--- While a group Forever Groups follows is busy, the window shows only that
--- group: no tabs, and the tab that belongs to it. Once its quests are
--- turned in or its run is over the tabs come back. nil otherwise.
-function W.groupTab()
+-- The tab of a group Forever Groups follows while it is busy: dungeons for
+-- a run, quests for a questing group; nil otherwise.
+local function groupTab()
     if not ns.Party.inGroup() then
         return nil
     elseif ns.QuestGroup.isQuesting() then
         return not ns.QuestGroup.isDone() and "quests" or nil
     elseif ns.GroupView.isActive() then
         return "dungeons"
-    elseif not ns.engine then
-        -- Still connecting: what kind of group this is shows once
-        -- connected; until then no tabs that may vanish a moment later.
-        return W.currentTabChoice()
     end
     return nil
 end
 
--- Waiting in one queue shows only that queue's page, without tabs, until the
--- player follows a link to another queue; in more queues the tabs are back.
--- nil when the tabs are shown.
-function W.queueTab()
-    local waiting = {
-        dungeons = (ns.engine ~= nil and ns.engine.myEntry ~= nil) or ns.Filler.isActive(),
-        quests = ns.QuestQueue.isQueued(),
-        battlegrounds = ns.BgQueue.isQueued() or ns.BgFinder.isActive(),
-    }
-    local single, count = nil, 0
-    for tab, queued in pairs(waiting) do
-        if queued then
-            single, count = tab, count + 1
+W.groupTab = groupTab
+
+-- When such a group starts, the window turns to its tab once; the tabs make
+-- way while it lasts, as a group leaves the other queues.
+function W.followGroupTab()
+    local tab = groupTab()
+    if tab ~= W.lastGroupTab then
+        W.lastGroupTab = tab
+        if tab and ns.charDb then
+            ns.charDb.tab = tab
         end
     end
-    if count ~= 1 then
-        single = nil
-    end
-    if single ~= W.lastQueueTab then
-        W.lastQueueTab = single
-        W.browsingOther = false
-    end
-    if W.browsingOther then
-        return nil
-    end
-    return single
 end
 
-function W.fixedTab()
-    return W.groupTab() or W.queueTab()
-end
-
-local LINK_TEXTS = ns.Locale.mark({
-    dungeons = "Also find a dungeon group »",
-    quests = "Also find a questing group »",
-    battlegrounds = "Also find a battleground group »",
-})
-
-local function offered(tab)
+-- Whether the tab's queue is searching: its queue entry, or WoW's Group
+-- Finder filling or building the group.
+function W.searching(tab)
     if tab == "quests" then
-        return #ns.Quests.groupQuests() > 0
+        return ns.QuestQueue.isQueued()
     elseif tab == "battlegrounds" then
-        return #ns.Battlegrounds.forLevel(ns.Party.playerLevel()) > 0
+        return ns.BgQueue.isQueued() or ns.BgFinder.isActive()
     end
-    return true
+    return (ns.engine ~= nil and ns.engine.myEntry ~= nil) or ns.Filler.isActive()
 end
 
--- The links under a single queue's page to the other queues' pages.
-function W.placeOtherQueueLink(y, state)
-    local tab = W.groupTab() == nil and W.queueTab()
-    local can = tab and (state == "solo" or state == "leader")
-    local x, shown = W.PAD, 0
-    for _, other in ipairs({ "dungeons", "quests", "battlegrounds" }) do
-        if can and other ~= tab and offered(other) then
-            shown = shown + 1
-            local link = W.ui.otherQueues[shown]
-            link.target = other
-            link:SetText(L[LINK_TEXTS[other]])
-            local width = math.ceil(link.label:GetStringWidth() or 40) + 2
-            link:SetWidth(width)
-            W.place(link, x, y)
-            link:Show()
-            x = x + width + 24
+-- The choices can't be changed while the tab's queue searches (Stop first)
+-- or a group proposal waits for an answer; they show what is searched for.
+function W.locked(tab)
+    local engine = (tab == "quests" and ns.questEngine) or (tab == "battlegrounds" and ns.bgEngine) or ns.engine
+    return W.searching(tab) or (engine ~= nil and ns.Queues.proposalOpen(engine))
+end
+
+-- What the Stop button sums up on its right: the roles, texts (nil ones
+-- left out) and the time in the queue.
+function W.searchSummary(roles, texts, joinedAt)
+    local parts = {}
+    if roles then
+        parts[#parts + 1] = Widgets.describeRoles(roles)
+    end
+    for i = 1, table.maxn(texts) do
+        if texts[i] then
+            parts[#parts + 1] = texts[i]
         end
     end
-    for i = shown + 1, #W.ui.otherQueues do
-        W.ui.otherQueues[i]:Hide()
+    if joinedAt then
+        parts[#parts + 1] = Widgets.formatTime(GetServerTime() - joinedAt)
     end
-    return shown > 0 and y - 22 or y
+    return table.concat(parts, "  ·  ")
 end
 
+-- The gold panel's inner panel (ButtonFrameTemplate's Inset) starts right
+-- under the tabs' gold base line, which takes the place of its top border.
 -- The gold panel's inner panel (ButtonFrameTemplate's Inset) starts below
--- room for the tabs; without tabs it moves up under the title bar, so the
--- card starts inside it instead of across its top edge.
+-- room for the tabs; without tabs it moves up under the title bar.
 local INSET_TOP_WITHOUT_TABS = -26
 W.TABS_TOP, W.TAB_HEIGHT = -30, 28
--- The inner panel's border, which the card's picture stays inside.
+-- The inner panel's border.
 local INSET_BORDER = 3
 
--- Without tabs: the top of the inner panel's inside, where the card starts;
--- nil without an inner panel.
+-- Without tabs: the top of the inner panel's inside, where the content
+-- starts; nil without an inner panel.
 function W.insetTop()
     if not W.insetTopLeft then
         return nil
     end
     return INSET_TOP_WITHOUT_TABS - INSET_BORDER
-end
-
--- How far the card may reach left and right past its own edges to fill the
--- inner panel (0, 0 without one).
-function W.cardBleed()
-    local saved = W.insetTopLeft
-    if not saved or type(saved[3]) ~= "number" or type(W.insetRight) ~= "number" then
-        return 0, 0
-    end
-    local cardLeft = W.PAD - W.CARD_PADDING
-    return math.max(0, cardLeft - saved[3] - INSET_BORDER), math.max(0, cardLeft + W.insetRight - INSET_BORDER)
 end
 
 function W.fitInset(tabs)
@@ -284,8 +259,8 @@ function W.fitInset(tabs)
     local saved = W.insetTopLeft
     -- With tabs the panel starts right under their gold base line, which
     -- takes the place of its top border.
-    local top = tabs and (W.TABS_TOP - W.TAB_HEIGHT) or INSET_TOP_WITHOUT_TABS
-    inset:SetPoint("TOPLEFT", saved[1], saved[2], saved[3], top)
+    inset:SetPoint("TOPLEFT", saved[1], saved[2], saved[3], tabs and (W.TABS_TOP - W.TAB_HEIGHT)
+        or INSET_TOP_WITHOUT_TABS)
     local slice = inset.NineSlice
     if type(slice) == "table" then
         for _, key in ipairs({ "TopEdge", "TopLeftCorner", "TopRightCorner" }) do
@@ -305,11 +280,7 @@ function W.panelEdges()
     return W.PAD - 12, W.WIDTH - (W.PAD - 12) - 1
 end
 
-function W.currentTabChoice()
+function W.currentTab()
     local tab = ns.charDb and ns.charDb.tab
     return (tab == "quests" or tab == "battlegrounds") and tab or "dungeons"
-end
-
-function W.currentTab()
-    return W.fixedTab() or W.currentTabChoice()
 end

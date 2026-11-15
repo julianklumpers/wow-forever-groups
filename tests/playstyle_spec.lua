@@ -203,7 +203,7 @@ describe("playstyles in the game", function()
         client.ns.Filler.stop()
         world:advance(1)
         assert.are.equal(EXPERT, client.ns.engine.myEntry.playstyle)
-        assert.is_not_nil(client:findText("^Searching 1 dungeon  ·  Expert or Serious$"))
+        assert.is_not_nil(client:findText("^Tank  ·  Expert or Serious  ·  1 dungeon  ·  0:0%d$"))
     end)
 
     it("falls back to its own list on a client without WoW's dropdown", function()

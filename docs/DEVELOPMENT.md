@@ -7,21 +7,32 @@ How the addon works inside, for anyone reading or changing the code. The player-
 
 - `core/` – pure Lua 5.1, no WoW API: protocol, queue, matchmaking, election, proposals, engine
 - `wow/` – thin WoW layer: hidden channel, send queue, invites, `/fg` commands (`/dq` still works); `wow/ui/` window and proposal popup;
-  the main window is `wow/ui/window.lua` plus its parts in `wow/ui/window/` (shared, card, setup, quests, tabs); the
-  card (status, "Looking now", the group; with a group, the dungeon's picture as a banner behind its title,
-  `W.paintBanner`: the popup's crop narrowed to the wider banner, across the inner panel (`W.cardBleed`, from the
-  ButtonFrameTemplate Inset's anchors) with the card's background, the member places under it; a shade behind the
-  text and a faded lower part). Without tabs the Inset's top moves up under the title bar (`W.fitInset`). The connection is a dot in the title bar, left of the
-  close button, with its word only while not plainly connected (`W.refreshConnection`); there is no connecting
-  card, and in a party the tabs stay away while connecting (`W.groupTab`); while connecting the dot pulses (an
-  OnUpdate on the bar) and the join button reads "Connecting..."
-  leads the window, except alone and choosing: then the roles come first and
-  the card, without a title, follows them (`W.cardBelowRoles`); a party leader choosing dungeons also gets the card
-  ("Your party: n/5" and its places) there, under the choices where the party is set up, its places hidden while
-  the class cards show them (`W.cardWithoutPlaces`); hovering a member's place tells the roles they are queued for
-  and where those come from (`PartyRoles.sourceOf`); on the Dungeons tab while choosing, "Looking now"
-  sits on the dungeons' header line instead ("Dungeons for level 20 · 🛡 3 ✚ 4 ⚔ 71 · 6 groups need you", without the "Looking now:" label, `W.layoutHeaderLooking`,
-  `W.lookingInHeader`), and alone the card is not shown at all
+  the main window is `wow/ui/window.lua` plus its parts in `wow/ui/window/` (shared, card, setup, compose, levels,
+  quests, battlegrounds, tabs). It is one screen per tab that stays the same while choosing, searching and in a
+  group: the tabs (not in a group Forever Groups follows), the role tiles with join/lead and the playstyle (`W.layoutChoices`), then the
+  status (`W.layoutStatus` in `card.lua`: a title line such as "In queue 4:31 as DPS" with the crown when leading,
+  a line or two under it, and on the Dungeons tab the group's five places as place cards, `W.paintPlace`; with a group the
+  dungeon's name and "Group complete · Relaxed · 3 of 5 at the entrance" on one line), the class choices only while
+  not searching (`W.layoutCompose`; while searching the places take their spot), the level limit, then the list to
+  tick with "Looking now" on its header line (`W.layoutHeaderLooking`, for dungeons, quests and battlegrounds);
+  while the tab's queue searches the list makes way and "Looking now" follows the status title instead
+  (`W.layoutLookingAfterStatus`); once Forever Groups follows a group, its actions come instead of the dungeon
+  list (`W.layoutActions`: Waypoint to entrance, Share my quests, Quest progress). The bottom row has Find group (Stop while searching, with roles,
+  how much is ticked and the time in the queue on its right, `W.searchSummary`), Find replacement, Remove LFG
+  listing and, for a member whose leader has no addon, Make me leader. A party member sees the status and places
+  without role tiles. When a group Forever Groups follows starts (a run, a questing group) the window turns to its
+  tab (`W.followGroupTab`), and the tabs make way while it lasts (`W.paintTabs` returns false, the inner panel
+  moves up under the title bar: `W.fitInset`, `W.insetTop`), since a group leaves the other queues. The connection is a dot in the title bar, left
+  of the close button, with its word only while not plainly connected (`W.refreshConnection`); there is no
+  connecting card; while connecting the dot pulses (an OnUpdate on the bar) and the join button reads
+  "Connecting...". Hovering a member's place while a leader sets up the party tells the roles they are queued for
+  and where those come from (`PartyRoles.sourceOf`)
+- while the open tab's queue searches (or a group proposal waits) its choices stay in sight but are locked
+  (`W.locked` in `shared.lua`): the role tiles show the roles the entry searches with, the others dimmed
+  (`W.shownRoles`, `Widgets.paintTile`'s `locked`); but while the tab's queue searches, and in a formed group or
+  run, the choices are hidden altogether (role tiles, join/lead, the playstyle, the
+  battleground group size, the level limit; `W.hideChoices`): the status, the places and Stop say what it searches
+  with, and to change anything the player presses Stop and finds a group again. Another tab's choices stay open.
 - a line the addon says in party chat goes through `Whispers.sayParty`, which logs whether it went out (WoW is silent
   when it does not); the group-complete message also logs why it was not said
 - every whisper the addon sends goes through `wow/whispers.lua` (`Whispers.send`), which hides its "To ..." echo in
@@ -77,9 +88,9 @@ How the addon works inside, for anyone reading or changing the code. The player-
   each search the player starts (Find group in the window or `/fg join`, Find questing group, Fill from Group
   Finder; not a replacement search or a restored queue) notes per tab whether the player built the group then (`PartyLevels.noteStart`, `charDb.wishesHidden`); a player who pressed Find group with "Join a group"
   and is made leader of the group Forever Groups builds for them keeps neither class choices nor level limit
-  (`PartyLevels.wishesCount`). On the group card an open place with a wish shows the wished classes as round
+  (`PartyLevels.wishesCount`). Among the group's places an open place with a wish shows the wished classes as round
   icons where the spec line goes (`row.classes` from `PartyCompose.freePlaces`, matched to the open places by role
-  in order; `Widgets.paintSlot`), their names on a client without the class icons. The player's own place and the party
+  in order; `W.paintPlace`), their names on a client without the class icons. The player's own place and the party
   members' are fixed (no wish), each in the first place of their role. Matchmaking (`Matchmaker.findGroups`/
   `findPartialGroup`, given `now`): an entry with wishes in force only anchors its own group, takes only solo
   players (their class from their spec), narrows each candidate's roles to those with a place for their class
@@ -113,12 +124,10 @@ How the addon works inside, for anyone reading or changing the code. The player-
   12th argument), and only gets a place open to any class when neither tells. Who is looking fades solo players who don't fit the places left. The
   block
   sits under the join/lead buttons on the Dungeons tab: the switch, and while it is on the five places side by side
-  as cards in the window's quiet style: the role small in the top left corner, the wished classes as their round
-  `classicon-<class>` icons in a grid of up to three by three (on a client without those atlases by name in their
-  class colour, two, then "+n more"), and on the player's and the party's places their class's icon, who is there
-  and their class; those places have the party card's art instead (`Widgets.addArt`/`Widgets.paintArt`,
-  spec art or the dimmed class emblem) with class and spec (those can't be
-  clicked). A place open to any class has a dashed edge, a "+" and "Any class". Each card is a dropdown like the playstyle's (a `DropdownButton` with WoW's dropdown
+  as place cards (below): the wished classes as their round `classicon-<class>` icons in a grid of up to three by
+  three (on a client without those atlases by name in their class colour, two, then "+n more"), and the player's
+  and the party's places with who is there (those can't be clicked). A place open to any class has a dashed edge, a
+  "+" and "Any class". Each card is a dropdown like the playstyle's (a `DropdownButton` with WoW's dropdown
   arrow at its bottom right): WoW's own menu with "Any class" and a check per class the role allows, the names in
   their class colour, open while ticking; our own list (`wow/ui/classmenu.lua`) on a client without it. And Reset. Not done: a note in the own Group Finder listing (whether Forever's CreateListing takes
   one is unknown)
@@ -301,7 +310,7 @@ its tree, and the tree with the most points is the player's spec (`core/specs.lu
 spec). The spec never takes part in matchmaking. When the spec changes (or the first time), its roles are ticked
 (Feral ticks Tank and DPS); after that the player's own ticks stay, so a healer can still queue as DPS. Queueing with
 roles that fit none of the spec gives a warning, nothing more. The spec travels in the queue entry ("SHAMAN2"), so
-the proposal popup and the group card show it for players with Forever Groups, and the whispers the addon sends name
+the proposal popup and the group's places show it for players with Forever Groups, and the whispers the addon sends name
 it ("Level 20 Enhancement Shaman (DPS) here, could you invite me…"); the invite whisper only names it when the
 player's own text has `{spec}`.
 
@@ -311,15 +320,32 @@ tile around its upper middle, under a gradient dark at the bottom; Feral as tank
 role icon at the bottom left and the role and the tree's name (when it is certain) on one line beside it. The art
 exists in Forever's client for all nine classes (`/fgp classart`, `/fgp specart`). Unticked tiles are dimmed and grey;
 a role the class can't play keeps the plain tile with the large role icon. "Needed most" is a small label at the top
-left. The group card's member places (`Widgets.paintSlot`) show a member's spec art when the spec is known (their
+left. Every place of a group in the window is the same place card (`wow/ui/window/placecard.lua`, `W.addPlaceParts`
+and `W.paintPlace`): the class choices' cards and the group's places while searching and in a group. A thin rounded
+edge drawn by the card itself, the role in the top left corner as on the role tiles (on a frame of its own above
+the edge and art); a member's card shows their spec art when the spec is known (their
 own, learned from the queue or by inspecting; `Spec.indexOf`, `Specs.artFor`) and plays the place's role; else the
 tree their class plays that role with (`Specs.forRole`: a Feral druid healing shows Restoration; the group popup
 the same through `Spec.labelInRole`); when several trees could, or nothing is known, their class's emblem
-(`classicon-<class>`, dimmed), both filling the place; the class's round icon stands before the name (in class
-colour) and the line right under the name has the spec only (the class name instead of the icon on a client without
-class icons); distance and quests sit at the bottom of the place, which keeps the row's height; art is cut to shape by `Widgets.coverAtlas`. In the
+(`classicon-<class>`, dimmed), both filling the card; the name is always in the small font on one line (cut off with
+"..."), the class's round icon right before it, the two centred together, and the line under it has the spec only
+(the class name and spec on a client without class icons); where the points per tree are known (the player, and
+members once inspected: `Spec.learn` keeps them, `Spec.treesOf`) it names the tree with the most points and any
+other with at least a third of all points, most first ("Shadow/Holy" for 0/20/31 or 0/5/6, "Shadow" for 0/3/8,
+"Holy" for 0/51/0), so it works at low level too (that line is 2 points smaller than the name, set from
+`GameFontHighlightSmall`'s own size, as a font set by hand outlives `SetFontObject`); else, when no tree of theirs plays the place's role (a
+Shadow priest in a healer's place, a Protection warrior as DPS, both with two trees that could) or nothing is known
+yet, that line names the place's role ("Healer", "DPS"). An invited player shows dimmed with "invited 0:24" or
+"frees in 0:24", an open place with a wish a gold edge and the wished classes, an open place without one a dashed
+edge with "open" (with "+" and "Any class" where it can be chosen). Name and spec (or the invite line) sit in the
+middle of the card. In a group a row comes under that: the distance (a dot and "at entrance", "120 yd", "far
+away", or "offline" in red for a member WoW calls not connected, `UnitIsConnected`, which also brings the row
+when it would show no distances) at the bottom left and the quests ("3 quests", left out for a member without Forever Groups) at the bottom
+right, each in its half of the card (cut off with "..." rather than overlapping) and 3 points smaller than the name
+(the spec 2); name and spec stay in the middle of the whole card; every card has the same height
+(`W.PLACE_HEIGHT`, room for that row included) in every view, class choices too; the role icons are fully opaque, also of open and invited places; art is cut to shape by `Widgets.coverAtlas`. In the
 rounded boxes (role tiles, member places) art runs up to the border and follows the round corners through a mask
-(`Widgets.roundArt`, `Interface\Common\common-iconmask`; `/fgp mask`); without mask support it stays 5 px in. `/fg demo` shows the card with a
+(`Widgets.roundArt`, `Interface\Common\common-iconmask`; `/fgp mask`); without mask support it stays 5 px in. `/fg demo` shows the places with a
 whole group (see Demo below).
 
 ### Battlegrounds tab
@@ -346,7 +372,7 @@ off); after 60 s without one (also when no group is listed, so the Forever Group
 with the wish to lead, or as a party leader, it builds the group from listed solo
 players in the bracket (the longest listed first, but healers first while the group lacks one per five players:
 the player counts when they ticked Healer, invited healers while in the group or on the way; the places still
-lacking a healer stay open, and the card says "Still looking for N healers"; the
+lacking a healer stay open, and the status says "Still looking for N healers"; the
 `bgInvite` whisper before each invite; no answer within 30 s or a decline frees the place, read from WoW's own
 `ERR_DECLINE_GROUP_S` / `ERR_ALREADY_IN_GROUP_S` texts through `Filler.declinedName`). Once a player it invited
 joins, the dungeon and questing queues are left (`Queues.leaveOthers`; while it builds they ignore the roster). While
@@ -354,7 +380,7 @@ it looks, the role tiles and battleground ticks are locked. A leader asked by ha
 for 5 minutes, as for dungeons. Past five players the
 party becomes a raid first (`C_PartyInfo.ConvertToRaid` works from a timer, `/fgp raid`; WoW makes it one a moment
 later). Once the group has its size, Find group ends with "sign it up at a battlemaster"; leaving the
-group while it builds stops it. The card shows what it does,
+group while it builds stops it. The status shows what it does,
 and once signed up WoW's battleground queue (`GetBattlefieldStatus`: signed up with the estimated wait, ready to
 enter, inside). Who is looking's "Request to join" asks a battleground group's leader the same way.
 
@@ -380,9 +406,9 @@ battleground queue."), and Find group through the Group Finder stops.
 
 ### Quests tab
 
-The window has three tabs at the top: Dungeons, Quests and Battlegrounds. While the player waits in only one queue
-the tabs are hidden and links under the page ("Also find a questing group »", "Also find a battleground group »")
-open another queue's page with the tabs; in more queues the tabs show, each with its timer (`W.queueTab` in `wow/ui/window/shared.lua`). The chosen tab shows the
+The window has three tabs at the top: Dungeons, Quests and Battlegrounds (not while in a group Forever Groups
+follows), each with its queue's timer
+while it waits; the player can wait in all three at once. The chosen tab shows the
 art of WoW's Group Finder buttons (`groupfinder-button-dungeons` / `-questing`, found with `/fgp finderart`; the
 `groupfinder-background-*` versions are too dark); the chosen
 tab's picture runs on under it across the content and fades out, as one picture (`paintArt` in
@@ -486,8 +512,8 @@ filler goes on and replaces whoever declines. The filler, the battleground finde
 the party has room for after those. WoW's `ERR_GROUP_FULL` ("Your party is full") names nobody and belongs to the
 invite sent last (`Invites.onRefused` tells its sender, which may pick that player again); the filler then invites
 nobody for 10 s. A pending invite
-can't be taken back (`C_PartyInfo.UninviteUnit` is protected and left the invite open in the probe). The group card
-fills its open places with `Filler.invites()` by role: the invited player's name with "invited" and the seconds left
+can't be taken back (`C_PartyInfo.UninviteUnit` is protected and left the invite open in the probe). The group's places
+fill their open places with `Filler.invites()` by role: the invited player's name with "invited" and the seconds left
 of the 30, or "frees in" and the seconds until WoW drops a given-up invite. A role that a solo Forever Groups player
 waiting in the queue for the dungeon can play is left to the matchmaker first (`addonRoles` in `wow/filler.lua`);
 only the other roles go to the Group Finder, and that role too if the matchmaker has not grouped them within 20 s. "Fill from Group Finder" in the window (or `/fg fill`) does the same for your own party;
@@ -515,8 +541,8 @@ set back: right away from a `hooksecurefunc("UnitSetRole")` hook, else when WoW 
 only with several roles ticked may it change between them. In a group Forever Groups follows the player's role is
 always held: the current one if ticked, else the first ticked one. The agreed roles are kept in `charDb.roleSync`, so they still hold after a /reload; and in a group
 Forever Groups follows (`GroupView.isTracking`) with nothing agreed for the player, a role outside the ticked ones
-gives way to the first ticked one. Groups the addon does not follow are left alone. The group card
-shows each member in their own role (two tanks as two tanks) and as open places what a group of one tank, one
+gives way to the first ticked one. Groups the addon does not follow are left alone. The group's places
+show each member in their own role (two tanks as two tanks) and as open places what a group of one tank, one
 healer and three DPS still lacks (`GroupView.composition`).
 
 ### Both directions
@@ -552,7 +578,8 @@ Forever Groups queue. With no fitting group, or no invite in time, the player bu
 makes you a party leader, after which another group's invite cannot be accepted, hence this order). A solo player who
 chose "Lead a group" (one of two buttons, "Join a group" | "Lead a group", at the left of the line under the role
 tiles on every tab, with the playstyle (dungeons) or the group size (battlegrounds) at its right and the questing
-hint on the line below; `W.layoutLead`; a party leader sees "You lead this party" there; `charDb.wantsLead` for dungeons,
+hint on the line below; `W.layoutLead`; a party leader gets no choice there, a party always leads, and on the Dungeons tab the status
+title ("Your party: 2/5") takes that line instead, left of the playstyle (`layoutChoices`' shareLine, `W.playstyleRoom`); `charDb.wantsLead` for dungeons,
 `charDb.wantsLeadQuests` for group quests, each going into its own queue's entry) asks no groups (`Apply.isSeeker`, and the questing
 side in `wow/questfinder.lua`) and builds the group right away. The wish travels as the last field of the queue
 entry (`v2|Q|…|<lead>`, "1"; older clients ignore it), and `Matchmaker.chooseLeaderEntry` picks the leader in this
@@ -695,7 +722,9 @@ not on the Quests tab.
   Finder is closed to the player then) the window lists no dungeons and no "Other dungeons", only "Dungeons open up
   at level 10."
 - **Quest sharing:** in a group being built, party members with Forever Groups exchange which quests they have for the
-  dungeon over PARTY addon messages (`v1|QL|dungeon|questID,...`, asked for with `v1|QR|dungeon`); the window shows
+  dungeon over PARTY addon messages (`v1|QL|dungeon|questID,...`, asked for with `v1|QR|dungeon`: on a roster
+  change, and once connected after a login or /reload (`QuestShare.onReady`), as the lists live in memory only and
+  party messages are read only once the own name is known); the window shows
   the counts per player, and "Share my quests" shares every shareable quest, 1.5 s apart (`wow/questshare.lua`).
   Sharing also happens by itself (`QuestShare.autoShare`, off with `db.noAutoShareQuests`) 5 s after the roster
   changes or a list arrives: each of our shareable quests for the dungeon that a member lacks is shared, by the
@@ -724,6 +753,13 @@ not on the Quests tab.
   followed run goes on (`GroupView.isActive`) the window shows no setup (roles, party, dungeons); for the leader with
   an open place its main button is "Find replacement" (`Run.findReplacement`, the same as the popup's). Its click
 searches after the filler started, so the one search covers the run's dungeon.
+  Its open places are cards like the class choices' (`placeRows(..., choosing)` maps each to a free
+  `Compose.SLOT_ROLES` place, `row.wishSlot`), built by the same `W.newClassCard` (WoW's dropdown menu, our own list without it): a pick
+  switches the class choices on (cleared first when they were off) and sets that place's classes (`PartyCompose.setClasses`), which the replacement search then uses; while it searches
+  they are locked.
+  Next to that button, while the followed run goes on and nothing searches, "End run" (`Run.endFollowing`):
+  `GroupView.forget()`, the replacement popup closed, and `run.ended` so a later leaver of that run is not asked
+  about (logged); the boss count goes on.
 - **Taking the lead:** a member of a dungeon group with open places whose leader has no Forever Groups (not seen by
   `Presence`) gets a "Make me leader" button next to "Looking now" (`wow/takelead.lua`). It whispers the leader
   the `askLead` message; once the player leads within 10 minutes (`PARTY_LEADER_CHANGED` / `GROUP_ROSTER_UPDATE`),
@@ -760,8 +796,8 @@ the tabs Groups, Messages and Display.
 - **Specs without the addon:** `wow/inspectspec.lua` inspects one party member at a time out of combat
   (`NotifyInspect`, `INSPECT_READY`, the talent config `-1`) and reads their tree like `wow/spec.lua`; again after
   10 minutes.
-- **Where everyone is:** members send `v1|GP|<dungeon>|<in|far|yards>` on PARTY (`wow/groupplaces.lua`), so the card
-  shows "inside" or the distance to the entrance even when the player is already inside.
+- **Where everyone is:** members send `v1|GP|<dungeon>|<in|far|yards>` on PARTY (`wow/groupplaces.lua`), so the places
+  show "inside" or the distance to the entrance even when the player is already inside.
 - **Secret values:** during boss fights Midnight makes chat event arguments secret (strings that error on any string
   operation). `wow/events.lua` replaces them with nil before any handler sees them (`ns.isSecret`).
 
@@ -778,7 +814,7 @@ the tabs Groups, Messages and Display.
 
 `/fg demo` (`wow/demo.lua`) walks through every screen with fixed example data, for screenshots: choosing alone with
 Who is looking open, leading a party with class wishes and a level limit, waiting in the queue, the group-found
-popup, in the group (card, distances, dungeon quests, status bar), the Quests tab, a questing group with its
+popup, in the group (places, distances, dungeon quests, status bar), the Quests tab, a questing group with its
 progress, and the Battlegrounds tab. A bar (`FULLSCREEN_DIALOG`) sits on top of the main window, or of the
 group popup while the window steps aside, at the window's scale; under it when the window is too close to the top of
 the screen, and at the top of the screen when neither shows. It carries an "Example" tag, the screen's number and

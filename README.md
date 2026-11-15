@@ -34,10 +34,14 @@ in the group, with roles set for you.
 - **Uses WoW's Group Finder too** — invites solo players listed for your dungeon, asks listed
   groups to invite you (and joins when they do, as the role they still need), lists your own
   group, and invites players who whisper a needed role.
-- **In the group** — a card with the dungeon's picture and every member's role, spec, distance
-  to the entrance and dungeon quests; your quests for the dungeon are shared by themselves with
-  whoever lacks them (or in one click); a waypoint to the entrance.
-  When someone leaves, one click (or none, a setting) finds a replacement. If your leader doesn't
+- **One screen** — the window looks the same while you choose, wait and play: your roles stay
+  on screen while you wait (press Stop to change them), and the group's five places show under
+  them as they fill.
+- **In the group** — every member's role, spec, distance to the entrance and dungeon quests in
+  the group's places; your quests for the dungeon are shared by themselves with whoever lacks
+  them (or in one click); a waypoint to the entrance.
+  When someone leaves, one click (or none, a setting) finds a replacement; click the open place first
+  to choose its classes, or "End run" to stop following the group without leaving it. If your leader doesn't
   have Forever Groups and the group isn't full yet, "Make me leader" asks them to promote you;
   then Forever Groups fills the group.
 - **Your role in demand** — each dungeon shows how many listed groups need you, and "Tank needed"
@@ -65,7 +69,7 @@ in the group, with roles set for you.
 </p>
 
 <p align="center">
-  <img src="media/screenshots/group-card.png" width="420" alt="The group card: every member with role, spec, distance to the entrance and dungeon quests, with buttons for a waypoint, sharing quests and quest progress">
+  <img src="media/screenshots/group-card.png" width="420" alt="In the group: every member with role, spec, distance to the entrance and dungeon quests, with buttons for a waypoint, sharing quests and quest progress">
   <img src="media/screenshots/status-bar.png" width="420" alt="The status bar with the quest progress folded out under it">
 </p>
 
