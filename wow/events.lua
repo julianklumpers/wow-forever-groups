@@ -28,6 +28,9 @@ end
 -- error still goes to WoW's error handler.
 frame:SetScript("OnEvent", function(_, event, ...)
     local n, args = readable(...)
+    if ns.Demo and ns.Demo.isOn() and not ns.Demo.passes(event) then
+        return
+    end
     for _, handler in ipairs(handlers[event]) do
         local ok, err = pcall(handler, unpack(args, 1, n))
         if not ok then

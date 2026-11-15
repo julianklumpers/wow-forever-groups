@@ -194,10 +194,7 @@ function Listing.checkApplicants()
     for _, pick in ipairs(picks) do
         local id = byName[pick.name]
         local roleName = ns.Widgets.ROLE_NAMES[pick.role]
-        if ns.db.dryRun then
-            handled[id] = true
-            Log.info("Dry run: would invite applicant %s as %s.", pick.name, roleName)
-        elseif ns.Filler.trackInvite(pick.name, pick.role, pick.class, rolesOf[pick.name]) then
+        if ns.Filler.trackInvite(pick.name, pick.role, pick.class, rolesOf[pick.name]) then
             -- Only now: one refused while a queue proposal is open is asked again later.
             handled[id] = true
             Input.queue("applicant:" .. id, "invite applicant " .. pick.name, function()

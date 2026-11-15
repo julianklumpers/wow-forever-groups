@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- `/fg demo` walks through every screen of Forever Groups with example data: a bar at the top of the screen,
+  marked "Example", explains each screen and steps through them. Nothing is sent while it shows, and it ends by
+  itself in combat or on a loading screen. Settings → Display → "Show the demo" starts it too.
+- New players get this demo instead of the old tour, once, the first time the window opens (if something is going
+  on then, such as a queue or a group, the next time). `/fg tour` and "Show the tour again" are gone.
+- The test commands `/fg preview`, `/fg fake`, `/fg guides`, `/fg slots` and `/fg dryrun` are gone.
+- The "Dry run" setting is gone: Forever Groups always whispers and invites the players it picks.
+- With more than one battleground ticked, the Find group button says "2 battlegrounds" instead of their names, which
+  ran into the button's own text.
 - The icon in the game (minimap button, AddOns list) is now the Forever Groups logo itself.
 - The minimap button is a standard LibDBIcon button now, so minimap tools such as Leatrix Plus
   collect and show it properly. It always shows the Forever Groups logo (no more changing eye);

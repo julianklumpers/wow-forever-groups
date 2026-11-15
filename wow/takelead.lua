@@ -43,6 +43,9 @@ function TakeLead.isAsked()
 end
 
 function TakeLead.ask()
+    if ns.Demo.isOn() then
+        return false
+    end
     local leader = TakeLead.leader()
     if not leader or TakeLead.isAsked() then
         return false

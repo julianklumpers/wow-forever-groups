@@ -103,7 +103,7 @@ end
 -- The player and, for a party leader, the party with each member's roles;
 -- nil and a reason when the party cannot be queued.
 function QuestQueue.members(roles)
-    local members = { { name = ns.selfName, roles = roles, level = UnitLevel("player") } }
+    local members = { { name = ns.selfName, roles = roles, level = ns.Party.playerLevel() } }
     local state = ns.Party.state()
     if state == "member" or state == "raid" then
         return nil, "only your party leader can queue the party"

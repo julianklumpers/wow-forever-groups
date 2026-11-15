@@ -44,6 +44,9 @@ end
 
 -- From a key press or click handler only. Returns true if an action ran.
 function Input.run()
+    if ns.Demo.isOn() then
+        return false
+    end
     local item = table.remove(queue, 1)
     if not item then
         return false

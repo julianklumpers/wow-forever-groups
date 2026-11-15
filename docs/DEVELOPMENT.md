@@ -42,8 +42,7 @@ How the addon works inside, for anyone reading or changing the code. The player-
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
 - the main window's design system (`wow/ui/window/shared.lua`): one content box with the same margin (`W.MARGIN`,
   18) inside the gold frame's border on both sides, which is what the eye measures against; that border is about 8
-  wide on the left and 6 on the right (`W.BORDER_LEFT`/`W.BORDER_RIGHT`, measured with `/fg guides`, which draws the
-  box's edges and prints the window's and inner panel's edges): `W.PAD` its left edge, `W.RIGHT` its right edge (`W.RIGHT_OFFSET` for a TOPRIGHT anchor), `W.CONTENT` its width.
+  wide on the left and 6 on the right (`W.BORDER_LEFT`/`W.BORDER_RIGHT`, measured in game): `W.PAD` its left edge, `W.RIGHT` its right edge (`W.RIGHT_OFFSET` for a TOPRIGHT anchor), `W.CONTENT` its width.
   Gaps are steps of `W.SPACE` (4, 6, 8, 12, 16, 24). Rows of tiles or cards are cut with `W.columns(count, gap)`,
   which hands the pixels left over from dividing to the first columns so a row fills the box exactly (the role
   tiles and the party cards, both `W.SPACE.s` apart)
@@ -101,9 +100,7 @@ How the addon works inside, for anyone reading or changing the code. The player-
   nothing, and all leaders with wishes together get at most `WISH_BUDGET` of a round's search (`wishLeft`). A leader with
   wishes or a level limit also checks a proposal itself and turns it down when a player does not fit
   (`Engine:proposalKeepsMyWishes`, as a matchmaker of an older version doesn't know them; classes as
-  `restrictFor` counts them). `Engine:changeEntry` keeps a field that does not fit the queue message out. The
-  window passes `shown` (`isBuilder(true)`, `fixed(true)`) to see the sample party of `/fg preview party`; the
-  queue never does. An applicant's class comes from `GetApplicantMemberInfo`; a player who whispers (class not
+  `restrictFor` counts them). `Engine:changeEntry` keeps a field that does not fit the queue message out. An applicant's class comes from `GetApplicantMemberInfo`; a player who whispers (class not
   known) only gets a place open to any class. Who is looking fades solo players who don't fit the places left. The
   block
   sits under the join/lead buttons on the Dungeons tab: the switch, and while it is on the five places side by side
@@ -116,16 +113,8 @@ How the addon works inside, for anyone reading or changing the code. The player-
   arrow at its bottom right): WoW's own menu with "Any class" and a check per class the role allows, the names in
   their class colour, open while ticking; our own list (`wow/ui/classmenu.lua`) on a client without it. And Reset. Not done: a note in the own Group Finder listing (whether Forever's CreateListing takes
   one is unknown)
-- the tour (`wow/ui/tour.lua`): `ns.db.tourSeen` is false on a fresh install (no saved variables at all) and true for
-  players who used Forever Groups before; while false, the window opens by itself 5 s into the first login (after
-  a fight, `PLAYER_REGEN_ENABLED`; `db.welcomed`) and each opening (`Window.show`/`toggle`, `Tour.maybeStart`) starts
-  the tour once the setup is on screen. Eight steps outline a part in pulsing gold with a bubble (roles, Looking now,
-  the Who is looking tab, dungeons, a dungeon row, tabs, Find group, keep playing) and darken the rest of the window (four bands around the part, placed from both
-  frames' edges every 0.25 s); a step whose part is hidden is left out. Its frames sit on UIParent in the
-  FULLSCREEN_DIALOG strata (above the window's border), take the window's scale and hide and show with it; the
-  bubble is left-aligned with the part, right-aligned when it would stick out past the window. Next/Done or Skip set `tourSeen`;
-  Settings → Display and `/fg tour` (`Tour.restart`) show it again. The test mock makes clients that used the
-  addon before unless `fresh = true`
+- the test mock makes clients that used the addon before unless `fresh = true` (see Demo for a new player's
+  first opening)
 - matchmaking (`core/matchmaker.lua`): `findGroups` goes over the queue once, each entry in turn anchoring a group
   with the earliest feasible set behind it (an exhaustive search within `SEARCH_BUDGET` steps; an anchor that found
   nothing never finds a group later in the same run, as groups only take players away). The questing and battleground
@@ -239,8 +228,7 @@ takes over the old `db.minimapAngle`); `db.minimapHidden` hides it. The logo pul
 
 `/fg join <tank|healer|dps> [auto | dungeon, ...]`, `/fg leave`, `/fg status`, `/fg dungeons`,
 `/fg accept`, `/fg decline`, `/fg invite`, `/fg debug`, `/fg log [n]`,
-`/fg style <relaxed | learning | serious | expert>`, `/fg progress`.
-`/fg slots <t> <h> <d>` shrinks the group for testing with fewer players (only the matchmaker's setting counts).
+`/fg style <relaxed | learning | serious | expert>`, `/fg progress`, `/fg demo`.
 
 ### Playstyle
 
@@ -286,11 +274,8 @@ tree their class plays that role with (`Specs.forRole`: a Feral druid healing sh
 the same through `Spec.labelInRole`); when several trees could, or nothing is known, their class's emblem
 (`classicon-<class>`, dimmed), both filling the place, with class and spec on one line; art is cut to shape by `Widgets.coverAtlas`. In the
 rounded boxes (role tiles, member places) art runs up to the border and follows the round corners through a mask
-(`Widgets.roundArt`, `Interface\Common\common-iconmask`; `/fgp mask`); without mask support it stays 5 px in. `/fg preview` shows the card with a sample group
-(`W.previewComposition`), to see it without being in a group. `/fg preview party` shows the window as the leader of
-a sample party (a tank and a mage, `Party.setSample`): only the window sees it (`Party.shownState`,
-`Party.shownMembers`, `GroupView.composition(true)`); queueing, matching and messages use `Party.state` and
-`Party.members`, and the Find button does nothing while it shows.
+(`Widgets.roundArt`, `Interface\Common\common-iconmask`; `/fgp mask`); without mask support it stays 5 px in. `/fg demo` shows the card with a
+whole group (see Demo below).
 
 ### Battlegrounds tab
 
@@ -428,7 +413,7 @@ who delist drop out of them as WoW reports it) before it waits for input.
 One setting, "Use WoW's Group Finder", turns all of the below on or off (`wow/features.lua`). Off, Forever Groups
 only works with other Forever Groups players: it does not search, ask, invite from or list in the Group Finder, and
 the "looking" counts show Forever Groups players only. On, each part has its own setting under it (refresh on key
-presses, ask groups, invite listed players, list the group, invite players who whisper, every language, dry run);
+presses, ask groups, invite listed players, list the group, invite players who whisper, every language);
 those are greyed out while the main setting is off.
 
 When queued players cannot make a full group, the matchmaker proposes a partial group right away (`PARTIAL_AFTER = 0`; at least 2
@@ -446,10 +431,10 @@ invite sent last (`Invites.onRefused` tells its sender, which may pick that play
 nobody for 10 s. A pending invite
 can't be taken back (`C_PartyInfo.UninviteUnit` is protected and left the invite open in the probe). The group card
 fills its open places with `Filler.invites()` by role: the invited player's name with "invited" and the seconds left
-of the 30, or "frees in" and the seconds until WoW drops a given-up invite. `/fg preview` shows both in its sample group. A role that a solo Forever Groups player
+of the 30, or "frees in" and the seconds until WoW drops a given-up invite. A role that a solo Forever Groups player
 waiting in the queue for the dungeon can play is left to the matchmaker first (`addonRoles` in `wow/filler.lua`);
 only the other roles go to the Group Finder, and that role too if the matchmaker has not grouped them within 20 s. "Fill from Group Finder" in the window (or `/fg fill`) does the same for your own party;
-`/fg dryrun` only prints the picks. Filling has no window of its own: what it waits for goes to the saved log
+Filling has no window of its own: what it waits for goes to the saved log
 (`Log.detail`, chat with `/fg debug on`) and the status bar shows who is invited.
 
 Roles in the group (`wow/rolesync.lua`): each player's Forever Groups role is set in WoW's party frames once. A
@@ -713,14 +698,53 @@ the tabs Groups, Messages and Display.
 
 ### Test tools
 
-- `/fg fake <n> [roles]` adds local fake players (default: a mix of roles, also combinations). They are never sent
-  to the channel, never become matchmaker, never expire, and are only grouped with you; they accept 1-3 s after a
-  proposal. `/fg fake decline` / `/fg fake afk` makes the first fake in the next proposal decline / stay silent;
-  `/fg fake clear` removes them.
-- `/fg queuelist` lists the queue in chat with tags (you, fake, in a proposal).
-- Fake players get made-up names (`Slash.fakeName`), a class and spec that can play their roles
-  (`Slash.fakeSpec`, a different class in turn) and queue for the dungeons of your level.
+- Tests put fake players in a queue with `Engine:addFake(members, dungeons, spec)`. They are never sent to the
+  channel, never become matchmaker, never expire, and are only grouped with you; they accept 1-3 s after a
+  proposal. `Engine:setFakeBehavior("decline" | "afk")` makes the first fake in the next proposal decline / stay
+  silent; `Engine:clearFakes()` removes them. Who is looking and the popup tag them "fake".
+- `/fg queuelist` lists the queue in chat with tags (you, in a proposal).
 - `/fg debug` logs every sent/received message and, when it changes, why the matchmaker did or did not form a group.
+
+### Demo
+
+`/fg demo` (`wow/demo.lua`) walks through every screen with fixed example data, for screenshots: choosing alone with
+Who is looking open, leading a party with class wishes and a level limit, waiting in the queue, the group-found
+popup, in the group (card, distances, dungeon quests, status bar), the Quests tab, a questing group with its
+progress, and the Battlegrounds tab. A bar at the top of the screen (`FULLSCREEN_DIALOG`) carries an "Example"
+tag, the screen's number and title and a short explanation under it (`TEXTS`, wrapped; the bar grows with it), steps
+back and forth and ends it; `/fg demo` again or Settings → Display → "Show the demo" end or start it too. The player
+is always "Aldric Dawnmere", a level 20 Protection Paladin; the others have made-up names.
+
+- **A new player's introduction** (it replaced the old tour of the window): `ns.db.tourSeen` is false on a fresh
+  install (no saved variables at all) and true for players who used Forever Groups before. While false, the window
+  opens by itself 5 s into the first login (after a fight, `PLAYER_REGEN_ENABLED`; `db.welcomed`; `Demo.welcome`),
+  and every opening (`Window.show`/`toggle`) and the moment the channel connects (`onReady`) try `Demo.maybeStart`,
+  which starts it with `auto` 0.3 s later: when it can't start yet (not idle, not connected) it says nothing and the
+  next opening tries again. Starting sets `tourSeen` on the real settings before `ns.db` becomes the copy, so a crash
+  or `/reload` during it can't bring it back.
+
+- **Only when idle:** connected, not in any queue, no proposal, not filling, asking or finding a battleground, solo,
+  not in an instance and not in combat (`isIdle`); otherwise a chat line says so.
+- **Nothing runs while it shows:** `wow/events.lua` hands no event to the handlers (`Demo.passes`) except
+  `CHAT_MSG_CHANNEL_NOTICE`; combat (`PLAYER_REGEN_DISABLED`), a loading screen (`PLAYER_ENTERING_WORLD`),
+  logging out or reloading (`PLAYER_LOGOUT`) and joining a group end the demo first and then go through. The
+  one-second tick (`wow/main.lua`) only refreshes the window and the status bar. As a safety net `Comm.send`,
+  `Comm.sendNow`, `Comm.sendParty`, `Whispers.send`, `Whispers.sayParty`, `Invites.send`, `Input.run`,
+  `QuestShare.shareMine`, `TakeLead.ask`, the Group Finder searches and `LfgList.syncRoles`, Find group, fill and
+  the right-click menu of Who is looking do nothing.
+- **The screens read demo data:** `ns.selfName`, `ns.charDb` (a fresh table per screen), `ns.db` (a copy of the
+  saved settings; the log and errors stay the real ones) and the three engines (real `Engine`s that send nothing)
+  are swapped, and the model functions the screens ask (`Party.state/members/inGroup/playerClass/playerLevel`,
+  `Spec.current/treeOf/indexOf`, `GroupView.members`, `QuestGroup.current/rows`, `Quests.groupQuests`,
+  `QuestShare.summary`, `GroupPlaces.of`, the `LfgList` listings and their search state, ...) are replaced and put
+  back when it ends. WoW's own functions are never replaced (that taints Blizzard's code): the window asks
+  `Party.playerLevel()`, `Party.inGroup()` and `Party.playerClass()` instead of `UnitLevel("player")`,
+  `IsInGroup()` and `UnitClass("player")`. `GroupView.swapContext` puts the demo group in place without saving it.
+  The saved variables are never written while it runs.
+- **Ending:** `Demo.stop` is safe to call twice and runs every step even if one fails; a screen that fails ends the
+  demo with a chat line. It puts everything back, shows or hides the window and Who is looking as they were, and
+  asks the channel for everyone's queue entries again (`Comm.resync`, a sync request like a newcomer's), since the
+  messages that came in meanwhile were not read.
 
 ## Releasing
 

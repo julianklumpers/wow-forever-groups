@@ -13,6 +13,8 @@
 
 ## Lead your own group
 
+![Leading a party](https://raw.githubusercontent.com/julianklumpers/wow-forever-groups/main/media/screenshots/lead-party.png)
+
 - **Lead a group** and it's built around you.
 - **Choose the classes** you want: a Mage for water, a Warrior to tank.
 - **Limit levels** to players close to yours.

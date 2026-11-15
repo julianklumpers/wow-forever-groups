@@ -495,7 +495,7 @@ local function searchParts()
         ticked[#ticked + 1], seen[id] = id, true
     end
     local rest = {}
-    for _, dungeon in ipairs(Dungeons.forLevel(UnitLevel("player"))) do
+    for _, dungeon in ipairs(Dungeons.forLevel(ns.Party.playerLevel())) do
         if not seen[dungeon.id] then
             rest[#rest + 1] = dungeon.id
         end
@@ -666,6 +666,9 @@ end
 -- window has numbers for every dungeon right away (possibly cut at 100; the
 -- main part on its own follows).
 function LfgList.search(part)
+    if ns.Demo.isOn() then
+        return false
+    end
     local fn = C_LFGList and C_LFGList.Search
     if type(fn) ~= "function" or not ns.Features.groupFinder() then
         return false
@@ -738,6 +741,9 @@ end
 -- Searches the "Quests & Zones" category for these zone names; only from a
 -- click or key press.
 function LfgList.searchZones(zones)
+    if ns.Demo.isOn() then
+        return false
+    end
     local fn = C_LFGList and C_LFGList.Search
     local activities = {}
     for _, zone in ipairs(zones) do
@@ -765,6 +771,9 @@ end
 
 -- Only from a click or key press, like LfgList.search.
 function LfgList.searchBattlegrounds()
+    if ns.Demo.isOn() then
+        return false
+    end
     local fn = C_LFGList and C_LFGList.Search
     if type(fn) ~= "function" or not ns.Features.groupFinder() or not roomToSearch() then
         return false
@@ -967,6 +976,9 @@ local rolesFailed = false
 -- ticked here, so its sign-ups and invites go by the same roles. Only from a
 -- click, as it may need one; after an error it stays off for the session.
 function LfgList.syncRoles(roles)
+    if ns.Demo.isOn() then
+        return
+    end
     local api = _G.C_LFGListRoles
     if rolesFailed or type(api) ~= "table" or type(api.SetRoles) ~= "function" or type(roles) ~= "string"
         or roles == "" then

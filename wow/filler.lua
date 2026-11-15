@@ -113,11 +113,6 @@ end
 local function invite(pick)
     state.exclude[pick.name] = true
     local role = Widgets.ROLE_NAMES[pick.role]
-    if ns.db.dryRun then
-        Log.info("[dry run] Would invite %s as %s for %s.", pick.name, role, Dungeons.name(state.dungeon))
-        state.open = removeLetter(state.open, pick.role)
-        return
-    end
     state.pending[pick.name] = { role = pick.role, at = GetTime(), class = pick.class }
     state.invited[pick.name] = pick.role
     ns.RoleSync.expect(pick.name, pick.role, pick.roles)
@@ -199,7 +194,7 @@ function Filler.step()
         return
     end
     if state.open == "" and next(state.pending) == nil then
-        finish(ns.db.dryRun and "[dry run] Every open role has a candidate." or "Group complete!")
+        finish("Group complete!")
         return
     end
     local needed = stillNeeded()
@@ -416,7 +411,7 @@ end
 -- is now (invites that are still out keep their role).
 function Filler.recompute()
     local party = Party.members()
-    if not state or ns.db.dryRun or party == nil then
+    if not state or party == nil then
         return
     end
     local me = ns.RoleSync.expected(ns.selfName) or (ns.engine and ns.engine.myEntry

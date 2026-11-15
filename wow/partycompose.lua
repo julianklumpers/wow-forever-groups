@@ -29,10 +29,9 @@ function PartyCompose.hasWishes()
 end
 
 -- Whether the player builds the group: they lead the party, or are alone and
--- would like to lead. shown: as the window shows it, with the sample party of
--- /fg preview party; the queue, the filler and matching never pass it.
-function PartyCompose.isBuilder(shown)
-    local state = shown and ns.Party.shownState() or ns.Party.state()
+-- would like to lead.
+function PartyCompose.isBuilder()
+    local state = ns.Party.state()
     return state == "leader" or (state == "solo" and ns.charDb.wantsLead == true)
 end
 
@@ -162,12 +161,9 @@ local function layout()
 end
 
 -- The players already in the group in their places: { [place] = { name,
--- class, self } }. Their places carry no wish. shown: as the window shows it;
--- the sample party of /fg preview party is seated without remembering.
-function PartyCompose.fixed(shown)
-    local sample = shown and ns.Party.isSample()
-    local members = sample and ns.Party.shownMembers() or ns.Party.members()
-    local seat = seatGroup(members or {}, {}, false)
+-- class, self } }. Their places carry no wish.
+function PartyCompose.fixed()
+    local seat = seatGroup(ns.Party.members() or {}, {}, false)
     local fixed = {}
     for i, person in ipairs(seat.people) do
         if seat.seats[i] then
@@ -179,8 +175,8 @@ end
 
 -- The chosen classes for the places still open, also while switched off (the
 -- window's cards).
-function PartyCompose.chosenMasks(shown)
-    local saved, fixed, masks = PartyCompose.settings(), PartyCompose.fixed(shown), {}
+function PartyCompose.chosenMasks()
+    local saved, fixed, masks = PartyCompose.settings(), PartyCompose.fixed(), {}
     for slot = 1, #Compose.SLOT_ROLES do
         masks[slot] = fixed[slot] and 0 or (saved.masks[slot] or 0)
     end

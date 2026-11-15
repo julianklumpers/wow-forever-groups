@@ -56,7 +56,7 @@ function W.cardContent(state)
         return { title = "You are in a raid", subtitle = "Leave the raid to queue.", color = GOLD }
     end
     if state ~= "solo" then
-        local size = #ns.GroupView.composition(true).members
+        local size = #ns.GroupView.composition().members
         local run = ns.Run.isInside() and ns.Run.current()
         if size >= 5 then
             return { title = "Your party is complete (5/5)", color = GREEN, lead = state == "leader",
@@ -201,9 +201,6 @@ function W.refreshCard(state, full, tab)
     local otherTab = questTab or battlegroundTab
     local content = (questTab and W.questCardContent(state))
         or (battlegroundTab and W.battlegroundCardContent(state)) or W.cardContent(state)
-    if W.preview then
-        content = { title = "Preview: The Deadmines", color = GOLD }
-    end
     local y = -10
     card.crown:SetShown(content.lead == true)
     card.progressLink:SetShown(questTab and ns.QuestGroup.current() ~= nil and #ns.QuestGroup.rows() > 0)
@@ -231,15 +228,13 @@ function W.refreshCard(state, full, tab)
             text:Hide()
         end
     end
-    local bannerDungeon = (W.preview and "5") or (content.group and not otherTab and ns.GroupView.trackedDungeon())
+    local bannerDungeon = content.group and not otherTab and ns.GroupView.trackedDungeon()
     local banner = W.paintBanner(bannerDungeon)
     local composition
-    if W.preview then
-        composition = W.previewComposition()
-    elseif otherTab then
+    if otherTab then
         composition = nil
-    elseif IsInGroup() or ns.GroupView.isTracking() or ns.Party.isSample() then
-        composition = ns.GroupView.composition(true)
+    elseif Party.inGroup() or ns.GroupView.isTracking() then
+        composition = ns.GroupView.composition()
     elseif ns.engine and ns.engine.myEntry then
         composition = W.queuedComposition(ns.engine.myEntry)
     end
@@ -253,7 +248,7 @@ function W.refreshCard(state, full, tab)
     if W.cardWithoutPlaces then
         composition = nil
     end
-    local shownMembers = W.cardRoles and ns.Party.shownMembers() or {}
+    local partyMembers = W.cardRoles and Party.members() or {}
     if composition then
         local counts = {}
         if quests then
@@ -263,10 +258,10 @@ function W.refreshCard(state, full, tab)
             end
         end
         local rows, layout = {}, { spec = false, distance = places and true or false, quests = quests and true }
-        local invites = W.preview and W.previewInvites() or ns.Filler.invites()
+        local invites = ns.Filler.invites()
         for i, data in ipairs(composition.slots) do
             local row = { role = data.role, name = data.name, classToken = data.classToken }
-            for _, member in ipairs(shownMembers) do
+            for _, member in ipairs(partyMembers or {}) do
                 if member.name == data.name then
                     row.roleInfo = Widgets.describeRoles(ns.PartyRoles.rolesOf(member)) .. "  ("
                         .. L[ns.PartyRoles.sourceOf(member)] .. ")"
@@ -419,36 +414,6 @@ function W.refreshCard(state, full, tab)
     local height = -(y - 6)
     card:SetHeight(height)
     return height
-end
-
--- /fg preview: the card with a sample group, to see how members look
--- without being in a group. The player plus four others, two of them with a
--- known spec.
-function W.previewComposition()
-    local sample = {
-        { role = "T", name = "Sample Tank", classToken = "WARRIOR" },
-        { role = "H", name = "Sample Healer", classToken = "PRIEST", spec = "Holy", specIndex = 2 },
-        { role = "D", name = ns.selfName or "You", classToken = select(2, UnitClass("player")) },
-        { role = "D" },
-        { role = "D" },
-    }
-    local members = {}
-    for _, slot in ipairs(sample) do
-        if slot.name then
-            members[#members + 1] = slot
-        end
-    end
-    return { slots = sample, members = members, open = "DD" }
-end
-
--- The preview's two open places: a player just invited, and one given up on
--- whose invite WoW still holds; the seconds run down while it shows.
-function W.previewInvites()
-    local passed = (GetTime() - (W.previewAt or GetTime())) % 30
-    return {
-        { name = "Sample Rogue", role = "D", left = 30 - passed },
-        { name = "Sample Mage", role = "D", held = true, left = 30 - passed },
-    }
 end
 
 -- dungeon: the group's dungeon id, or nil for no banner.

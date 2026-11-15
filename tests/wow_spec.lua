@@ -133,20 +133,6 @@ describe("WoW layer", function()
         assert.are.same({ "5", "4", "6" }, client.ns.engine.myEntry.dungeons)
     end)
 
-    it("lets one player test the full flow with /dq slots", function()
-        local world = World.new()
-        local client = world:addClient("Solo Player")
-        world:advance(CONNECT)
-        client:slash("/dq slots 0 0 1")
-        client:slash("/dq join dps auto")
-        world:advance(MATCH)
-        client:acceptPopup()
-        world:advance(1)
-        assert.is_true(client:said("You are the leader; inviting 0 players"))
-        client:slash("/dq slots reset")
-        assert.are.equal(3, client.ns.engine.config.SLOTS.D)
-    end)
-
     it("keeps the queue position across a /reload", function()
         local world = World.new()
         local client = world:addClient("Solo Player")
@@ -643,26 +629,56 @@ describe("WoW UI", function()
 end)
 
 describe("WoW test tools", function()
-    local function queuedWithFakes(fakeArgs)
+    local ROTATION = { "T", "H", "D", "D", "D", "TD", "HD", "D", "THD", "D" }
+    local SPECS = { T = "WARRIOR3", H = "PRIEST2", D = "MAGE3", TD = "DRUID2", HD = "SHAMAN3", THD = "DRUID2" }
+
+    -- Puts fake players in the client's dungeon queue, for the dungeons of
+    -- its level and the ones it queued for; returns their names.
+    local function addFakes(client, count, roles)
+        local ns = client.ns
+        local dungeons, listed = {}, {}
+        local function add(id)
+            if not listed[id] then
+                listed[id] = true
+                dungeons[#dungeons + 1] = id
+            end
+        end
+        for _, dungeon in ipairs(ns.Dungeons.forLevel(client.level)) do
+            add(dungeon.id)
+        end
+        for _, id in ipairs(ns.engine.myEntry and ns.engine.myEntry.dungeons or {}) do
+            add(id)
+        end
+        local names = {}
+        for _ = 1, count do
+            client.fakeCount = (client.fakeCount or 0) + 1
+            local fakeRoles = roles or ROTATION[(client.fakeCount - 1) % #ROTATION + 1]
+            local name = "Fake Player" .. client.fakeCount
+            assert(ns.engine:addFake({ { name = name, roles = fakeRoles, level = client.level } }, dungeons,
+                SPECS[fakeRoles]))
+            names[#names + 1] = name
+        end
+        return names
+    end
+
+    local function queuedWithFakes(count, roles)
         local world = World.new()
         local client = world:addClient("Solo Player", { level = 20 })
         world:advance(CONNECT)
         client:slash("/dq join dps auto")
-        client:slash("/dq fake " .. fakeArgs)
-        return world, client
+        return world, client, addFakes(client, count, roles)
     end
 
     it("fills a group with fake players and shows them in the popup", function()
-        local world, client = queuedWithFakes("4 tank")
-        assert.is_true(client:said("Added 4 fake players"))
-        client:slash("/dq fake clear")
-        client:slash("/dq fake 4")
+        local world, client = queuedWithFakes(4, "T")
+        assert.are.equal(4, client.ns.engine:clearFakes())
+        local names = addFakes(client, 4)
         world:advance(MATCH)
         assert.is_true(client:proposalShown())
-        assert.is_not_nil(client:find("FontString", client.ns.Slash.fakeName(5)).parent.detail.text:find("  ·  fake$"))
+        assert.is_not_nil(client:find("FontString", names[1]).parent.detail.text:find("  ·  fake$"))
         assert.is_not_nil(client:find("FontString", "Solo Player (you)"))
         world:advance(4)
-        local row = client:find("FontString", client.ns.Slash.fakeName(6)).parent
+        local row = client:find("FontString", names[2]).parent
         assert.are.equal("Interface\\RaidFrame\\ReadyCheck-Ready", row.status.texture)
         client:acceptPopup()
         world:advance(1)
@@ -678,7 +694,7 @@ describe("WoW test tools", function()
         local client = world:addClient("Solo Player", { level = 13 })
         world:advance(CONNECT)
         client:slash("/dq join dps dm")
-        client:slash("/dq fake 4")
+        addFakes(client, 4)
         world:advance(MATCH)
         assert.is_true(client:proposalShown())
     end)
@@ -708,7 +724,7 @@ describe("WoW test tools", function()
             local client = world:addClient("Solo Player", { level = 13 })
             world:advance(CONNECT)
             client:slash("/dq join dps " .. dungeon)
-            client:slash("/dq fake 4")
+            addFakes(client, 4)
             world:advance(MATCH)
             assert.is_true(client:proposalShown(), dungeon)
             assert.is_not_nil(client:findText("^" .. dungeon .. "$"), dungeon)
@@ -726,27 +742,26 @@ describe("WoW test tools", function()
         local client = world:addClient("Solo Player", { level = 20 })
         world:advance(CONNECT)
         client:slash("/dq join dps auto")
-        client:slash("/dq fake 2 dps")
-        client:slash("/dq fake 1 healer")
-        client:slash("/dq fake 1 tank")
+        local dps = addFakes(client, 2, "D")
+        local healer = addFakes(client, 1, "H")[1]
+        local tank = addFakes(client, 1, "T")[1]
         world:advance(MATCH)
         assert.is_true(client:proposalShown())
-        local fake = client.ns.Slash.fakeName
         local function rowY(name)
             return client:find("FontString", name).parent.point[3]
         end
-        assert.is_true(rowY(fake(4)) > rowY(fake(3)))
-        assert.is_true(rowY(fake(3)) > rowY("Solo Player (you)"))
-        assert.is_true(rowY(fake(3)) > rowY(fake(1)))
-        assert.is_true(rowY(fake(3)) > rowY(fake(2)))
-        assert.is_not_nil(client:find("Texture", "Leader", client:find("FontString", fake(4)).parent))
+        assert.is_true(rowY(tank) > rowY(healer))
+        assert.is_true(rowY(healer) > rowY("Solo Player (you)"))
+        assert.is_true(rowY(healer) > rowY(dps[1]))
+        assert.is_true(rowY(healer) > rowY(dps[2]))
+        assert.is_not_nil(client:find("Texture", "Leader", client:find("FontString", tank).parent))
     end)
 
     it("groups you with the fakes when many were added before you joined", function()
         local world = World.new()
         local client = world:addClient("Roos Bieff", { level = 13 })
         world:advance(CONNECT)
-        client:slash("/dq fake 30")
+        addFakes(client, 30)
         world:advance(60)
         client:slash("/dq join dps Ragefire Chasm")
         world:advance(MATCH)
@@ -755,64 +770,17 @@ describe("WoW test tools", function()
     end)
 
     it("makes the next fake decline", function()
-        local world, client = queuedWithFakes("4")
-        client:slash("/dq fake decline")
+        local world, client = queuedWithFakes(4)
+        client.ns.engine:setFakeBehavior("decline")
         world:advance(MATCH + 4)
         assert.is_true(client:said("You keep your place in the queue"))
     end)
 
-    it("lists the queue with tags", function()
-        local _, client = queuedWithFakes("2 healer")
+    it("lists the queue", function()
+        local _, client, names = queuedWithFakes(2, "H")
         client:slash("/dq queuelist")
         assert.is_true(client:said("Solo Player DPS.*%[you%]"))
-        assert.is_true(client:said(client.ns.Slash.fakeName(1) .. " Healer.*%[fake%]"))
-    end)
-
-    it("gives fake players a class and spec that can play their roles", function()
-        local client = World.new():addClient("Solo Player", { level = 20 })
-        local Specs, fakeSpec = client.ns.Specs, client.ns.Slash.fakeSpec
-        for n = 1, 9 do
-            for _, roles in ipairs({ "T", "H", "D", "TD", "HD", "THD" }) do
-                local token, index = Specs.decode(fakeSpec(roles, n))
-                local tree = Specs.tree(token, index)
-                assert.is_not_nil(tree, roles)
-                assert.is_not_nil(tree.roles:find(roles:sub(1, 1), 1, true), roles .. " " .. token)
-                local playable = ""
-                for _, t in ipairs(Specs.TREES[token]) do
-                    playable = playable .. t[2]
-                end
-                for role in roles:gmatch(".") do
-                    assert.is_not_nil(playable:find(role, 1, true), roles .. " " .. token)
-                end
-            end
-        end
-        assert.are_not.equal(fakeSpec("D", 1), fakeSpec("D", 2))
-    end)
-
-    it("gives fake players made-up names, all different", function()
-        local _, client = queuedWithFakes("100")
-        local seen = {}
-        for i = 1, 100 do
-            local name = client.ns.Slash.fakeName(i)
-            assert.is_truthy(name:find("^%a+ %a+$"), name)
-            assert.is_nil(seen[name], name)
-            seen[name] = true
-        end
-        assert.is_true(client:said(client.ns.Slash.fakeName(1)))
-    end)
-
-    it("adds up to 100 fake players at once", function()
-        local _, client = queuedWithFakes("25")
-        assert.is_true(client:said("Added 25 fake players"))
-        client:slash("/dq fake 101")
-        assert.is_true(client:said("Usage: /fg fake"))
-    end)
-
-    it("rejects bad fake commands", function()
-        local _, client = queuedWithFakes("0")
-        assert.is_true(client:said("Usage: /fg fake"))
-        client:slash("/dq fake 2 wizard")
-        assert.is_true(client:said("Unknown roles"))
+        assert.is_true(client:said(names[1] .. " Healer"))
     end)
 end)
 

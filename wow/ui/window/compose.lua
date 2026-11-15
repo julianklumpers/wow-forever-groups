@@ -427,11 +427,11 @@ end
 -- Places the block from y down while the player builds the group; returns
 -- the new y.
 function W.layoutCompose(y)
-    if not PartyCompose.isBuilder(true) then
+    if not PartyCompose.isBuilder() then
         W.hideCompose()
         return y
     end
-    local masks, fixed = PartyCompose.chosenMasks(true), PartyCompose.fixed(true)
+    local masks, fixed = PartyCompose.chosenMasks(), PartyCompose.fixed()
     local on = PartyCompose.isOn()
     ui.composeToggle:Show()
     ui.composeToggle:SetChecked(on)

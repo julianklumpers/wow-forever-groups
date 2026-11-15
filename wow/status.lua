@@ -164,7 +164,7 @@ function Status.current(scope)
             group = view, progress = view.progress }
     end
 
-    if not dungeonsOnly and IsInGroup() and ns.QuestGroup.isQuesting() then
+    if not dungeonsOnly and ns.Party.inGroup() and ns.QuestGroup.isQuesting() then
         local titles = {}
         for i, id in ipairs(ns.QuestGroup.current().quests) do
             titles[i] = ns.Quests.titleOf(id)

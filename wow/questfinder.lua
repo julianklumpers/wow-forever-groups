@@ -143,10 +143,6 @@ local function invite(listing, key, role, quest)
     end
     focus = key
     local _, size = ns.QuestMatch.parse(key)
-    if ns.db.dryRun then
-        Log.info("Dry run: would invite %s from the Group Finder for %s.", listing.name, quest.title)
-        return
-    end
     whisper(listing.name, ns.Messages.text("questInvite", {
         quest = quest.title, zone = quest.zone, size = size, spec = ns.Spec.myLabel(),
     }))
@@ -156,13 +152,8 @@ end
 
 local function askLeader(listing, quest)
     local role = ns.LfgPick.askRole(entry().members[1].roles, listing.remaining)
-    if ns.db.dryRun then
-        asks:add(listing.leader, listing.id, role)
-        Log.info("Dry run: would ask %s, who leads a group in %s, to invite you.", listing.leader, quest.zone)
-        return
-    end
     local sent = whisper(listing.leader, ns.Messages.text("questAsk", {
-        level = UnitLevel("player"), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
+        level = ns.Party.playerLevel(), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
         quest = quest.title,
     }))
     if not sent then
@@ -396,13 +387,8 @@ function QuestFinder.request(listing, roles, wanted)
     end
     subject = subject or (listing.zones and listing.zones[1]) or "your group"
     local role = ns.LfgPick.askRole(roles or "D", listing.remaining)
-    if ns.db.dryRun then
-        asks:add(listing.leader, listing.id, role)
-        Log.info("Dry run: would ask %s to invite you for %s.", listing.leader, subject)
-        return
-    end
     local sent = whisper(listing.leader, ns.Messages.text("questAsk", {
-        level = UnitLevel("player"), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
+        level = ns.Party.playerLevel(), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
         quest = subject,
     }))
     if not sent then

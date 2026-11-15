@@ -48,6 +48,9 @@ end
 -- through onRefused when WoW turns it down. Returns whether the call went
 -- through.
 function Invites.send(name, owner)
+    if ns.Demo.isOn() then
+        return false, "demo"
+    end
     count = count + 1
     open[name] = { at = GetTime(), owner = owner, order = count }
     local ok, err = pcall(C_PartyInfo.InviteUnit, name)

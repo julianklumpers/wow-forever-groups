@@ -45,6 +45,8 @@ describe("the Battlegrounds tab", function()
         assert.is_not_nil(client:findText("^·  1 group needs you$"))
         assert.is_nil(client:findText("^Dungeons for level"))
         assert.is_true(client.ns.WindowParts.ui.join.shown)
+        client:click("CheckButton", "DPS")
+        assert.are.equal("DPS  ·  Premade (10)  ·  2 battlegrounds", client.ns.WindowParts.ui.joinSummary.text)
         assert.is_not_nil(client:find("Button", "Premade (10)"))
     end)
 

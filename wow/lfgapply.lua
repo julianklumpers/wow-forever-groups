@@ -202,7 +202,7 @@ local function askText(pick)
         end
     end
     return ns.Messages.text("applyAsk", {
-        level = UnitLevel("player"), spec = ns.Spec.myLabel(letters), role = table.concat(roles, "/"),
+        level = ns.Party.playerLevel(), spec = ns.Spec.myLabel(letters), role = table.concat(roles, "/"),
         dungeon = Dungeons.englishName(pick.dungeon),
     })
 end
@@ -224,11 +224,6 @@ end
 
 function ask(pick)
     lastAskAt = GetTime()
-    if ns.db.dryRun then
-        Apply.rememberAsk(pick.leader)
-        Log.info("[dry run] Would ask %s to invite you for %s.", pick.leader, Dungeons.name(pick.dungeon))
-        return
-    end
     if C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
         return
     end
@@ -389,7 +384,7 @@ function Apply.answerQuestion(leader, role)
     local roles = role or (asks[leader] and asks[leader].role) or (entry and entry.members[1].roles)
         or ns.charDb.lastRoles or ""
     local text = ns.Messages.text("askAnswer", {
-        level = UnitLevel("player"), spec = ns.Spec.myLabel(roles) or "", role = Widgets.describeRolesEnglish(roles),
+        level = ns.Party.playerLevel(), spec = ns.Spec.myLabel(roles) or "", role = Widgets.describeRolesEnglish(roles),
     })
     if text and not (C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()) then
         ns.Whispers.send(leader, text)

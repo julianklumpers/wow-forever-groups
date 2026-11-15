@@ -51,7 +51,7 @@ local function whisper(name, text)
 end
 
 local function sameBracket(listing)
-    return Battlegrounds.sameBracket(listing.level, UnitLevel("player"))
+    return Battlegrounds.sameBracket(listing.level, ns.Party.playerLevel())
 end
 
 local function forState(listing)
@@ -93,13 +93,8 @@ end
 
 local function ask(listing)
     local role = ns.LfgPick.askRole(state.roles)
-    if ns.db.dryRun then
-        state.asks:add(listing.leader, listing.id, role)
-        Log.info("Dry run: would ask %s to invite you for %s.", listing.leader, battlegroundName())
-        return
-    end
     local sent = whisper(listing.leader, ns.Messages.text("bgAsk", {
-        level = UnitLevel("player"), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
+        level = ns.Party.playerLevel(), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
         battleground = englishName(),
     }))
     if sent then
@@ -204,10 +199,6 @@ end
 
 local function invite(listing)
     state.tried[listing.name] = true
-    if ns.db.dryRun then
-        Log.info("Dry run: would invite %s for %s.", listing.name, battlegroundName())
-        return
-    end
     state.pending[listing.name] = now()
     state.listedRoles[listing.name] = listing.roles
     if heals(listing) then
@@ -480,7 +471,7 @@ function BgFinder.request(listing)
     requested[listing.leader] = now()
     local role = ns.LfgPick.askRole(ns.charDb.lastRoles or "D")
     whisper(listing.leader, ns.Messages.text("bgAsk", {
-        level = UnitLevel("player"), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
+        level = ns.Party.playerLevel(), spec = ns.Spec.myLabel(role), role = ns.Widgets.describeRolesEnglish(role),
         battleground = Battlegrounds.englishName(id),
     }))
     Log.info("Asked %s to invite you for %s.", listing.leader, Battlegrounds.name(id))

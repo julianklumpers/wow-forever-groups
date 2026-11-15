@@ -163,7 +163,7 @@ local function unpark()
         return
     end
     local me = {
-        name = ns.selfName, level = UnitLevel("player"),
+        name = ns.selfName, level = ns.Party.playerLevel(),
         roles = ns.RoleSync.expected(ns.selfName) or ns.charDb.lastRoles or "D",
     }
     local members = queuedParty({ members = { me } })
@@ -371,7 +371,6 @@ local function onReady(selfName)
         send = Comm.send,
         emit = onEngineEvent,
         random = math.random,
-        config = ns.db.slots and { SLOTS = ns.db.slots } or nil,
         playstyle = ns.Playstyle.mine(),
         spec = ns.Spec.code(),
         lead = ns.charDb.wantsLead,
@@ -390,6 +389,7 @@ local function onReady(selfName)
     ns.Version.onReady()
     ns.Presence.start()
     Window.refresh()
+    ns.Demo.maybeStart()
 end
 
 -- Any message of a player shows it is alive, in both queues: a player in
@@ -422,6 +422,11 @@ local function step(fn, ...)
 end
 
 local function tick()
+    if ns.Demo.isOn() then
+        step(Status.refresh)
+        step(Window.refresh)
+        return
+    end
     if ns.engine then
         step(ns.engine.tick, ns.engine)
     end
@@ -488,8 +493,8 @@ ns.on("ADDON_LOADED", function(name)
     ForeverGroupsCharDB = ForeverGroupsCharDB or {}
     ns.db = ForeverGroupsDB
     ns.charDb = ForeverGroupsCharDB
-    -- The tour is for new players: one who used Forever Groups before
-    -- (saved settings exist) can start it from the settings or /fg tour.
+    -- The first-time demo is for new players: one who used Forever Groups
+    -- before (saved settings exist) can start it from the settings or /fg demo.
     if ns.db.tourSeen == nil then
         if fresh then
             ns.db.tourSeen = false
@@ -498,6 +503,7 @@ ns.on("ADDON_LOADED", function(name)
         end
     end
     ns.db.queueSort, ns.db.queueSortReverse, ns.db.queueSorts, ns.db.queueTab = nil, nil, nil, nil
+    ns.db.dryRun, ns.db.slots = nil, nil
     Comm.init(onReady, onMessage, function(sender, text)
         ns.Presence.seen(sender)
         if not ns.QuestShare.onMessage(sender, text) and not ns.QuestGroup.onMessage(sender, text)
@@ -568,7 +574,7 @@ ns.on("PLAYER_LOGIN", function()
     end
     ns.Settings.register()
     ns.MinimapButton.refresh()
-    ns.Tour.welcome()
+    ns.Demo.welcome()
     Comm.start()
     C_Timer.NewTicker(1, tick)
 end)

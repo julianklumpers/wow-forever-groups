@@ -57,7 +57,7 @@ end
 
 -- The dungeon of the group being followed, inside it as well; else nil.
 function GroupView.trackedDungeon()
-    return context and IsInGroup() and context.dungeon or nil
+    return context and Party.inGroup() and context.dungeon or nil
 end
 
 -- After loading: picks up the tracked group if the player is still in it.
@@ -90,7 +90,7 @@ end
 -- In the followed group and its run still ahead or going on: not once the
 -- group came back out of the dungeon.
 function GroupView.isActive()
-    return context ~= nil and IsInGroup() and (not context.entered or IsInInstance() == true)
+    return context ~= nil and Party.inGroup() and (not context.entered or IsInInstance() == true)
 end
 
 -- Stops following the group (another kind of group took its place).
@@ -98,14 +98,21 @@ function GroupView.forget()
     setContext(nil)
 end
 
+-- Puts another group in place of the one followed, without saving it;
+-- returns the one it replaced.
+function GroupView.swapContext(value)
+    local old = context
+    context = value
+    return old
+end
+
 local function roleOf(unit, name)
     local assigned = UnitGroupRolesAssigned and LETTER[UnitGroupRolesAssigned(unit)]
     return assigned or ns.RoleSync.expected(name) or ns.Filler.roleOf(name)
 end
 
--- { members = { { name, role } }, slots = { { role, name } x5 }, open = "D" }
--- withSample: for the window, with the sample party of /fg preview party.
-function GroupView.composition(withSample)
+-- The player first, then the party: { { name, role, classToken, unit } }.
+function GroupView.members()
     local members = {}
     for _, unit in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
         if unit == "player" or UnitExists(unit) then
@@ -116,11 +123,12 @@ function GroupView.composition(withSample)
             end
         end
     end
-    if withSample and Party.isSample() then
-        for _, member in ipairs(Party.shownMembers()) do
-            members[#members + 1] = { name = member.name, role = member.wowRole, classToken = member.classToken }
-        end
-    end
+    return members
+end
+
+-- { members = { { name, role } }, slots = { { role, name } x5 }, open = "D" }
+function GroupView.composition()
+    local members = GroupView.members()
     -- Every member in the place of their own role (two tanks show as two
     -- tanks), then the open places: the roles a group of one tank, one
     -- healer and three DPS still lacks, as far as places are left. A member
@@ -180,7 +188,7 @@ end
 
 -- Status for the bar and window while in a tracked group, or nil.
 function GroupView.status()
-    if not context or not IsInGroup() then
+    if not context or not Party.inGroup() then
         return nil
     end
     local composition = GroupView.composition()
@@ -215,7 +223,7 @@ end
 
 -- One line per slot for the window, for any party the player is in.
 function GroupView.lines()
-    if not IsInGroup() then
+    if not Party.inGroup() then
         return nil
     end
     local lines = {}

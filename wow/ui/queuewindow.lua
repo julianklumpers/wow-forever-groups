@@ -51,7 +51,7 @@ local function zonesOf(wanted, forLevel)
         end
     end
     if forLevel and #list == 0 then
-        for _, zone in ipairs(ns.LfgList.zonesForLevel(UnitLevel("player") or 1)) do
+        for _, zone in ipairs(ns.LfgList.zonesForLevel(ns.Party.playerLevel() or 1)) do
             add(zone)
         end
     end
@@ -147,7 +147,7 @@ end
 -- listings for the wanted dungeons, or the zone listings ("Quests & Zones")
 -- in the zones of the wanted quests. Returns the listings and a match test.
 local function sameBracket(listing)
-    return ns.Battlegrounds.sameBracket(listing.level, UnitLevel("player"))
+    return ns.Battlegrounds.sameBracket(listing.level, ns.Party.playerLevel())
 end
 
 local function finderSource(subject)
@@ -308,7 +308,7 @@ function cachedResult(kind, wanted, compute)
     local token = string.format("%d:%d:%d:%d:%d:%s:%s:%d", ns.LfgList.version(),
         engine and engine.queue.version or -1, ns.questEngine and ns.questEngine.queue.version or -1,
         ns.bgEngine and ns.bgEngine.queue.version or -1, ns.Playstyle.mine(),
-        tostring(ns.Features.groupFinder()), tostring(zonesAt), UnitLevel("player") or 0)
+        tostring(ns.Features.groupFinder()), tostring(zonesAt), ns.Party.playerLevel() or 0)
     if token ~= countToken then
         countCache, countToken = {}, token
     end
@@ -337,7 +337,7 @@ local function countLooking(wanted, subject)
         end
         local keys = {}
         for id in pairs(wanted) do
-            local key = ns.Battlegrounds.key(id, UnitLevel("player"))
+            local key = ns.Battlegrounds.key(id, ns.Party.playerLevel())
             if key then
                 keys[key] = true
             end
@@ -1399,6 +1399,9 @@ end
 -- The right-click menu: whisper or invite a player; for a group, ask its
 -- leader to invite you (only while you are not in a group yourself).
 function QueueWindow.openMenu(row, item)
+    if ns.Demo.isOn() then
+        return
+    end
     if not item.group then
         ns.PlayerMenu.open(row, item.player)
         return
@@ -1714,6 +1717,16 @@ end
 function QueueWindow.show()
     ns.Window.show()
     open(true)
+end
+
+-- Opens or closes it along the main window, without searching.
+function QueueWindow.setShown(shown)
+    if shown and not QueueWindow.isShown() then
+        ns.Window.show()
+        open()
+    elseif not shown and QueueWindow.isShown() then
+        frame:Hide()
+    end
 end
 
 -- The tab with the eye on the main window's edge (for the tour).

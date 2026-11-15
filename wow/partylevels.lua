@@ -49,7 +49,7 @@ end
 local reachedLevel = 0
 
 local function playerLevel()
-    return math.max(UnitLevel("player") or 1, reachedLevel)
+    return math.max(ns.Party.playerLevel() or 1, reachedLevel)
 end
 
 local function defaults(tab, dungeons)
@@ -113,9 +113,8 @@ function PartyLevels.set(side, level)
 end
 
 -- Whether the player builds the group on this tab ("dungeons", "quests").
--- shown: as the window shows it (PartyCompose.isBuilder).
-function PartyLevels.isBuilder(tab, shown)
-    local state = shown and ns.Party.shownState() or ns.Party.state()
+function PartyLevels.isBuilder(tab)
+    local state = ns.Party.state()
     return TABS[tab] ~= nil and (state == "leader" or (state == "solo" and ns.charDb[TABS[tab]] == true))
 end
 

@@ -387,17 +387,6 @@ describe("listing your own group in WoW's Group Finder", function()
         assert.are.same({ "Applying Dps" }, tank.applicantInvites)
     end)
 
-    it("only reports applicants in a dry run", function()
-        local world, tank = filling()
-        tank.ns.db.dryRun = true
-        tank:press("W")
-        tank:applicant("Applying Dps", "D")
-        world:advance(1)
-        tank:press("W")
-        assert.are.same({}, tank.applicantInvites)
-        assert.is_true(tank:said("would invite applicant Applying Dps"))
-    end)
-
     it("removes the listing when you stop", function()
         local world, tank = filling()
         tank:press("W")

@@ -66,9 +66,9 @@ local function refreshMain()
     local engine = ns.engine
     local entry = engine and engine.myEntry
     local queued = entry ~= nil
-    local state = Party.shownState()
+    local state = Party.state()
     local canLead = state == "solo" or state == "leader"
-    local full = state ~= "solo" and #ns.GroupView.composition(true).members >= 5
+    local full = state ~= "solo" and #ns.GroupView.composition().members >= 5
     -- In a run Forever Groups follows, an open place calls for a
     -- replacement, not for setting up a new search.
     local following = ns.GroupView.isActive()
@@ -99,11 +99,11 @@ local function refreshMain()
         and ((tab == "quests" and not questsQueued) or tab == "battlegrounds" or (tab == "dungeons" and not queued))
     -- Choosing dungeons, "Looking now" sits on the dungeons' header line
     -- instead of in the card; alone, the card then has nothing to show.
-    W.lookingInHeader = tab == "dungeons" and setup and not W.preview
+    W.lookingInHeader = tab == "dungeons" and setup
     -- A leader choosing dungeons for a party they made: the party under the
     -- choices, where it is set up; without its places while the class cards
     -- show them.
-    local leaderChoosing = state == "leader" and tab == "dungeons" and setup and not W.preview
+    local leaderChoosing = state == "leader" and tab == "dungeons" and setup
     W.cardRoles = leaderChoosing
     W.cardWithoutPlaces = leaderChoosing and ns.PartyCompose.isOn()
     if leaderChoosing then
@@ -177,7 +177,7 @@ local function refreshMain()
     ui.ready:SetShown(setup and not ready and (ui.hint:GetText() or "") == "")
     ui.fill:Hide()
     ui.delist:SetShown(not ui.join:IsShown() and ns.GroupView.isListed()
-        and (IsInGroup() or ns.GroupView.isTracking()) and state ~= "member" and state ~= "raid")
+        and (Party.inGroup() or ns.GroupView.isTracking()) and state ~= "member" and state ~= "raid")
     if not setup and not queued and not replace and not ui.join:IsShown() and not ui.delist:IsShown() then
         y = cardBottom - 2
     end
@@ -192,6 +192,9 @@ function Window.refresh()
 end
 
 function Window.onJoinClicked()
+    if ns.Demo.isOn() then
+        return
+    end
     if W.currentTab() == "quests" then
         W.onQuestJoinClicked()
         return
@@ -202,10 +205,6 @@ function Window.onJoinClicked()
     end
     local engine = ns.engine
     if not engine then
-        return
-    end
-    if ns.Party.isSample() and not engine.myEntry then
-        ns.Log.info("This is a sample party; /fg preview party again ends it.")
         return
     end
     if not engine.myEntry and not ns.Filler.isActive() and ns.GroupView.isActive() then
@@ -246,6 +245,9 @@ end
 
 -- Must run from a click or typed command: it starts a Group Finder search.
 function Window.startFill()
+    if ns.Demo.isOn() then
+        return
+    end
     if not ns.Features.groupFinder() then
         W.setHint(L["WoW's Group Finder is turned off in the settings (/fg settings)."])
         return
@@ -367,7 +369,7 @@ function Window.toggle()
     W.frame:SetShown(not W.frame:IsShown())
     if W.frame:IsShown() then
         ns.QueueWindow.searchIfStale(30, W.currentTab())
-        ns.Tour.maybeStart()
+        ns.Demo.maybeStart()
     end
 end
 
@@ -376,7 +378,7 @@ function Window.show()
         W.build()
     end
     W.frame:Show()
-    ns.Tour.maybeStart()
+    ns.Demo.maybeStart()
 end
 
 -- The window steps aside while a group proposal asks for an answer, and

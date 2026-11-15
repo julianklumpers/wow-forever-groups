@@ -57,6 +57,12 @@ in the group, with roles set for you.
   Whispers to other players stay English, so everyone can read them.
 
 <p align="center">
+  <img src="media/screenshots/lead-party.png" width="420" alt="Leading a party: the classes chosen per place, levels limited to 18-24, and the dungeons to queue for">
+  <img src="media/screenshots/quests-tab.png" width="420" alt="The Quests tab: the group and elite quests in your quest log, with how many players and groups are looking for each">
+  <img src="media/screenshots/battlegrounds-tab.png" width="420" alt="The Battlegrounds tab: Warsong Gulch and Arathi Basin for your bracket, a party of five or a premade of ten">
+</p>
+
+<p align="center">
   <img src="media/screenshots/group-card.png" width="420" alt="The group card: every member with role, spec, distance to the entrance and dungeon quests, with buttons for a waypoint, sharing quests and quest progress">
   <img src="media/screenshots/status-bar.png" width="420" alt="The status bar with the quest progress folded out under it">
 </p>
@@ -67,7 +73,7 @@ servers or websites involved; everything happens in game.
 ## Getting started
 
 1. Install the addon (CurseForge, Wago or WoWInterface) and log in. The first time, the window opens by itself
-   with a short tour of it.
+   and shows every screen once with example data, explained in a bar at the top.
 2. Later, type `/fg`, click the minimap button, or the Forever Groups tab on WoW's Group Finder.
 3. Tick your roles and dungeons (or open the **Quests** tab) and press **Find group**.
 
@@ -80,7 +86,7 @@ servers or websites involved; everything happens in game.
 | `/fg settings` | Settings: Groups, Messages, Display |
 | `/fg messages` | Edit the whispers and party messages |
 | `/fg progress` | Fold the quest progress in or out |
-| `/fg tour` | Show the tour of the window again |
+| `/fg demo` | Walk through every screen with example data (also under Settings → Display) |
 | `/fg help` | All commands |
 | `/fg selftest` | Check which game features work in your client |
 | `/fg bugreport` | A report to copy when something goes wrong |

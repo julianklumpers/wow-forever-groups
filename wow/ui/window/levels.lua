@@ -77,7 +77,7 @@ end
 -- tab: "dungeons" or "quests"; dungeonIds: the ticked dungeons, for the
 -- warning. Returns the new y.
 function W.layoutLevels(y, tab, dungeonIds)
-    if not PartyLevels.isBuilder(tab, true) then
+    if not PartyLevels.isBuilder(tab) then
         W.hideLevels()
         return y
     end

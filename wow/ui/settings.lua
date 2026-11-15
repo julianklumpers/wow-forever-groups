@@ -53,9 +53,6 @@ local TABS = {
                         label = "Find players of every language",
                         tip = "Without this, WoW's Group Finder only shows players listed in your own game "
                             .. "language." },
-                    { key = "dryRun", parent = "noGroupFinder",
-                        label = "Dry run: only list Group Finder picks, do not invite",
-                        tip = "Shows in chat who would be whispered and invited, without doing it." },
                 },
             },
             {
@@ -366,11 +363,11 @@ local function buildExtras(page, y)
         ns.Status.resetPosition()
         Log.info("Status bar moved back under the minimap.")
     end)
-    local tour = Widgets.button(page, "Show the tour again", 200)
-    tour:SetPoint("LEFT", reset, "RIGHT", 10, 0)
-    tour:SetScript("OnClick", function()
+    local demo = Widgets.button(page, "Show the demo", 200)
+    demo:SetPoint("LEFT", reset, "RIGHT", 10, 0)
+    demo:SetScript("OnClick", function()
         frame:Hide()
-        ns.Tour.restart()
+        ns.Demo.start()
     end)
 end
 

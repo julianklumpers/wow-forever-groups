@@ -109,7 +109,7 @@ end
 function BgQueue.keysFor(ids)
     local keys = {}
     for _, id in ipairs(ids) do
-        local key = Battlegrounds.key(id, UnitLevel("player"))
+        local key = Battlegrounds.key(id, ns.Party.playerLevel())
         if key then
             keys[#keys + 1] = key
         end
@@ -121,7 +121,7 @@ end
 -- cannot wait in the queue (a member, or a raid: the Group Finder fills it).
 -- known: roles by name for players the Group Finder brought in.
 function BgQueue.members(roles, known)
-    local members = { { name = ns.selfName, roles = roles, level = UnitLevel("player") } }
+    local members = { { name = ns.selfName, roles = roles, level = ns.Party.playerLevel() } }
     local state = ns.Party.state()
     if state == "member" then
         return nil, "only your group's leader can look for players"

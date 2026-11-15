@@ -48,7 +48,7 @@ end
 -- unticks it.
 function W.tickedBattlegroundIds()
     local ids = {}
-    for _, battleground in ipairs(Battlegrounds.forLevel(UnitLevel("player"))) do
+    for _, battleground in ipairs(Battlegrounds.forLevel(ns.Party.playerLevel())) do
         if not W.battlegroundUnticked()[battleground.id] then
             ids[#ids + 1] = battleground.id
         end
@@ -215,7 +215,7 @@ local function paintDemand(row, wanted, known)
 end
 
 local function showRow(row, battleground, y)
-    local level = UnitLevel("player")
+    local level = ns.Party.playerLevel()
     row.id = battleground.id
     row.label:SetText(Battlegrounds.name(battleground.id))
     row.range:SetText(string.format(L["%s · %d players"], Battlegrounds.bracketText(level), battleground.size))
@@ -243,7 +243,7 @@ local function layout(y, state)
     if W.cardBelowRoles then
         y = W.cardBelowRoles(y)
     end
-    local level = UnitLevel("player")
+    local level = ns.Party.playerLevel()
     local list = Battlegrounds.forLevel(level)
     ui.battlegroundHeader:SetText(string.format(L["Battlegrounds for level %d  ·  %d selected"], level,
         #W.tickedBattlegroundIds()))
@@ -284,8 +284,9 @@ function W.refreshBattlegroundsTab(y, state)
     ui.join:SetShown(active or setup)
     ui.joinSummary:SetShown(setup and ready)
     if setup and ready then
+        local ticked = W.tickedBattlegroundIds()
         local parts = { Widgets.describeRoles(W.selectedRoles()), L[SIZE_LABELS[W.battlegroundSize()]],
-            names(W.tickedBattlegroundIds()) }
+            #ticked == 1 and names(ticked) or string.format(L["%d battlegrounds"], #ticked) }
         ui.joinSummary:SetText(table.concat(parts, "  ·  "))
     end
     Widgets.setEnabled(ui.join, active or ready)
@@ -343,7 +344,7 @@ function W.buildBattlegrounds()
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(Battlegrounds.name(battleground.id))
                 GameTooltip:AddLine(string.format(L["Level bracket %s, %d players a side"],
-                    Battlegrounds.bracketText(UnitLevel("player")), battleground.size), 1, 1, 1)
+                    Battlegrounds.bracketText(ns.Party.playerLevel()), battleground.size), 1, 1, 1)
                 GameTooltip:AddLine(L["Sign up at a battlemaster; a group leader can sign the whole group up."],
                     1, 1, 1, true)
                 GameTooltip:Show()

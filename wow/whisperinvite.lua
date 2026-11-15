@@ -108,10 +108,6 @@ local function inviteForDungeon(name, role)
     local dungeonId = ns.Filler.dungeon() or ns.Filler.dungeonIds()[1]
     local dungeon = dungeonId and Dungeons.englishName(dungeonId) or "our dungeon"
     local roleName = Widgets.ROLE_NAMES[role]
-    if ns.db.dryRun then
-        Log.info("[dry run] Would invite %s, who whispered you, as %s.", name, roleName)
-        return true
-    end
     if not ns.Filler.trackInvite(name, role) then
         return false
     end
@@ -125,10 +121,6 @@ end
 
 local function inviteForQuest(name, role)
     local roleName = Widgets.ROLE_NAMES[role]
-    if ns.db.dryRun then
-        Log.info("[dry run] Would invite %s, who whispered you, as %s.", name, roleName)
-        return true
-    end
     if not ns.QuestFinder.inviteWhisperer(name, role) then
         return false
     end

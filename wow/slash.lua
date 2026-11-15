@@ -9,7 +9,6 @@ local Slash = {}
 
 local Widgets = ns.Widgets
 local Classes = ns.Classes
-local Specs = ns.Specs
 local Party = ns.Party
 
 local ROLES = { t = "T", tank = "T", h = "H", heal = "H", healer = "H", d = "D", dps = "D" }
@@ -145,10 +144,6 @@ local function cmdStatus()
     if snap.proposal then
         Log.info("Open proposal: %s", snap.proposal)
     end
-    local slots = ns.engine.config.SLOTS
-    if slots.T ~= 1 or slots.H ~= 1 or slots.D ~= 3 then
-        Log.warn("Test group size active: %d tank, %d healer, %d DPS (/fg slots reset).", slots.T, slots.H, slots.D)
-    end
 end
 
 local function cmdDungeons(rest)
@@ -168,77 +163,6 @@ local function cmdDungeons(rest)
     end
 end
 
--- Thin red lines on the main window's content edges, and in chat where the
--- window, its inner panel and the content start and end, to check that the
--- margins are the same on both sides. Again to hide them.
-local guides
-
-local function cmdGuides()
-    local W = ns.WindowParts
-    ns.Window.show()
-    if guides and guides[1]:IsShown() then
-        for _, line in ipairs(guides) do
-            line:Hide()
-        end
-        return
-    end
-    if not guides then
-        guides = {}
-        for i, x in ipairs({ W.PAD, W.RIGHT }) do
-            local line = W.frame:CreateTexture(nil, "OVERLAY", nil, 7)
-            line:SetColorTexture(1, 0, 0, 0.8)
-            line:SetWidth(1)
-            line:SetPoint("TOPLEFT", W.frame, "TOPLEFT", x - (i == 2 and 1 or 0), 0)
-            line:SetPoint("BOTTOMLEFT", W.frame, "BOTTOMLEFT", x - (i == 2 and 1 or 0), 0)
-            guides[i] = line
-        end
-    end
-    for _, line in ipairs(guides) do
-        line:Show()
-    end
-    local frame, inset = W.frame, W.frame.Inset
-    local left, right = frame:GetLeft() or 0, frame:GetRight() or 0
-    local insetLeft = inset and inset.GetLeft and inset:GetLeft()
-    local insetRight = inset and inset.GetRight and inset:GetRight()
-    Log.info("Window %.1f wide; content from %d to %d (margins %d and %d).", right - left, W.PAD, W.RIGHT, W.PAD,
-        W.WIDTH - W.RIGHT)
-    if insetLeft and insetRight then
-        Log.info("Inner panel from %.1f to %.1f (%.1f in on the left, %.1f on the right).", insetLeft - left,
-            insetRight - left, insetLeft - left, right - insetRight)
-    end
-end
-
-local function cmdPreviewParty()
-    local on = not ns.Party.isSample()
-    if on and IsInGroup() then
-        Log.info("You are in a party already; the window shows it.")
-        return
-    end
-    if on and ns.engine and ns.engine.myEntry then
-        Log.info("Leave the queue first.")
-        return
-    end
-    ns.Party.setSample(on)
-    ns.Window.show()
-    ns.Window.refresh()
-    Log.info(on and "Showing your window as the leader of a sample party (a tank and a mage); it can't queue. "
-        .. "/fg preview party again ends it." or "Sample party ended.")
-end
-
-local function cmdPreview(rest)
-    if string.lower(trim(rest or "")) == "party" then
-        cmdPreviewParty()
-        return
-    end
-    local W = ns.WindowParts
-    W.preview = not W.preview or nil
-    W.previewAt = GetTime()
-    ns.Window.show()
-    ns.Window.refresh()
-    Log.info(W.preview and "Showing the group card with a sample group; /fg preview again hides it."
-        or "Sample group hidden.")
-end
-
 local function cmdDebug(rest)
     local word = string.lower(trim(rest or ""))
     if word == "on" then
@@ -252,153 +176,6 @@ local function cmdDebug(rest)
         Log.info("Debug on: what Forever Groups does (asking, inviting, whispers) shows in chat.")
     else
         Log.info("Debug off: only the results show.")
-    end
-end
-
-local function cmdSlots(rest)
-    if string.lower(trim(rest)) == "reset" then
-        ns.db.slots = nil
-    else
-        local t, h, d = string.match(rest, "^%s*(%d)%s+(%d)%s+(%d)%s*$")
-        if not t then
-            Log.info("Usage: /fg slots <tanks> <healers> <dps>  or  /fg slots reset")
-            return
-        end
-        t, h, d = tonumber(t), tonumber(h), tonumber(d)
-        if t > 1 or h > 1 or d > 3 or t + h + d == 0 then
-            Log.warn("Slots must be at most 1 tank, 1 healer and 3 DPS, and not all zero.")
-            return
-        end
-        ns.db.slots = { T = t, H = h, D = d }
-    end
-    if ns.engine then
-        ns.engine.config.SLOTS = ns.db.slots or ns.Config.SLOTS
-    end
-    local slots = ns.db.slots or ns.Config.SLOTS
-    Log.info("Group size: %d tank, %d healer, %d DPS. Only the matchmaker's setting counts.", slots.T, slots.H,
-        slots.D)
-end
-
-local FAKE_ROLES = { "T", "H", "D", "D", "D", "TD", "HD", "D", "THD", "D" }
-
--- Made-up names for fake players, first and last name like Forever's.
-local FIRST_NAMES = {
-    "Aldric", "Brynna", "Corvin", "Dagny", "Elowen", "Fenrik", "Gwyra", "Haldor", "Isolde", "Jorund",
-    "Kaelis", "Liora", "Morwen", "Nyssa", "Orrin", "Perrin", "Quilla", "Rowan", "Sylas", "Talia",
-    "Ulric", "Vesna", "Wren", "Xandra", "Yorick", "Zephyra", "Brom", "Ilsa", "Torvin", "Maren",
-}
-local LAST_NAMES = {
-    "Ashvale", "Brightforge", "Coldbrook", "Duskwhisper", "Emberfall", "Frostmantle", "Grimbough",
-    "Hollowmere", "Ironveil", "Juniperfall", "Kettleborn", "Lightwater", "Moonwhistle", "Nettlefield",
-    "Oakhollow", "Pinecrest", "Quickbrook", "Ravenmoor", "Stormbanner", "Thornwick", "Umberfield",
-    "Valecrest", "Willowbend", "Yarrowmere", "Zephyrdale", "Amberline", "Copperkettle", "Deepforge",
-    "Silverbough", "Blackbriar", "Mistral",
-}
-
--- A class and talent tree that can play every role of a fake player, a
--- different class in turn: "WARRIOR3" for a tank, "DRUID2" for Tank/DPS.
-function Slash.fakeSpec(roles, n)
-    local fitting = {}
-    for _, token in ipairs({ "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK",
-        "DRUID" }) do
-        local playable = ""
-        for _, tree in ipairs(Specs.TREES[token]) do
-            playable = playable .. tree[2]
-        end
-        local all = true
-        for role in string.gmatch(roles, ".") do
-            all = all and string.find(playable, role, 1, true) ~= nil
-        end
-        if all then
-            fitting[#fitting + 1] = token
-        end
-    end
-    local token = fitting[(n - 1) % #fitting + 1]
-    local first = string.sub(roles, 1, 1)
-    for index, tree in ipairs(Specs.TREES[token]) do
-        if string.find(tree[2], first, 1, true) then
-            return Specs.encode(token, index)
-        end
-    end
-    return Specs.encode(token)
-end
-
--- The name of the n-th fake player: the lists have coprime lengths, so the
--- first 930 names are all different.
-function Slash.fakeName(n)
-    return FIRST_NAMES[(n * 7) % #FIRST_NAMES + 1] .. " " .. LAST_NAMES[(n * 11) % #LAST_NAMES + 1]
-end
-
-local function cmdFake(rest)
-    local engine = ns.engine
-    if not engine then
-        Log.info("Not connected yet.")
-        return
-    end
-    local word = string.lower(trim(rest))
-    if word == "clear" then
-        Log.info("Removed %d fake players.", engine:clearFakes())
-        return
-    elseif word == "decline" or word == "afk" then
-        engine:setFakeBehavior(word)
-        if word == "decline" then
-            Log.info("The first fake player in the next proposal will decline.")
-        else
-            Log.info("The first fake player in the next proposal will not answer.")
-        end
-        return
-    end
-    local count, roleText = string.match(word, "^(%d+)%s*(.-)$")
-    count = tonumber(count)
-    if not count or count < 1 or count > 100 then
-        Log.info("Usage: /fg fake <1-100> [roles] | decline | afk | clear")
-        return
-    end
-    local roles
-    if roleText ~= "" then
-        roles = parseRoles(roleText)
-        if not roles then
-            Log.warn("Unknown roles '%s'.", roleText)
-            return
-        end
-    end
-    -- The dungeons a real player of the same level would pick, and any the
-    -- player chose or queued for themselves (also from "Other dungeons").
-    local dungeons, listed = {}, {}
-    local function add(id)
-        if id and not listed[id] then
-            listed[id] = true
-            dungeons[#dungeons + 1] = id
-        end
-    end
-    for _, dungeon in ipairs(Dungeons.forLevel(UnitLevel("player") or 1)) do
-        add(dungeon.id)
-    end
-    for _, id in ipairs(engine.myEntry and engine.myEntry.dungeons or {}) do
-        add(id)
-    end
-    for _, id in ipairs(ns.Window.selectedDungeonIds()) do
-        add(id)
-    end
-    if #dungeons == 0 then
-        for i, dungeon in ipairs(Dungeons.list) do
-            dungeons[i] = dungeon.id
-        end
-    end
-    local added = {}
-    for _ = 1, count do
-        ns.fakeCounter = (ns.fakeCounter or 0) + 1
-        local fakeRoles = roles or FAKE_ROLES[(ns.fakeCounter - 1) % #FAKE_ROLES + 1]
-        local name = Slash.fakeName(ns.fakeCounter)
-        local ok = engine:addFake({ { name = name, roles = fakeRoles, level = UnitLevel("player") } }, dungeons,
-            Slash.fakeSpec(fakeRoles, ns.fakeCounter))
-        if ok then
-            added[#added + 1] = name .. " (" .. Widgets.describeRoles(fakeRoles) .. ")"
-        end
-    end
-    Log.info("Added %d fake players: %s", #added, table.concat(added, ", "))
-    if not engine:snapshot().queued then
-        Log.info("Fake players are only grouped with you: join the queue to get a proposal.")
     end
 end
 
@@ -419,9 +196,6 @@ local function cmdQueue()
         if entry.id == ns.selfName then
             tags[#tags + 1] = "you"
         end
-        if snap.fakes[entry.id] then
-            tags[#tags + 1] = "fake"
-        end
         if engine:isReserved(entry.id) then
             tags[#tags + 1] = "in a proposal"
         end
@@ -437,15 +211,6 @@ local function cmdFill(rest)
         return
     end
     ns.Window.startFill()
-end
-
-local function cmdDryRun()
-    ns.db.dryRun = not ns.db.dryRun
-    if ns.db.dryRun then
-        Log.info("Dry run on: Group Finder players are only listed in chat, not invited.")
-    else
-        Log.info("Dry run off: Group Finder players are whispered and invited.")
-    end
 end
 
 local function cmdLog(rest)
@@ -486,16 +251,10 @@ local COMMANDS = {
     { "dungeons", "[all] list dungeons for your level", cmdDungeons },
     { "invite", "send the group invites again (leader)", Group.inviteAll },
     { "debug", "[on | off]  show what Forever Groups does (asking, inviting, whispers, messages)", cmdDebug },
-    { "preview", "[party] show the group card with a sample group, or (party) the window as the leader of a "
-        .. "sample party (again to hide it)", cmdPreview },
-    { "guides", "show the main window's content edges and margins (again to hide them)", cmdGuides },
-    { "tour", "show the tour of the main window again", function() ns.Tour.restart() end },
-    { "slots", "<t> <h> <d> | reset  test with a smaller group", cmdSlots },
     { "log", "[n] show the last n log lines", cmdLog },
     { "queue", "show who is looking (queue and Group Finder)", function() ns.QueueWindow.show() end },
     { "queuelist", "list the queue in chat", cmdQueue },
     { "fill", "[stop]  fill your group's open roles from WoW's Group Finder", cmdFill },
-    { "dryrun", "toggle: show Group Finder picks without inviting", cmdDryRun },
     { "autosearch", "turn refreshing the Group Finder on your key presses on/off", function()
         if ns.KeySearch.toggle() then
             Log.info("Automatic Group Finder refresh on.")
@@ -510,7 +269,7 @@ local COMMANDS = {
             Log.info("Minimap button hidden.")
         end
     end },
-    { "fake", "<n> [roles] | decline | afk | clear  fake players for testing", cmdFake },
+    { "demo", "walk through every screen with example data (for screenshots)", function() ns.Demo.toggle() end },
 }
 
 function Slash.help()

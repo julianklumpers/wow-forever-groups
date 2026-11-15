@@ -84,17 +84,16 @@ describe("whisper invites while building a group", function()
         assert.are.same({}, repliesTo(tank, "Friend"))
     end)
 
-    it("only reports in a dry run and can be turned off", function()
+    it("can be turned off", function()
         local _, tank = building()
-        tank.ns.db.dryRun = true
-        tank:whisperFrom("Whisper Dps", "dps")
-        assert.is_false(invited(tank, "Whisper Dps"))
-        assert.is_true(tank:said("Would invite Whisper Dps, who whispered you, as DPS"))
-
-        tank.ns.db.dryRun = nil
         tank.ns.db.noWhisperInvite = true
         tank:whisperFrom("Second Dps", "dps")
         assert.is_false(invited(tank, "Second Dps"))
+        assert.are.same({}, repliesTo(tank, "Second Dps"))
+
+        tank.ns.db.noWhisperInvite = nil
+        tank:whisperFrom("Second Dps", "dps")
+        assert.is_true(invited(tank, "Second Dps"))
     end)
 
     it("ignores whispers of other Forever Groups players, also of the old DungeonQueue", function()

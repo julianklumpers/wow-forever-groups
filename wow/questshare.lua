@@ -160,6 +160,9 @@ end
 -- Shares every quest we have for the dungeon that can be shared. Returns how
 -- many will be shared.
 function QuestShare.shareMine(dungeon)
+    if ns.Demo.isOn() then
+        return 0
+    end
     local queue = {}
     for _, quest in ipairs(ns.Quests.entriesFor(dungeon or "")) do
         if quest.questID and isPushable(quest.questID) then

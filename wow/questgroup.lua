@@ -118,7 +118,7 @@ function QuestGroup.current()
         return nil
     end
     local age = GetServerTime() - (context.startedAt or 0)
-    local waiting = IsInGroup() or (context.dungeon and ns.GroupView.isTracking()) or age <= JOIN_TIME
+    local waiting = ns.Party.inGroup() or (context.dungeon and ns.GroupView.isTracking()) or age <= JOIN_TIME
     if age > MAX_AGE or not waiting then
         setContext(nil)
         reports = {}
@@ -158,7 +158,8 @@ function QuestGroup.startDungeon(dungeon)
 end
 
 function QuestGroup.isQuesting()
-    return QuestGroup.current() ~= nil and context.dungeon == nil
+    local group = QuestGroup.current()
+    return group ~= nil and group.dungeon == nil
 end
 
 -- Every quest the questing group formed for is turned in.
@@ -166,8 +167,9 @@ function QuestGroup.isDone()
     if not QuestGroup.isQuesting() then
         return false
     end
-    for _, id in ipairs(context.core or context.quests) do
-        if not context.turnedIn[id] then
+    local group = QuestGroup.current()
+    for _, id in ipairs(group.core or group.quests) do
+        if not group.turnedIn[id] then
             return false
         end
     end

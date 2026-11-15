@@ -26,12 +26,20 @@ function Party.playerClass()
     return classToken
 end
 
+function Party.playerLevel()
+    return UnitLevel("player")
+end
+
+function Party.inGroup()
+    return IsInGroup()
+end
+
 -- "solo", "leader", "member" or "raid".
 function Party.state()
     if IsInRaid and IsInRaid() then
         return "raid"
     end
-    if not IsInGroup() then
+    if not Party.inGroup() then
         return "solo"
     end
     return UnitIsGroupLeader("player") and "leader" or "member"
@@ -57,40 +65,6 @@ function Party.members()
                 classToken = classToken,
             }
         end
-    end
-    return members
-end
-
--- /fg preview party: a sample party, so the window shows a party leader's
--- view without being in a group. Only the window asks for it (shownState,
--- shownMembers, GroupView.composition(true)); queueing, matching and
--- messages use state() and members() and never see it.
-local SAMPLE = {
-    { name = "Sample Tank", classToken = "WARRIOR", wowRole = "T" },
-    { name = "Sample Mage", classToken = "MAGE", wowRole = "D" },
-}
-local sampleOn = false
-
-function Party.setSample(on)
-    sampleOn = on and true or false
-end
-
-function Party.isSample()
-    return sampleOn and not IsInGroup()
-end
-
-function Party.shownState()
-    return Party.isSample() and "leader" or Party.state()
-end
-
-function Party.shownMembers()
-    if not Party.isSample() then
-        return Party.members()
-    end
-    local members = {}
-    for i, member in ipairs(SAMPLE) do
-        members[i] = { name = member.name, classToken = member.classToken, wowRole = member.wowRole,
-            level = UnitLevel("player") or 0 }
     end
     return members
 end

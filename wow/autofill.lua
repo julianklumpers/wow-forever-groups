@@ -89,7 +89,7 @@ function AutoFill.afterGroupFormed(view)
         if member.fake then
             return
         end
-        local entryMember = { name = member.name, roles = member.role, level = UnitLevel("player") }
+        local entryMember = { name = member.name, roles = member.role, level = ns.Party.playerLevel() }
         if member.name == ns.selfName then
             table.insert(members, 1, entryMember)
         else

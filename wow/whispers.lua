@@ -103,6 +103,9 @@ end
 
 -- Sends a whisper for the player; returns pcall's ok, err.
 function Whispers.send(name, text)
+    if ns.Demo.isOn() then
+        return false, "demo"
+    end
     local send = C_ChatInfo.SendChatMessage or SendChatMessage
     prune()
     pending[#pending + 1] = { name = name, text = text, at = GetTime() }
@@ -129,6 +132,9 @@ end
 -- A line in party chat for the player; logged either way, since WoW says
 -- nothing when it does not go out.
 function Whispers.sayParty(text)
+    if ns.Demo.isOn() then
+        return false
+    end
     local ok, err = pcall(C_ChatInfo.SendChatMessage or SendChatMessage, text, "PARTY")
     if ok then
         ns.Log.detail("Said in party chat: %s", text)

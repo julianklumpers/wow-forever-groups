@@ -17,7 +17,7 @@ W.COLUMNS, W.MAX_ROWS = 2, 18
 -- content sits in one box with the same margin to the inside of the gold
 -- frame on both sides, which is what the eye measures against. The frame's
 -- border is not as wide on both sides (about 8 on the left, 6 on the right,
--- measured in game with /fg guides). PAD is the box's left edge, RIGHT its
+-- measured in game). PAD is the box's left edge, RIGHT its
 -- right edge, CONTENT its width; rows of tiles or cards are cut with
 -- W.columns so they fill the box to the pixel.
 W.SPACE = { xs = 4, s = 6, m = 8, l = 12, xl = 16, xxl = 24 }
@@ -138,7 +138,7 @@ end
 
 -- "lead" for the Find group summary when a solo player wants to lead.
 function W.leadWord(tab)
-    return W.wantsLead(tab or W.currentTab()) and ns.Party.shownState() == "solo" and L["lead"] or nil
+    return W.wantsLead(tab or W.currentTab()) and ns.Party.state() == "solo" and L["lead"] or nil
 end
 
 function W.place(widget, x, y)
@@ -150,7 +150,7 @@ end
 -- group: no tabs, and the tab that belongs to it. Once its quests are
 -- turned in or its run is over the tabs come back. nil otherwise.
 function W.groupTab()
-    if not IsInGroup() then
+    if not ns.Party.inGroup() then
         return nil
     elseif ns.QuestGroup.isQuesting() then
         return not ns.QuestGroup.isDone() and "quests" or nil
@@ -206,7 +206,7 @@ local function offered(tab)
     if tab == "quests" then
         return #ns.Quests.groupQuests() > 0
     elseif tab == "battlegrounds" then
-        return #ns.Battlegrounds.forLevel(UnitLevel("player")) > 0
+        return #ns.Battlegrounds.forLevel(ns.Party.playerLevel()) > 0
     end
     return true
 end

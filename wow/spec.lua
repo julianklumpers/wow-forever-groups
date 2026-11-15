@@ -74,8 +74,7 @@ function Spec.learn(name, classToken, points)
 end
 
 local function classToken()
-    local _, token = UnitClass("player")
-    return token
+    return ns.Party.playerClass()
 end
 
 -- { index, name, roles, class } for the player, or nil (no talents yet, a

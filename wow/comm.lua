@@ -76,6 +76,9 @@ local TTL = { P = 8, A = 30, K = 10 }
 
 -- The dungeon (v2|) and questing (q1|) queues each have their own heartbeat.
 function Comm.send(text)
+    if ns.Demo.isOn() then
+        return
+    end
     local space, kind = string.match(text, "^(%a%d+)|(%a)")
     local heartbeat = space and (space .. "heartbeat")
     if kind == "L" then
@@ -103,6 +106,9 @@ end
 
 -- Bypasses the queue; used on logout when there is no next tick.
 function Comm.sendNow(text)
+    if ns.Demo.isOn() then
+        return
+    end
     if channelId then
         pcall(C_ChatInfo.SendAddonMessage, Comm.PREFIX, text, "CHANNEL", tostring(channelId))
     end
@@ -144,6 +150,12 @@ local function handshake()
     Comm.send(handshakeText)
     Comm.flush()
     C_Timer.After(HANDSHAKE_RETRY, handshake)
+end
+
+-- Asks everyone on the channel for their queue entries again, the way a
+-- newcomer does (which also has them announce themselves).
+function Comm.resync()
+    Comm.send(Protocol.encode({ kind = "sync", nonce = randomNonce() }))
 end
 
 local function pollJoined(attempt)
@@ -277,6 +289,9 @@ end
 
 -- Small, rare party status messages; sent directly instead of queued.
 function Comm.sendParty(text)
+    if ns.Demo.isOn() then
+        return
+    end
     if not IsInGroup() or (C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()) then
         return
     end

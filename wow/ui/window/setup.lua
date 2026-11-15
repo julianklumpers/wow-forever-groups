@@ -41,7 +41,7 @@ local queueRows = W.queueRows
 function W.selectedDungeons()
     if not ns.charDb.lastDungeons then
         ns.charDb.lastDungeons = {}
-        for _, dungeon in ipairs(Dungeons.forLevel(UnitLevel("player"))) do
+        for _, dungeon in ipairs(Dungeons.forLevel(Party.playerLevel())) do
             ns.charDb.lastDungeons[dungeon.id] = true
         end
     end
@@ -56,11 +56,11 @@ end
 W.DUNGEON_LEVEL = 10
 
 function W.dungeonSections()
-    if (UnitLevel("player") or 0) < W.DUNGEON_LEVEL then
+    if (Party.playerLevel() or 0) < W.DUNGEON_LEVEL then
         return {}, {}, 0
     end
     local forLevel, selected = {}, W.selectedDungeons()
-    for _, dungeon in ipairs(Dungeons.forLevel(UnitLevel("player"))) do
+    for _, dungeon in ipairs(Dungeons.forLevel(Party.playerLevel())) do
         forLevel[dungeon.id] = true
     end
     local levelList, otherList, others = {}, {}, 0
@@ -165,7 +165,7 @@ function W.refreshDungeons()
             count = count + 1
         end
     end
-    ui.dungeonHeader:SetText(string.format(L["Dungeons for level %d"], UnitLevel("player")))
+    ui.dungeonHeader:SetText(string.format(L["Dungeons for level %d"], Party.playerLevel()))
     Widgets.paintExpander(ui.otherToggle, W.showOthers, string.format("(%d)", others))
     ui.otherToggle:SetShown(others > 0)
     for i, cell in ipairs(dungeonCells) do
@@ -174,7 +174,7 @@ function W.refreshDungeons()
         cell.dungeon = dungeon
         if dungeon then
             cell.label:SetText(Dungeons.name(dungeon.id))
-            cell.label:SetTextColor(Widgets.levelColor(UnitLevel("player"), dungeon.min, dungeon.max))
+            cell.label:SetTextColor(Widgets.levelColor(Party.playerLevel(), dungeon.min, dungeon.max))
             cell.range:SetText(Dungeons.rangeText(dungeon))
             cell.range:ClearAllPoints()
             cell.hover:ClearAllPoints()
@@ -206,7 +206,7 @@ function W.refreshDungeons()
         end
     end
     ui.empty:SetShown(#levelList == 0)
-    if (UnitLevel("player") or 0) < W.DUNGEON_LEVEL then
+    if (Party.playerLevel() or 0) < W.DUNGEON_LEVEL then
         ui.empty:SetText(string.format(L["Dungeons open up at level %d."], W.DUNGEON_LEVEL))
     else
         ui.empty:SetText(L["No dungeons fit your level. Open 'Other dungeons' to pick one anyway."])
@@ -359,7 +359,7 @@ end
 -- Join or lead at the left of the line under the tiles, alone; a party
 -- leader leads already.
 function W.layoutLead(y)
-    local state = Party.shownState()
+    local state = Party.state()
     local solo, leader = state == "solo", state == "leader"
     ui.joinChoice:SetShown(solo)
     ui.leadChoice:SetShown(solo)
@@ -452,7 +452,7 @@ function W.layoutQueued(y, entry)
         local dungeon = i <= shown and Dungeons.get(entry.dungeons[i])
         if dungeon then
             row.name:SetText(Dungeons.name(dungeon.id))
-            row.name:SetTextColor(Widgets.levelColor(UnitLevel("player"), dungeon.min, dungeon.max))
+            row.name:SetTextColor(Widgets.levelColor(Party.playerLevel(), dungeon.min, dungeon.max))
             row.range:SetText(Dungeons.rangeText(dungeon))
             Widgets.setRoleCounts(row.counts, known and ns.QueueWindow.lookingCounts({ [dungeon.id] = true }))
             W.paintDemand(row.groups, dungeon.id)
@@ -478,7 +478,7 @@ function W.collectMembers()
     if not roles then
         return nil, "Choose at least one role."
     end
-    local members = { { name = ns.selfName, roles = roles, level = UnitLevel("player") } }
+    local members = { { name = ns.selfName, roles = roles, level = Party.playerLevel() } }
     local state = Party.state()
     if state == "member" or state == "raid" then
         return nil, "Only your party leader can queue the party."

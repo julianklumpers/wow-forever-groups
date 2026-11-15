@@ -74,8 +74,7 @@ end
 
 local function classOf(member)
     if member.name == ns.selfName then
-        local _, token = UnitClass("player")
-        return token
+        return ns.Party.playerClass()
     end
     return (ns.Specs.decode(member.spec))
 end

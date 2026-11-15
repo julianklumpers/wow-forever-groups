@@ -97,7 +97,6 @@ wow\ui\window\quests.lua
 wow\ui\window\battlegrounds.lua
 wow\ui\window\tabs.lua
 wow\ui\window.lua
-wow\ui\tour.lua
 wow\ui\progresswindow.lua
 wow\ui\playermenu.lua
 wow\ui\playstylemenu.lua
@@ -107,5 +106,6 @@ wow\ui\minimap.lua
 wow\ui\findertab.lua
 wow\ui\settings.lua
 wow\ui\messageswindow.lua
+wow\demo.lua
 wow\slash.lua
 wow\main.lua
