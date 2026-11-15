@@ -393,6 +393,13 @@ describe("sharing dungeon quests in a new group", function()
         assert.is_not_nil(leader:findText("^no addon$"))
     end)
 
+    it("shows the group card before the addon knows the player's own name", function()
+        local _, leader = party()
+        leader.ns.selfName = nil
+        leader:slash("/dq")
+        assert.is_true(leader.ns.Window.isShown())
+    end)
+
     it("shares from the status bar's quest icon and folds the progress out under the bar", function()
         local world, leader = party()
         assert.is_false(leader.ns.Window.isShown())

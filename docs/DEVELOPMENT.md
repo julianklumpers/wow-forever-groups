@@ -77,7 +77,9 @@ How the addon works inside, for anyone reading or changing the code. The player-
   each search the player starts (Find group in the window or `/fg join`, Find questing group, Fill from Group
   Finder; not a replacement search or a restored queue) notes per tab whether the player built the group then (`PartyLevels.noteStart`, `charDb.wishesHidden`); a player who pressed Find group with "Join a group"
   and is made leader of the group Forever Groups builds for them keeps neither class choices nor level limit
-  (`PartyLevels.wishesCount`). The player's own place and the party
+  (`PartyLevels.wishesCount`). On the group card an open place with a wish shows the wished classes as round
+  icons where the spec line goes (`row.classes` from `PartyCompose.freePlaces`, matched to the open places by role
+  in order; `Widgets.paintSlot`), their names on a client without the class icons. The player's own place and the party
   members' are fixed (no wish), each in the first place of their role. Matchmaking (`Matchmaker.findGroups`/
   `findPartialGroup`, given `now`): an entry with wishes in force only anchors its own group, takes only solo
   players (their class from their spec), narrows each candidate's roles to those with a place for their class
@@ -313,7 +315,9 @@ left. The group card's member places (`Widgets.paintSlot`) show a member's spec 
 own, learned from the queue or by inspecting; `Spec.indexOf`, `Specs.artFor`) and plays the place's role; else the
 tree their class plays that role with (`Specs.forRole`: a Feral druid healing shows Restoration; the group popup
 the same through `Spec.labelInRole`); when several trees could, or nothing is known, their class's emblem
-(`classicon-<class>`, dimmed), both filling the place, with class and spec on one line; art is cut to shape by `Widgets.coverAtlas`. In the
+(`classicon-<class>`, dimmed), both filling the place; the class's round icon stands before the name (in class
+colour) and the line right under the name has the spec only (the class name instead of the icon on a client without
+class icons); distance and quests sit at the bottom of the place, which keeps the row's height; art is cut to shape by `Widgets.coverAtlas`. In the
 rounded boxes (role tiles, member places) art runs up to the border and follows the round corners through a mask
 (`Widgets.roundArt`, `Interface\Common\common-iconmask`; `/fgp mask`); without mask support it stays 5 px in. `/fg demo` shows the card with a
 whole group (see Demo below).

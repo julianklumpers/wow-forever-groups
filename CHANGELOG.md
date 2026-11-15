@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- The group card shows each member's class as a round icon before their name, with only the spec right under it
+  ("Feral" instead of "Druid Feral"); where they are and their quests ("at entrance", "no addon") sit at the
+  bottom of the place. The cards of "Choose the classes in my party" show you and your party members the same way.
+- While you build your group, an open place your class choices keep for some classes shows those classes' icons
+  on the group card (up to five, then "+n"), so you can see what it waits for.
+- Opening the window in a group in the first seconds after logging in or a /reload no longer gives an error
+  ("card.lua: table index is nil").
+
 ## 0.27.0 (2026-11-15)
 
 - The invite whisper to a player from the Group Finder no longer ends with "I'm the Retribution Paladin."; your own

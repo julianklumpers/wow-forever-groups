@@ -349,6 +349,34 @@ local function placeLines(card, top)
     end
 end
 
+local NAME_ICON, NAME_ICON_GAP = 14, 2
+
+-- The class's round icon just before the first line (the name), the two
+-- centred together; nil hides it.
+local function placeNameIcon(card, class, top)
+    if not class then
+        if card.nameIcon then
+            card.nameIcon:Hide()
+        end
+        return
+    end
+    if not card.nameIcon then
+        card.nameIcon = classIcon(card, "name")
+    end
+    local line = card.lines[1]
+    local room = (line:GetWidth() or 0) - NAME_ICON - NAME_ICON_GAP
+    line:SetWidth(room)
+    line:ClearAllPoints()
+    line:SetPoint("TOP", math.floor((NAME_ICON + NAME_ICON_GAP) / 2), -top)
+    local text = math.min(line:GetStringWidth() or room, room)
+    local left = math.floor(((card:GetWidth() or 0) - (text + NAME_ICON + NAME_ICON_GAP)) / 2)
+    card.nameIcon:SetAtlas(iconAtlas(class))
+    card.nameIcon:SetSize(NAME_ICON, NAME_ICON)
+    card.nameIcon:ClearAllPoints()
+    card.nameIcon:SetPoint("TOPLEFT", card, "TOPLEFT", left, -top + 1)
+    card.nameIcon:Show()
+end
+
 -- Who is on a fixed place (their class's icon, name and class), or the
 -- classes wished for as icons (on a client without them: two names and
 -- "+n more"); an open place shows a dashed edge and a "+".
@@ -360,6 +388,7 @@ local function paintCard(card, person, classes)
     for _, icon in ipairs(card.classIcons) do
         icon:Hide()
     end
+    placeNameIcon(card, nil)
     local icons = hasClassIcons()
     -- The player's and the party's places look like the party's places
     -- above: their spec art, class and spec.
@@ -375,7 +404,12 @@ local function paintCard(card, person, classes)
         card.lines[1]:SetText(person.self and L["You"] or person.name)
         card.lines[1]:SetTextColor(Widgets.classColor(person.class))
         local class = person.class and ns.Spec.className(person.class) or ""
-        card.lines[2]:SetText(art and specName and (class .. " |cffe6c273" .. L[specName] .. "|r") or class)
+        local withIcon = art and icons and person.class ~= nil
+        if withIcon then
+            card.lines[2]:SetText(specName and ("|cffe6c273" .. L[specName] .. "|r") or "")
+        else
+            card.lines[2]:SetText(art and specName and (class .. " |cffe6c273" .. L[specName] .. "|r") or class)
+        end
         if art then
             card.lines[2]:SetTextColor(1, 1, 1)
         else
@@ -383,6 +417,9 @@ local function paintCard(card, person, classes)
         end
         if art then
             placeLines(card, 42)
+            if withIcon then
+                placeNameIcon(card, person.class, 42)
+            end
         elseif icons and person.class then
             placeClassIcons(card, { person.class })
             card.classIcons[1]:ClearAllPoints()

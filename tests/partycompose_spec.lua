@@ -134,6 +134,12 @@ describe("composing the party", function()
         assert.are.equal("classicon-mage", cards[3].art.atlas)
         assert.is_true(cards[3].art.shown)
         assert.is_false(cards[4].art.shown)
+        assert.are.equal("Mage Friend", cards[3].lines[1].text)
+        assert.is_true(cards[3].nameIcon.shown)
+        assert.are.equal("classicon-mage", cards[3].nameIcon.atlas)
+        assert.is_nil(cards[3].lines[2].text:find("Mage", 1, true))
+        assert.is_true(cards[1].nameIcon.shown)
+        assert.are.equal("classicon-warrior", cards[1].nameIcon.atlas)
     end)
 
     it("keeps the chosen classes while switched off, and uses none then", function()
@@ -152,6 +158,37 @@ describe("composing the party", function()
         client:click("CheckButton", "Choose the classes in my party")
         assert.is_true(cards[3].shown)
         assert.are.equal("Mage", cards[3].lines[1].text)
+    end)
+
+    it("shows the wished classes in the open places of the queue card", function()
+        local world = World.new()
+        local client = world:addClient("Lead Player", { level = 20, class = "WARRIOR", atlases = {
+            ["classicon-warrior"] = true, ["classicon-priest"] = true, ["classicon-shaman"] = true,
+            ["classicon-mage"] = true,
+        } })
+        world:advance(CONNECT)
+        client:slash("/dq")
+        client:click("CheckButton", "Tank")
+        client.ns.charDb.wantsLead = true
+        client.ns.charDb.compose = { masks = { 0, 48, 64, 0, 0 } }
+        client.ns.charDb.composeOn = true
+        client:slash("/dq join tank dm")
+        client.ns.Window.refresh()
+        local slots = client.ns.WindowParts.slots
+        local function icons(slot)
+            local list = {}
+            for _, icon in ipairs(slot.classIcons or {}) do
+                if icon.shown then
+                    list[#list + 1] = icon.atlas
+                end
+            end
+            return list
+        end
+        assert.are.equal("Lead Player", slots[1].name.text)
+        assert.are.same({ "classicon-priest", "classicon-shaman" }, icons(slots[2]))
+        assert.are.same({ "classicon-mage" }, icons(slots[3]))
+        assert.are.same({}, icons(slots[4]))
+        assert.are.equal("open", slots[2].name.text)
     end)
 
     it("lets the filler invite only players of a wished class for that place", function()

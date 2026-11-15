@@ -249,7 +249,11 @@ function W.refreshCard(state, full, tab)
     if composition then
         local counts = {}
         if quests then
-            counts[ns.selfName] = quests.mine
+            -- The own name comes with the channel handshake, a few seconds
+            -- after login; the window may open before.
+            if ns.selfName then
+                counts[ns.selfName] = quests.mine
+            end
             for _, member in ipairs(quests.members) do
                 counts[member.name] = member.count or (ns.Presence.isOnline(member.name) and "?" or "none")
             end
@@ -294,6 +298,22 @@ function W.refreshCard(state, full, tab)
             end
             layout.spec = layout.spec or row.spec ~= nil or (data.name ~= nil and data.classToken ~= nil)
             rows[i] = row
+        end
+        -- An open place the class choices keep for some classes shows them.
+        local free = ns.PartyCompose.freePlaces()
+        if free then
+            local byRole = {}
+            for _, place in ipairs(free) do
+                byRole[place.role] = byRole[place.role] or {}
+                table.insert(byRole[place.role], place)
+            end
+            for _, row in ipairs(rows) do
+                local place = not row.name and not row.invite and table.remove(byRole[row.role] or {}, 1)
+                if place and place.mask ~= 0 then
+                    row.classes = ns.Compose.classesOf(place.mask)
+                    layout.spec = true
+                end
+            end
         end
         -- Everyone inside: the line under the title says so, the places
         -- leave it out.
