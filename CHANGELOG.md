@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.28.0 (2026-11-16)
 
 - A party leader no longer sees "You lead this party" or "Queue your party below…": "Your party: 2/5"
   moves up onto the playstyle's line instead.
