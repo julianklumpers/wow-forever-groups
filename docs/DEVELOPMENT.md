@@ -300,7 +300,8 @@ spec). The spec never takes part in matchmaking. When the spec changes (or the f
 (Feral ticks Tank and DPS); after that the player's own ticks stay, so a healer can still queue as DPS. Queueing with
 roles that fit none of the spec gives a warning, nothing more. The spec travels in the queue entry ("SHAMAN2"), so
 the proposal popup and the group card show it for players with Forever Groups, and the whispers the addon sends name
-it ("Level 20 Enhancement Shaman (DPS) here, could you invite me…", "Inviting you now. I'm the Enhancement Shaman.").
+it ("Level 20 Enhancement Shaman (DPS) here, could you invite me…"); the invite whisper only names it when the
+player's own text has `{spec}`.
 
 The role tiles show the class in that role (`Specs.forRole`, `Widgets.setTileLook`): the tree it plays the role with
 (the current one if it fits, else the first), as retail's spec art (atlas `spec-thumbnail-<class>-<spec>`, cut to the
@@ -590,8 +591,11 @@ Forever's `C_LFGListRoles.SetRoles`; only from that click, off for the session a
 (Forever 1.60.1).
 
 Players who see the listing whisper the leader (there are no applications). While a group is being built,
-`wow/whisperinvite.lua` invites a whisperer who names a role that is still open ("heal?", "dps lf group"), asks once
+`wow/whisperinvite.lua` invites a whisperer who names a role that is still open ("heal?", "dps lf group"), asks
 which role they play when they only ask to join ("inv pls"), and says which roles are needed when theirs is taken.
+An answer that names no role ("i can tnak") is asked again, at most three questions in all (`MAX_ASKS`); a line
+within 3 s of the question ("inv?") is not taken as the answer. Role words are matched exactly, never guessed. Each
+step goes to the saved log with the whisper's first 80 characters.
 When open invites hold every party place (`Filler.room`), a whisperer gets no answer yet and is invited (with the
 usual answer) as soon as a place frees, within an invite's 60 s (`WhisperInvite.tick`).
 Asking groups happens out of sight: no status, window or chat line says how many were asked (only the saved log

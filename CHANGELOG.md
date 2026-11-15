@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The invite whisper to a player from the Group Finder no longer ends with "I'm the Retribution Paladin."; your own
+  text can still name your spec with {spec}.
+- A player who whispers to join but answers the role question without a role ("i can tnak") is asked again, up to
+  three times, instead of getting no answer; after that Forever Groups moves on to other players.
+- The group card always shows tank, healer, DPS in that order, open places included; with only DPS in the group the
+  open tank and healer places came after them.
 - Questing groups no longer put two parties together: the second party could not accept the invite while still in
   its own party.
 - A questing group now also forms when it takes passing over a player who shares more quests, such as one of

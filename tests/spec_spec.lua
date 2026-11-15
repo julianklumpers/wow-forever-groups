@@ -76,18 +76,23 @@ describe("the player's spec in the game", function()
         assert.are.equal("Enhancement Shaman", client.ns.Spec.myLabel("HD"))
     end)
 
-    it("ends an invite whisper", function()
+    it("stays out of an invite whisper unless the player's own text asks for it", function()
         local world = World.new()
         world:list("Listed Heal", "H", 799, 20, 300)
+        world:list("Listed Dps", "D", 799, 20, 300)
         local client = shaman(world, "Roos Bief", ENHANCEMENT)
         world:advance(30)
         client:slash("/dq join tank dm")
         world:advance(2)
-        local found = false
+        local invite
         for _, w in ipairs(client.whispers) do
-            found = found or w.text:find("Inviting you now. I'm the Enhancement Shaman.", 1, true) ~= nil
+            invite = invite or (w.text:find("Inviting you now.", 1, true) and w.text)
         end
-        assert.is_true(found)
+        assert.are.equal("[Forever Groups] Hi! Our group for The Deadmines needs a healer. Inviting you now.", invite)
+        local Messages = client.ns.Messages
+        Messages.set("fillInvite", "Need a {role}. I'm the {spec}.")
+        assert.are.equal("[Forever Groups] Need a Healer. I'm the Enhancement Shaman.",
+            Messages.text("fillInvite", { role = "Healer", spec = "Enhancement Shaman" }))
     end)
 
     it("warns when the queued roles fit none of the spec, without stopping it", function()
@@ -189,7 +194,8 @@ describe("the group card's members", function()
         client:slash("/dq")
         client.ns.Window.refresh()
         local slots = client.ns.WindowParts.slots
-        local tank, me = slots[1], slots[2]
+        local tank, me = slots[1], slots[3]
+        assert.are.equal("open", slots[2].name.text)
         assert.are.equal("Some Tank", tank.name.text)
         assert.is_true(tank.art.shown)
         assert.is_true(tank.emblem)
@@ -221,7 +227,7 @@ describe("the group card's places", function()
         client:fire("GROUP_ROSTER_UPDATE")
         client:slash("/dq")
         client.ns.Window.refresh()
-        local healer, dps = client.ns.WindowParts.slots[1], client.ns.WindowParts.slots[2]
+        local healer, dps = client.ns.WindowParts.slots[2], client.ns.WindowParts.slots[3]
         assert.are.equal("Roos Bief", healer.name.text)
         assert.are.equal("spec-thumbnail-druid-restoration", healer.art.atlas)
         assert.are.equal("Restoration", healer.specName.text)

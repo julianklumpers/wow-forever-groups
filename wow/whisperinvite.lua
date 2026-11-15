@@ -18,7 +18,11 @@ local ROLE_WORDS = {
 }
 local JOIN_WORDS = { "inv", "invite", "join", "spot", "room", "lfg", "lf", "group", "grp" }
 
+-- Whisperers asked which role they play: { needed, count, at }. A whisper
+-- without a role a little after the question is asked again, at most
+-- MAX_ASKS times; a quick second line ("inv?") is not an answer yet.
 local asked = {}
+local MAX_ASKS, ANSWER_AFTER = 3, 3
 -- Whisperers a role was found for while every party place was held by an
 -- open invite: { roles, class, at }. They are invited when a place frees up,
 -- which happens within an invite's lifetime or not at all.
@@ -37,6 +41,11 @@ local function words(text)
         set[word] = true
     end
     return set
+end
+
+-- A whisper as it goes into the saved log: short, and safe to print.
+local function quote(text)
+    return Log.escape(string.sub(text, 1, 80))
 end
 
 -- The roles a whisper names, in T, H, D order: "heal or dps" -> "HD".
@@ -209,16 +218,35 @@ function WhisperInvite.onWhisper(text, sender, ...)
             if goal.invite(sender, role, class, roles) then
                 asked[sender] = nil
             end
-        elseif not asked[sender] or asked[sender] ~= needed then
-            asked[sender] = needed
+        elseif not asked[sender] or asked[sender].needed ~= needed then
+            asked[sender] = { needed = needed, count = 0, at = GetTime() }
+            Log.detail("%s whispered \"%s\" (%s), a role no longer needed; told them what is.", sender, quote(text),
+                roles)
             reply(sender, ns.Messages.text("whisperNo", { roles = neededNames(needed) }))
         end
         return
     end
-    if WhisperInvite.asksToJoin(text) and not asked[sender] then
-        asked[sender] = needed
-        reply(sender, ns.Messages.text("whisperWhich", { roles = neededNames(needed) }))
+    local question = asked[sender]
+    if not question then
+        if WhisperInvite.asksToJoin(text) then
+            asked[sender] = { needed = needed, count = 1, at = GetTime() }
+            Log.detail("%s whispered \"%s\" without a role; asked which role they play.", sender, quote(text))
+            reply(sender, ns.Messages.text("whisperWhich", { roles = neededNames(needed) }))
+        end
+        return
     end
+    if question.count >= MAX_ASKS then
+        Log.detail("No role found in %s's whisper \"%s\"; asked %d times, not asking again.", sender, quote(text),
+            MAX_ASKS)
+        return
+    end
+    if GetTime() - question.at < ANSWER_AFTER then
+        return
+    end
+    question.count, question.at, question.needed = question.count + 1, GetTime(), needed
+    Log.detail("No role found in %s's whisper \"%s\"; asked again (%d of %d).", sender, quote(text),
+        question.count, MAX_ASKS)
+    reply(sender, ns.Messages.text("whisperWhich", { roles = neededNames(needed) }))
 end
 
 -- Invites a waiting whisperer once a place is free, for a role still needed.

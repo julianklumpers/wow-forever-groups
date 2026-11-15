@@ -154,6 +154,19 @@ function GroupView.composition()
         placed[#placed + 1] = { role = role, name = member.name, classToken = member.classToken, unit = member.unit,
             index = i }
     end
+    local open = ""
+    for _, role in ipairs(lacking) do
+        if #placed < #SLOT_ORDER then
+            placed[#placed + 1] = { role = role, index = #members + #placed + 1 }
+            open = open .. role
+        end
+    end
+    while #placed < #SLOT_ORDER do
+        placed[#placed + 1] = { role = "D", index = #members + #placed + 1 }
+        open = open .. "D"
+    end
+    -- Tank, healer, DPS, whether a place is taken or open; within a role the
+    -- members come first.
     table.sort(placed, function(x, y)
         if order[x.role] ~= order[y.role] then
             return order[x.role] < order[y.role]
@@ -163,17 +176,6 @@ function GroupView.composition()
     local slots = {}
     for _, slot in ipairs(placed) do
         slots[#slots + 1] = { role = slot.role, name = slot.name, classToken = slot.classToken, unit = slot.unit }
-    end
-    local open = ""
-    for _, role in ipairs(lacking) do
-        if #slots < #SLOT_ORDER then
-            slots[#slots + 1] = { role = role }
-            open = open .. role
-        end
-    end
-    while #slots < #SLOT_ORDER do
-        slots[#slots + 1] = { role = "D" }
-        open = open .. "D"
     end
     return { members = members, slots = slots, open = open }
 end

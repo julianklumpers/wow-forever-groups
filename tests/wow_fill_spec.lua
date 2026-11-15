@@ -783,8 +783,22 @@ describe("The group card's places", function()
         for i, slot in ipairs(composition.slots) do
             shown[i] = slot.role .. "=" .. (slot.name or "open")
         end
-        assert.are.same({ "T=Tanky Mctank", "T=Second Tank", "D=Some Dps", "H=open", "D=open" }, shown)
+        assert.are.same({ "T=Tanky Mctank", "T=Second Tank", "H=open", "D=Some Dps", "D=open" }, shown)
         assert.are.equal("HD", composition.open)
+    end)
+
+    it("keep the order tank, healer, DPS when only DPS are in the group yet", function()
+        local world = World.new()
+        local leader = world:addClient("Dps Leader", { level = 20 })
+        world:advance(CONNECT)
+        leader.party, leader.isLeader = { "Some Dps" }, true
+        leader.roles = { ["Dps Leader"] = "DAMAGER", ["Some Dps"] = "DAMAGER" }
+        leader:fire("GROUP_ROSTER_UPDATE")
+        local shown = {}
+        for i, slot in ipairs(leader.ns.GroupView.composition().slots) do
+            shown[i] = slot.role .. "=" .. (slot.name or "open")
+        end
+        assert.are.same({ "T=open", "H=open", "D=Dps Leader", "D=Some Dps", "D=open" }, shown)
     end)
 end)
 

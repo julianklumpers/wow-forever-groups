@@ -12,7 +12,7 @@ local MAX_BYTES = 255
 
 Messages.LIST = {
     { id = "fillInvite", label = "Inviting a player from the Group Finder",
-        default = "Hi! Our group for {dungeon} needs a {role}. Inviting you now. I'm the {spec}.",
+        default = "Hi! Our group for {dungeon} needs a {role}. Inviting you now.",
         keys = { "dungeon", "role", "spec" } },
     { id = "groupInvite", label = "Inviting the group the queue found",
         default = "Group found for {dungeon}. Inviting you now.",
