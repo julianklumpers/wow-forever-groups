@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.27.0 (2026-11-15)
 
 - The invite whisper to a player from the Group Finder no longer ends with "I'm the Retribution Paladin."; your own
   text can still name your spec with {spec}.
