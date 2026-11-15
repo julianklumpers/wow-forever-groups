@@ -41,6 +41,8 @@ local wow_read_globals = {
     "Enum",
     "FlashClientIcon",
     "GameTooltip",
+    "GameTooltipText",
+    "GameTooltipTextSmall",
     "GetGeneralPlaystyleString",
     "GetTexCoordsForRole",
     "IsInRaid",

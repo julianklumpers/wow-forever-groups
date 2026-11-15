@@ -45,7 +45,22 @@ function ns.join(members, dungeons, joinedAt)
     if not ns.engine then
         return false, "not connected to the channel yet, try again in a few seconds"
     end
+    ns.engine:setCompose(ns.PartyCompose.wireText())
+    ns.engine:setLevels(ns.PartyLevels.wireText("dungeons", dungeons))
     local ok, err = ns.engine:join(members, dungeons, joinedAt)
+    ns.engine.unfit = nil
+    if not ok and err == "message too long" and (ns.engine.compose or ns.engine.levels) then
+        -- Joining matters more than the wishes: queue without them, and don't
+        -- try these again until they change.
+        ns.engine.unfit = { compose = ns.engine.compose, levels = ns.engine.levels }
+        ns.engine:setCompose(nil)
+        ns.engine:setLevels(nil)
+        ok, err = ns.engine:join(members, dungeons, joinedAt)
+        if ok then
+            Log.warn("Your class choices and level limit do not fit in the queue message with this many dungeons; "
+                .. "you queue without them.")
+        end
+    end
     if ok then
         chosenDungeons = dungeons
         parked = nil
@@ -200,14 +215,41 @@ local function syncEntry()
         sameMembers = sameMembers and entry.members[i] and entry.members[i].name == members[i].name
             and entry.members[i].roles == members[i].roles
     end
-    if sameMembers and reserved == (entry.reserved or "") and sameDungeons(dungeons, entry.dungeons) then
+    -- The class wishes and level limit as they stand now go in the same
+    -- update (one message), seated like the members and invites in it; while
+    -- a name is still loading the entry keeps the ones it has.
+    local compose, loading = ns.PartyCompose.wireText()
+    local levels = ns.PartyLevels.wireText("dungeons", dungeons)
+    local unfit = engine.unfit
+    if unfit and unfit.compose == compose and unfit.levels == levels then
+        -- These did not fit before: the entry goes on without them.
+        compose, levels = nil, nil
+    end
+    local sameWishes = loading or (compose == engine.compose and levels == engine.levels)
+    if sameMembers and sameWishes and reserved == (entry.reserved or "") and sameDungeons(dungeons, entry.dungeons) then
         syncPending = false
         return
+    end
+    local before = { compose = engine.compose, levels = engine.levels }
+    if not loading then
+        engine.compose, engine.levels = compose, levels
     end
     local ok, err = engine:updateEntry(members, reserved, dungeons)
     if not ok and err == "proposal open" and not sameMembers then
         engine:withdrawFromProposal()
         ok, err = engine:updateEntry(members, reserved, dungeons)
+    end
+    if not ok and err == "message too long" and (engine.compose or engine.levels) then
+        -- The party matters more than the wishes: update without them, and
+        -- don't try these again until they change.
+        engine.unfit = { compose = engine.compose, levels = engine.levels }
+        engine.compose, engine.levels = nil, nil
+        engine:reportTooLong("wishes", true, "Your class choices and level limit do not fit in the queue message "
+            .. "with this many dungeons; you queue without them.")
+        ok, err = engine:updateEntry(members, reserved, dungeons)
+    end
+    if not ok and err ~= "message too long" then
+        engine.compose, engine.levels = before.compose, before.levels
     end
     syncPending = not ok and err == "proposal open"
     if ok then
@@ -473,6 +515,8 @@ ns.on("ADDON_LOADED", function(name)
     ns.LfgList.init()
     ns.Invites.init()
     Filler.init()
+    ns.PartyCompose.init()
+    ns.PartyLevels.init()
     Filler.onChange(syncEntry)
     ns.RoleSync.init()
     local function rolesChanged()

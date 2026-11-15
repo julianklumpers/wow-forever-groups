@@ -474,8 +474,10 @@ Widgets.backdropFrame = backdropFrame
 local MASKED_INSET, UNMASKED_INSET = 2, 5
 
 -- Places art inside a rounded box and returns how far in it starts.
+-- Returns the inset and the mask (nil on a client without masks), for more
+-- textures in the same rounded shape.
 function Widgets.roundArt(box, texture, shade)
-    local inset = UNMASKED_INSET
+    local inset, made = UNMASKED_INSET, nil
     if type(box.CreateMaskTexture) == "function" then
         local ok, mask = pcall(box.CreateMaskTexture, box)
         if ok and mask and pcall(mask.SetTexture, mask, "Interface\\Common\\common-iconmask",
@@ -487,11 +489,12 @@ function Widgets.roundArt(box, texture, shade)
             if shade then
                 shade:AddMaskTexture(mask)
             end
+            made = mask
         end
     end
     texture:SetPoint("TOPLEFT", inset, -inset)
     texture:SetPoint("BOTTOMRIGHT", -inset, inset)
-    return inset
+    return inset, made
 end
 
 Widgets.TILE_HEIGHT = 88
@@ -842,6 +845,69 @@ function Widgets.paintExpander(button, open, countText)
 end
 
 -- A small gold text link, white on hover; the click area is the text.
+-- A dropdown box like WoW's own: its choice on the left and WoW's dropdown
+-- button on the right (the plain yellow arrow on a client without that
+-- atlas), the frame turning gold on hover. setup(button) fills WoW's own
+-- menu (DropdownButton/SetupMenu); on a client without one, onClick opens
+-- our own list instead. The box has label (the choice) and measure (to size
+-- it) and native (WoW's menu is used).
+Widgets.DROPDOWN_HEIGHT, Widgets.DROPDOWN_PAD, Widgets.DROPDOWN_ARROW = 22, 8, 15
+
+function Widgets.dropdown(parent, setup, onClick)
+    local ok, button = pcall(CreateFrame, "DropdownButton", nil, parent, "BackdropTemplate")
+    if not ok or not button then
+        ok, button = pcall(CreateFrame, "DropdownButton", nil, parent)
+    end
+    local native = ok and button and type(button.SetupMenu) == "function"
+    if not native then
+        if ok and button then
+            button:Hide()
+        end
+        button = backdropFrame("Button", parent)
+        button:SetScript("OnClick", onClick)
+    end
+    button:SetHeight(Widgets.DROPDOWN_HEIGHT)
+    addOutline(button)
+    button.label = Widgets.text(button, "GameFontHighlightSmall")
+    button.label:SetPoint("LEFT", Widgets.DROPDOWN_PAD, 0)
+    button.measure = Widgets.text(button, "GameFontHighlightSmall")
+    button.measure:Hide()
+    button.arrow = button:CreateTexture(nil, "ARTWORK")
+    button.arrow:SetSize(Widgets.DROPDOWN_ARROW, Widgets.DROPDOWN_ARROW)
+    button.arrow:SetPoint("RIGHT", -3, 0)
+    local atlas = Widgets.atlasExists("common-dropdown-a-button") and "common-dropdown-a-button"
+    local function paint(state)
+        local name = atlas and (atlas .. state)
+        if name and state ~= "" and not Widgets.atlasExists(name) then
+            name = atlas
+        end
+        if name then
+            button.arrow:SetAtlas(name)
+        else
+            button.arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
+        end
+        paintOutline(button, { 1, 1, 1, 0.04 }, state == "" and { 1, 1, 1, 0.35 } or { 1, 0.82, 0, 1 })
+    end
+    paint("")
+    button:HookScript("OnEnter", function()
+        paint("-hover")
+    end)
+    button:HookScript("OnLeave", function()
+        paint("")
+    end)
+    button:HookScript("OnMouseDown", function()
+        paint("-pressedhover")
+    end)
+    button:HookScript("OnMouseUp", function(self)
+        paint(self:IsMouseOver() and "-hover" or "")
+    end)
+    if native then
+        setup(button)
+    end
+    button.native = native
+    return button
+end
+
 function Widgets.link(parent, label, onClick)
     local link = CreateFrame("Button", nil, parent)
     local text = link:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -888,24 +954,28 @@ local SLOT_PADDING = 9
 
 Widgets.SLOT_WIDTH = 106
 
+-- A member's spec art, or their class's emblem while the spec is not known,
+-- under a shade that keeps the text readable (Widgets.paintArt).
+function Widgets.addArt(frame)
+    frame.art = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+    frame.art:Hide()
+    frame.shade = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
+    frame.artInset = Widgets.roundArt(frame, frame.art, frame.shade)
+    frame.shade:SetAllPoints(frame.art)
+    if not (type(CreateColor) == "function" and pcall(frame.shade.SetColorTexture, frame.shade, 1, 1, 1, 1)
+        and pcall(frame.shade.SetGradient, frame.shade, "VERTICAL", CreateColor(0, 0, 0, 0.85),
+            CreateColor(0, 0, 0, 0.35))) then
+        frame.shade:SetColorTexture(0, 0, 0, 0.55)
+    end
+    frame.shade:Hide()
+end
+
 function Widgets.slot(parent)
     local slot = backdropFrame("Frame", parent)
     slot:SetSize(Widgets.SLOT_WIDTH, 50)
     addOutline(slot)
     paintOutline(slot, { 1, 1, 1, 0.05 }, { 1, 1, 1, 0.14 })
-    -- The member's spec art, or their class's emblem while the spec is not
-    -- known, under a shade that keeps the text readable.
-    slot.art = slot:CreateTexture(nil, "BACKGROUND", nil, 1)
-    slot.art:Hide()
-    slot.shade = slot:CreateTexture(nil, "BACKGROUND", nil, 2)
-    slot.artInset = Widgets.roundArt(slot, slot.art, slot.shade)
-    slot.shade:SetAllPoints(slot.art)
-    if not (type(CreateColor) == "function" and pcall(slot.shade.SetColorTexture, slot.shade, 1, 1, 1, 1)
-        and pcall(slot.shade.SetGradient, slot.shade, "VERTICAL", CreateColor(0, 0, 0, 0.85),
-            CreateColor(0, 0, 0, 0.35))) then
-        slot.shade:SetColorTexture(0, 0, 0, 0.55)
-    end
-    slot.shade:Hide()
+    Widgets.addArt(slot)
     slot.icon = Widgets.roleIcon(slot, "D", 20)
     slot.icon:SetPoint("TOP", 0, -SLOT_PADDING)
     slot.name = Widgets.text(slot, "GameFontHighlightSmall", "CENTER")
@@ -961,8 +1031,8 @@ end
 
 -- The look above as art when there is one, else the class's emblem, dimmed;
 -- both fill the place. Nothing for an open place.
-local function paintSlotArt(slot, data, height)
-    local width, inner = Widgets.SLOT_WIDTH - 2 * slot.artInset, height - 2 * slot.artInset
+local function paintSlotArt(slot, data, height, frameWidth)
+    local width, inner = (frameWidth or Widgets.SLOT_WIDTH) - 2 * slot.artInset, height - 2 * slot.artInset
     local atlas = slotLook(data)
     local art = atlas and Widgets.coverAtlas(slot.art, atlas, width, inner) or false
     local emblem = false
@@ -973,6 +1043,19 @@ local function paintSlotArt(slot, data, height)
     slot.art:SetAlpha(art and 1 or 0.45)
     slot.shade:SetShown(art or emblem)
     slot.emblem = emblem
+end
+
+-- data: { name, classToken, role, specIndex }; on a frame given Widgets.addArt.
+-- Returns the spec's name, or nil.
+function Widgets.paintArt(frame, data, width, height)
+    paintSlotArt(frame, data, height, width)
+    local _, specName = slotLook(data)
+    return specName
+end
+
+function Widgets.hideArt(frame)
+    frame.art:Hide()
+    frame.shade:Hide()
 end
 
 local NEAR = 1000

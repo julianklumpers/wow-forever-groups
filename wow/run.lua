@@ -299,7 +299,7 @@ function Run.findReplacement(fromClick)
     if not ns.db.noPartyAnnounce and not lockdown then
         local text = ns.Messages.text("partyReplacement", { role = Widgets.describeRolesEnglish(open) })
         if text then
-            pcall(C_ChatInfo.SendChatMessage or SendChatMessage, text, "PARTY")
+            ns.Whispers.sayParty(text)
         end
     end
     return true

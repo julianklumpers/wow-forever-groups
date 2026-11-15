@@ -56,7 +56,7 @@ function W.cardContent(state)
         return { title = "You are in a raid", subtitle = "Leave the raid to queue.", color = GOLD }
     end
     if state ~= "solo" then
-        local size = ns.GroupView.partySize()
+        local size = #ns.GroupView.composition(true).members
         local run = ns.Run.isInside() and ns.Run.current()
         if size >= 5 then
             return { title = "Your party is complete (5/5)", color = GREEN, lead = state == "leader",
@@ -238,8 +238,8 @@ function W.refreshCard(state, full, tab)
         composition = W.previewComposition()
     elseif otherTab then
         composition = nil
-    elseif IsInGroup() or ns.GroupView.isTracking() then
-        composition = ns.GroupView.composition()
+    elseif IsInGroup() or ns.GroupView.isTracking() or ns.Party.isSample() then
+        composition = ns.GroupView.composition(true)
     elseif ns.engine and ns.engine.myEntry then
         composition = W.queuedComposition(ns.engine.myEntry)
     end
@@ -250,6 +250,10 @@ function W.refreshCard(state, full, tab)
     local inside = IsInInstance() and true or false
     local places = groupDungeon and (inside or ns.Entrances.get(groupDungeon) ~= nil)
     local atEntrance, insideCount = 0, 0
+    if W.cardWithoutPlaces then
+        composition = nil
+    end
+    local shownMembers = W.cardRoles and ns.Party.shownMembers() or {}
     if composition then
         local counts = {}
         if quests then
@@ -262,6 +266,12 @@ function W.refreshCard(state, full, tab)
         local invites = W.preview and W.previewInvites() or ns.Filler.invites()
         for i, data in ipairs(composition.slots) do
             local row = { role = data.role, name = data.name, classToken = data.classToken }
+            for _, member in ipairs(shownMembers) do
+                if member.name == data.name then
+                    row.roleInfo = Widgets.describeRoles(ns.PartyRoles.rolesOf(member)) .. "  ("
+                        .. L[ns.PartyRoles.sourceOf(member)] .. ")"
+                end
+            end
             if not data.name then
                 for n, invite in ipairs(invites) do
                     if invite.role == data.role then
@@ -331,6 +341,7 @@ function W.refreshCard(state, full, tab)
         local tallest = 0
         for i, slot in ipairs(slots) do
             tallest = math.max(tallest, Widgets.paintSlot(slot, rows[i], layout))
+            slot.roleInfo = rows[i].roleInfo
             slot:ClearAllPoints()
             slot:SetPoint("TOPLEFT", card, "TOPLEFT", left + (i - 1) * (SLOT_WIDTH + SLOT_GAP), y)
             slot:Show()
@@ -341,8 +352,9 @@ function W.refreshCard(state, full, tab)
             slot:Hide()
         end
     end
+    local looking = not full and not W.lookingInHeader
     for _, widget in ipairs({ card.lookingLabel, card.looking, card.lookingGroups }) do
-        widget:SetShown(not full)
+        widget:SetShown(looking)
     end
     -- The group's actions, as one row of buttons.
     local actions = card.actions
@@ -360,7 +372,7 @@ function W.refreshCard(state, full, tab)
         Widgets.setEnabled(actions.share, quests ~= nil and quests.mine > 0)
         Widgets.setEnabled(actions.progress, ns.QuestGroup.current() ~= nil and #ns.QuestGroup.rows() > 0)
         card.questsInfo = quests
-        local width = math.floor((WIDTH - 2 * PAD - 2 * 8) / 3)
+        local width = math.floor((W.CONTENT - 2 * 8) / 3)
         for i, button in ipairs(shown) do
             button:SetWidth(width)
             button:ClearAllPoints()
@@ -379,6 +391,8 @@ function W.refreshCard(state, full, tab)
             card.takeLead:ClearAllPoints()
             card.takeLead:SetPoint("TOPRIGHT", card, "TOPRIGHT", -12, y + 3)
         end
+    end
+    if looking then
         card.lookingLabel:ClearAllPoints()
         card.lookingLabel:SetPoint("TOPLEFT", card, "TOPLEFT", 12, y - 2)
         card.looking:ClearAllPoints()
@@ -398,6 +412,8 @@ function W.refreshCard(state, full, tab)
         card.lookingGroups:SetPoint("LEFT", card.looking, "RIGHT", 6, 0)
         card.lookingGroups:SetText(needing > 0
             and ("·  " .. ns.Locale.count(needing, "%d group needs you", "%d groups need you")) or "")
+    end
+    if looking or leader then
         y = y - 20
     end
     local height = -(y - 6)
@@ -638,8 +654,27 @@ function W.buildCard()
     action("progress", "Quest progress", function()
         ns.ProgressWindow.toggle()
     end)
+    -- While the leader sets up the party: the roles each member is queued
+    -- for, and where they come from.
     for i = 1, 5 do
-        slots[i] = Widgets.slot(card)
+        local slot = Widgets.slot(card)
+        slot:EnableMouse(true)
+        slot:HookScript("OnEnter", function(self)
+            if not self.roleInfo or not GameTooltip then
+                return
+            end
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText(self.name:GetText() or "", 1, 0.82, 0)
+            GameTooltip:AddLine(self.roleInfo, 1, 1, 1)
+            GameTooltip:AddLine(L["Roles follow each member's role in WoW."], 0.75, 0.75, 0.75, true)
+            GameTooltip:Show()
+        end)
+        slot:HookScript("OnLeave", function()
+            if GameTooltip then
+                GameTooltip:Hide()
+            end
+        end)
+        slots[i] = slot
     end
     ui.card = card
 end

@@ -5,7 +5,6 @@ local L = ns.L
 local W = ns.WindowParts
 local Widgets = ns.Widgets
 local Battlegrounds = ns.Battlegrounds
-local WIDTH = W.WIDTH
 local PAD = W.PAD
 local CHECK_INSET = W.CHECK_INSET
 local ROW_WIDTH = W.ROW_WIDTH
@@ -119,7 +118,8 @@ function W.battlegroundCardContent(state)
 end
 
 -- The group size, as two small boxes on the line under the role tiles.
-function W.placeBattlegroundSize(x, y)
+-- right: where the line ends; the size boxes end there.
+function W.placeBattlegroundSize(right, y)
     local shown = W.currentTab() == "battlegrounds" and not looking()
     ui.battlegroundSizeLabel:SetShown(shown)
     for _, size in ipairs(SIZES) do
@@ -128,6 +128,11 @@ function W.placeBattlegroundSize(x, y)
     if not shown then
         return
     end
+    local total = (ui.battlegroundSizeLabel:GetStringWidth() or 40) + 8
+    for i, size in ipairs(SIZES) do
+        total = total + (ui.battlegroundSizes[size].label:GetStringWidth() or 60) + 16 + (i > 1 and 6 or 0)
+    end
+    local x = right - total
     W.place(ui.battlegroundSizeLabel, x, y - 5)
     x = x + (ui.battlegroundSizeLabel:GetStringWidth() or 40) + 8
     for _, size in ipairs(SIZES) do
@@ -315,7 +320,7 @@ function W.buildBattlegrounds()
     ui.battlegroundSizeLabel:Hide()
     ui.battlegroundHeader = Widgets.header(W.frame, "Battlegrounds", PAD, W.HEADER_GAP)
     ui.battlegroundEmpty = Widgets.text(W.frame, "GameFontDisableSmall")
-    ui.battlegroundEmpty:SetWidth(WIDTH - 2 * PAD)
+    ui.battlegroundEmpty:SetWidth(W.CONTENT)
     for i = 1, #Battlegrounds.list do
         local row = Widgets.check(W.frame, "", function(self)
             W.battlegroundUnticked()[self.id] = not self:GetChecked() or nil

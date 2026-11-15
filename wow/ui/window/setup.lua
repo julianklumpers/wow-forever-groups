@@ -9,7 +9,6 @@ local Party = ns.Party
 local Protocol = ns.Protocol
 local Classes = ns.Classes
 local CLASS_REASON = W.CLASS_REASON
-local WIDTH = W.WIDTH
 local COLUMNS = W.COLUMNS
 local MAX_ROWS = W.MAX_ROWS
 local PAD = W.PAD
@@ -26,19 +25,17 @@ local ROLE_COUNTS = W.ROLE_COUNTS
 local GOLD, GREEN = { 1, 0.82, 0 }, { 0.4, 1, 0.4 }
 local TILE_GAP = W.TILE_GAP
 local TILE_WIDTH = W.TILE_WIDTH
-local PARTY_ROW_HEIGHT = W.PARTY_ROW_HEIGHT
 local QUEUE_ROWS = W.QUEUE_ROWS
 local QUEUE_ROW_HEIGHT = W.QUEUE_ROW_HEIGHT
 local ERRORS = W.ERRORS
-local LEAD_BOX = 20
+local SEGMENT_HEIGHT = 22
 local BOX_HEIGHT, BOX_PAD, ARROW_SIZE = 22, 8, 15
 local ui = W.ui
 local roleToggles = W.roleToggles
-local partyRows = W.partyRows
 local dungeonCells = W.dungeonCells
 local queueRows = W.queueRows
 
--- Choosing roles, playstyle, party roles and dungeons, and the queued
+-- Choosing roles, playstyle and dungeons, and the queued
 -- dungeons summary.
 
 function W.selectedDungeons()
@@ -54,7 +51,14 @@ end
 -- Two lists: the dungeons for the player's level, and the others below the
 -- "Other dungeons" toggle: all of them when it is open, else only the ticked
 -- ones, so a choice made there stays in sight. Also how many others exist.
+-- Below level 10 WoW's Group Finder is closed to the player and no dungeon
+-- fits yet, so "Other dungeons" stays away until then.
+W.DUNGEON_LEVEL = 10
+
 function W.dungeonSections()
+    if (UnitLevel("player") or 0) < W.DUNGEON_LEVEL then
+        return {}, {}, 0
+    end
     local forLevel, selected = {}, W.selectedDungeons()
     for _, dungeon in ipairs(Dungeons.forLevel(UnitLevel("player"))) do
         forLevel[dungeon.id] = true
@@ -144,39 +148,6 @@ function W.neededRole()
     return best, string.format(L["Needed most right now: %s looking for your dungeons."], table.concat(parts, ", "))
 end
 
-function W.refreshParty(members)
-    local shown = 0
-    for i, row in ipairs(partyRows) do
-        local member = members and members[i] or nil
-        row.member = member
-        if member then
-            local roles = ns.PartyRoles.rolesOf(member)
-            row.name:SetText(member.name)
-            row.name:SetTextColor(Widgets.classColor(member.classToken))
-            local x = 0
-            for _, role in ipairs(Widgets.ROLES) do
-                local icon = row.icons[role]
-                if string.find(roles, role, 1, true) then
-                    icon:ClearAllPoints()
-                    icon:SetPoint("LEFT", row, "LEFT", 200 + x, 0)
-                    icon:Show()
-                    x = x + 22
-                else
-                    icon:Hide()
-                end
-            end
-            row.roles:ClearAllPoints()
-            row.roles:SetPoint("LEFT", row, "LEFT", 206 + x, 0)
-            row.roles:SetText(Widgets.describeRoles(roles) .. "  (" .. L[ns.PartyRoles.sourceOf(member)] .. ")")
-            row:Show()
-            shown = shown + 1
-        else
-            row:Hide()
-        end
-    end
-    return shown
-end
-
 -- Up to DETAIL_LIMIT dungeons get one row each, with how many players look
 -- for it; a longer list (all other dungeons) is two plain columns.
 function W.isDetailed(count)
@@ -194,7 +165,7 @@ function W.refreshDungeons()
             count = count + 1
         end
     end
-    ui.dungeonHeader:SetText(string.format(L["Dungeons for level %d  ·  %d selected"], UnitLevel("player"), count))
+    ui.dungeonHeader:SetText(string.format(L["Dungeons for level %d"], UnitLevel("player")))
     Widgets.paintExpander(ui.otherToggle, W.showOthers, string.format("(%d)", others))
     ui.otherToggle:SetShown(others > 0)
     for i, cell in ipairs(dungeonCells) do
@@ -235,6 +206,11 @@ function W.refreshDungeons()
         end
     end
     ui.empty:SetShown(#levelList == 0)
+    if (UnitLevel("player") or 0) < W.DUNGEON_LEVEL then
+        ui.empty:SetText(string.format(L["Dungeons open up at level %d."], W.DUNGEON_LEVEL))
+    else
+        ui.empty:SetText(L["No dungeons fit your level. Open 'Other dungeons' to pick one anyway."])
+    end
     return #levelList, #otherList
 end
 
@@ -248,19 +224,20 @@ function W.setSetupShown(shown)
     ui.dungeonLinks:SetShown(shown)
     if not shown then
         ui.roleHint:Hide()
-        ui.leadCheck:Hide()
+        ui.joinChoice:Hide()
+        ui.leadChoice:Hide()
+        ui.partyLeads:Hide()
         ui.playstyleButton:Hide()
         ui.playstyleLabel:Hide()
         W.hidePlaystyleMenu()
+        W.hideCompose()
+        W.hideLevels()
+        ui.headerLookingDot:Hide()
+        ui.headerLookingLabel:Hide()
+        ui.headerLooking:Hide()
+        ui.headerLookingGroups:Hide()
     end
     if not shown then
-        ui.partyHeader:Hide()
-        if ui.partyHeader.line then
-            ui.partyHeader.line:Hide()
-        end
-        for _, row in ipairs(partyRows) do
-            row:Hide()
-        end
         for _, cell in ipairs(dungeonCells) do
             cell:Hide()
         end
@@ -327,8 +304,10 @@ function W.layoutChoices(y, withPlaystyle)
         roleToggles[role]:Show()
     end
     y = y - 6
-    for i, role in ipairs(Widgets.ROLES) do
-        W.place(roleToggles[role], PAD + (i - 1) * (TILE_WIDTH + TILE_GAP), y)
+    for i, column in ipairs(W.columns(#Widgets.ROLES, TILE_GAP)) do
+        local tile = roleToggles[Widgets.ROLES[i]]
+        tile:SetWidth(column.width)
+        W.place(tile, column.x, y)
     end
     local needed, neededTip
     if withPlaystyle and not (ns.engine and ns.engine.myEntry) then
@@ -338,8 +317,10 @@ function W.layoutChoices(y, withPlaystyle)
         Widgets.paintNeeded(roleToggles[role], role == needed and neededTip or nil)
     end
     y = y - Widgets.TILE_HEIGHT - 10
-    -- Under the tiles: the playstyle (dungeons only) on the left, the wish
-    -- to lead on the right (alone only; a party already has its leader).
+    -- Under the tiles, one line: join or lead on the left (a party leader
+    -- leads already), the playstyle (dungeons) or the group size
+    -- (battlegrounds) on the right.
+    W.layoutLead(y)
     ui.playstyleButton:SetShown(withPlaystyle)
     ui.playstyleLabel:SetShown(withPlaystyle)
     if withPlaystyle then
@@ -352,28 +333,54 @@ function W.layoutChoices(y, withPlaystyle)
             button.measure:SetText(ns.Playstyle.word(id))
             longest = math.max(longest, button.measure:GetStringWidth() or 0)
         end
-        button:SetWidth(BOX_PAD + longest + 6 + ARROW_SIZE + 3)
-        W.place(button, PAD + (ui.playstyleLabel:GetStringWidth() or 0) + 6, y)
+        local width = BOX_PAD + longest + 6 + ARROW_SIZE + 3
+        button:SetWidth(width)
+        W.place(button, W.RIGHT - width, y)
         ui.playstyleLabel:ClearAllPoints()
         ui.playstyleLabel:SetPoint("RIGHT", ui.playstyleButton, "LEFT", -6, 0)
     else
         W.hidePlaystyleMenu()
     end
-    local solo = Party.state() == "solo"
-    ui.leadCheck:SetShown(solo)
-    if solo then
-        ui.leadCheck:SetChecked(W.wantsLead(W.currentTab()))
-        local labelWidth = ui.leadCheck.label:GetStringWidth() or 0
-        W.place(ui.leadCheck, WIDTH - PAD - labelWidth - LEAD_BOX - 1, y - (BOX_HEIGHT - LEAD_BOX) / 2)
-    end
-    W.placeBattlegroundSize(PAD, y)
+    W.placeBattlegroundSize(W.RIGHT, y)
+    y = y - BOX_HEIGHT - 10
     local hint = W.currentTab() == "quests" and L["Questing groups: at most one tank and one healer."] or nil
     ui.roleHint:SetShown(hint ~= nil)
     if hint then
         ui.roleHint:SetText(hint)
-        W.place(ui.roleHint, PAD, y - 5)
+        W.place(ui.roleHint, PAD, y + 2)
+        y = y - 20
     end
-    return y - BOX_HEIGHT - 10
+    return y
+end
+
+local function paintChoice(button, chosen)
+    if chosen then
+        Widgets.paintOutline(button, { 1, 0.82, 0, 0.14 }, { 1, 0.82, 0, 1 })
+        button.label:SetTextColor(1, 0.82, 0)
+    else
+        Widgets.paintOutline(button, { 1, 1, 1, 0.03 }, { 1, 1, 1, 0.25 })
+        button.label:SetTextColor(0.75, 0.75, 0.75)
+    end
+end
+
+-- Join or lead at the left of the line under the tiles, alone; a party
+-- leader leads already.
+function W.layoutLead(y)
+    local state = Party.shownState()
+    local solo, leader = state == "solo", state == "leader"
+    ui.joinChoice:SetShown(solo)
+    ui.leadChoice:SetShown(solo)
+    ui.partyLeads:SetShown(leader)
+    if solo then
+        local lead = W.wantsLead(W.currentTab()) == true
+        paintChoice(ui.joinChoice, not lead)
+        paintChoice(ui.leadChoice, lead)
+        W.place(ui.joinChoice, PAD, y)
+        ui.leadChoice:ClearAllPoints()
+        ui.leadChoice:SetPoint("LEFT", ui.joinChoice, "RIGHT", -1, 0)
+    elseif leader then
+        W.place(ui.partyLeads, PAD, y - 4)
+    end
 end
 
 -- Places dungeon cells first .. first + count - 1 from y down; returns the
@@ -395,24 +402,19 @@ function W.layoutCells(y, first, count)
     return y - math.ceil(count / COLUMNS) * CELL_HEIGHT
 end
 
-function W.layoutSetup(y, partyRowCount, levelCount, otherCount)
+function W.layoutSetup(y, levelCount, otherCount)
     y = W.layoutChoices(y, true)
+    y = W.layoutCompose(y)
+    y = W.layoutLevels(y, "dungeons", W.selectedVisibleIds()) - 12
     if W.cardBelowRoles then
         y = W.cardBelowRoles(y)
     end
-    if partyRowCount > 0 then
-        W.place(ui.partyHeader, PAD, y)
-        y = y - W.HEADER_STEP
-        for i, row in ipairs(partyRows) do
-            W.place(row, PAD, y - (i - 1) * PARTY_ROW_HEIGHT)
-        end
-        y = y - partyRowCount * PARTY_ROW_HEIGHT - 16
-    end
     W.place(ui.dungeonHeader, PAD, y)
+    W.layoutHeaderLooking()
     ui.dungeonLinks:ClearAllPoints()
-    ui.dungeonLinks:SetPoint("TOPRIGHT", W.frame, "TOPRIGHT", -PAD, y + 1)
+    ui.dungeonLinks:SetPoint("TOPRIGHT", W.frame, "TOPRIGHT", W.RIGHT_OFFSET, y + 1)
     y = y - W.HEADER_STEP
-    W.place(ui.empty, 22, y - 4)
+    W.place(ui.empty, PAD, y - 4)
     y = levelCount > 0 and W.layoutCells(y, 1, levelCount) or (y - DETAIL_HEIGHT)
     if not ui.otherToggle:IsShown() then
         return y - 8
@@ -420,6 +422,28 @@ function W.layoutSetup(y, partyRowCount, levelCount, otherCount)
     W.place(ui.otherToggle, PAD, y - 6)
     y = y - 32
     return W.layoutCells(y, levelCount + 1, otherCount) - 8
+end
+
+-- "Looking now: 🛡 n ✚ n ⚔ n · 2 groups need you" after the header's text.
+function W.layoutHeaderLooking()
+    local dot, label, counts, groups = ui.headerLookingDot, ui.headerLookingLabel, ui.headerLooking,
+        ui.headerLookingGroups
+    dot:ClearAllPoints()
+    dot:SetPoint("LEFT", ui.dungeonHeader, "RIGHT", 8, 0)
+    label:ClearAllPoints()
+    label:SetPoint("LEFT", dot, "RIGHT", 8, 0)
+    counts:ClearAllPoints()
+    counts:SetPoint("LEFT", label, "RIGHT", 8, 0)
+    local wanted = ns.QueueWindow.wantedDungeons()
+    Widgets.setRoleCounts(counts, ns.Features.countsKnown() and ns.QueueWindow.lookingCounts(wanted, "dungeons"))
+    local needing = #ns.QueueWindow.groupsNeedingMe(wanted, "dungeons")
+    groups:ClearAllPoints()
+    groups:SetPoint("LEFT", counts, "RIGHT", 6, 0)
+    groups:SetText(needing > 0 and ("·  " .. ns.Locale.count(needing, "%d group needs you", "%d groups need you"))
+        or "")
+    for _, widget in ipairs({ dot, label, counts, groups }) do
+        widget:Show()
+    end
 end
 
 -- The dungeons searched for, laid out like the table you picked them from.
@@ -496,18 +520,37 @@ end
 
 function W.buildRoles()
     ui.roleHint = Widgets.text(W.frame, "GameFontHighlightSmall")
-    ui.roleHint:SetWidth(WIDTH - 2 * PAD)
+    ui.roleHint:SetWidth(W.CONTENT)
     ui.roleHint:SetTextColor(0.85, 0.85, 0.85)
-    ui.leadCheck = Widgets.check(W.frame, "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t I'd like to lead",
-        function(self)
-            W.setWantsLead(self:GetChecked())
+    -- Join or lead: two buttons side by side under the playstyle, the chosen
+    -- one in gold. A party leader leads already, and sees that instead.
+    local function choice(label, lead, tipTitle, tip)
+        local button = Widgets.backdropFrame("Button", W.frame)
+        button:SetHeight(SEGMENT_HEIGHT)
+        Widgets.addOutline(button)
+        button.label = Widgets.text(button, "GameFontHighlightSmall", "CENTER")
+        button.label:SetPoint("CENTER")
+        button.label:SetText(L[label])
+        button:SetWidth(math.max(100, math.ceil(button.label:GetStringWidth() or 90) + 24))
+        button.lead = lead
+        button:SetScript("OnClick", function()
+            W.setWantsLead(lead)
         end)
-    ui.leadCheck:SetSize(LEAD_BOX, LEAD_BOX)
-    ui.leadCheck.label:SetFontObject(GameFontNormalSmall)
-    Widgets.tooltip(ui.leadCheck, "I'd like to lead the group", "You become the group's leader when a group forms "
-        .. "with you, unless a party already has a leader. Forever Groups won't ask listed groups to invite you: it "
-        .. "builds the group for you, with you as its leader.")
-    ui.leadCheck:Hide()
+        Widgets.tooltip(button, tipTitle, tip)
+        button:Hide()
+        return button
+    end
+    local Locale = ns.Locale
+    ui.joinChoice = choice(Locale.mark("Join a group"), false, Locale.mark("Join a group"), Locale.mark("Forever "
+        .. "Groups finds a group for you: with other Forever Groups players, or a group in WoW's Group Finder that "
+        .. "takes you."))
+    ui.leadChoice = choice(Locale.mark("|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t Lead a group"), true,
+        Locale.mark("Lead a group"), Locale.mark("You become the group's leader when a group forms with you, unless a "
+        .. "party already has a leader. Forever Groups won't ask listed groups to invite you: it builds the group "
+        .. "for you, with you as its leader."))
+    ui.partyLeads = Widgets.text(W.frame, "GameFontNormalSmall")
+    ui.partyLeads:SetText(L["|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t You lead this party"])
+    ui.partyLeads:Hide()
     for _, role in ipairs(Widgets.ROLES) do
         roleToggles[role] = Widgets.roleTile(W.frame, role, TILE_WIDTH, function(self)
             ns.charDb.lastRoles = Widgets.toggleRole(W.selectedRoles(), role, self:GetChecked())
@@ -552,61 +595,9 @@ end
 function W.buildPlaystyle()
     ui.playstyleLabel = Widgets.text(W.frame, "GameFontNormalSmall")
     ui.playstyleLabel:SetText("Playstyle:")
-    local ok, button = pcall(CreateFrame, "DropdownButton", nil, W.frame, "BackdropTemplate")
-    if not ok or not button then
-        ok, button = pcall(CreateFrame, "DropdownButton", nil, W.frame)
-    end
-    local native = ok and button and type(button.SetupMenu) == "function"
-    if not native then
-        if ok and button then
-            button:Hide()
-        end
-        button = Widgets.backdropFrame("Button", W.frame)
-        button:SetScript("OnClick", function(self)
-            ns.PlaystyleMenu.toggle(self, pickPlaystyle)
-        end)
-    end
-    button:SetHeight(BOX_HEIGHT)
-    Widgets.addOutline(button)
-    button.label = Widgets.text(button, "GameFontHighlightSmall")
-    button.label:SetPoint("LEFT", BOX_PAD, 0)
-    button.measure = Widgets.text(button, "GameFontHighlightSmall")
-    button.measure:Hide()
-    button.arrow = button:CreateTexture(nil, "ARTWORK")
-    button.arrow:SetSize(ARROW_SIZE, ARROW_SIZE)
-    button.arrow:SetPoint("RIGHT", -3, 0)
-    -- WoW's own dropdown button (the gold-edged square with the arrow); the
-    -- plain yellow arrow on a client without that atlas.
-    local atlas = Widgets.atlasExists("common-dropdown-a-button") and "common-dropdown-a-button"
-    local function paint(state)
-        local name = atlas and (atlas .. state)
-        if name and state ~= "" and not Widgets.atlasExists(name) then
-            name = atlas
-        end
-        if name then
-            button.arrow:SetAtlas(name)
-        else
-            button.arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
-        end
-        Widgets.paintOutline(button, { 1, 1, 1, 0.04 }, state == "" and { 1, 1, 1, 0.35 } or { 1, 0.82, 0, 1 })
-    end
-    paint("")
-    button:HookScript("OnEnter", function()
-        paint("-hover")
+    local button = Widgets.dropdown(W.frame, setupMenu, function(self)
+        ns.PlaystyleMenu.toggle(self, pickPlaystyle)
     end)
-    button:HookScript("OnLeave", function()
-        paint("")
-    end)
-    button:HookScript("OnMouseDown", function()
-        paint("-pressedhover")
-    end)
-    button:HookScript("OnMouseUp", function(self)
-        paint(self:IsMouseOver() and "-hover" or "")
-    end)
-    if native then
-        setupMenu(button)
-    end
-    button.native = native
     ui.playstyleButton = button
 end
 
@@ -618,28 +609,20 @@ function W.hidePlaystyleMenu()
     ns.PlaystyleMenu.hide()
 end
 
-function W.buildParty()
-    ui.partyHeader = Widgets.header(W.frame, "Party: roles follow each member's role in WoW", PAD, W.HEADER_GAP)
-    for i = 1, 4 do
-        local row = CreateFrame("Frame", nil, W.frame)
-        row:SetSize(WIDTH - 2 * PAD, PARTY_ROW_HEIGHT)
-        row.partyRow = true
-        row.name = Widgets.text(row, "GameFontHighlight")
-        row.name:SetPoint("LEFT", 4, 0)
-        row.name:SetWidth(190)
-        row.icons = {}
-        for _, role in ipairs(Widgets.ROLES) do
-            row.icons[role] = Widgets.roleIcon(row, role, 18)
-        end
-        row.roles = Widgets.text(row, "GameFontHighlightSmall")
-        row.roles:SetTextColor(0.75, 0.75, 0.75)
-        partyRows[i] = row
-    end
-end
-
 function W.buildDungeons()
     ui.dungeonHeader = Widgets.header(W.frame, "Dungeons", PAD, W.HEADER_GAP)
-    ui.otherToggle = Widgets.expander(W.frame, "Other dungeons", WIDTH - 2 * PAD, function()
+    -- "Looking now" on the header line, while choosing.
+    ui.headerLookingDot = Widgets.text(W.frame, "GameFontNormal")
+    ui.headerLookingDot:SetText("·")
+    ui.headerLookingLabel = Widgets.text(W.frame, "GameFontNormalSmall")
+    ui.headerLookingLabel:SetText(L["Looking now:"])
+    ui.headerLooking = Widgets.roleCounts(W.frame, 14)
+    ui.headerLooking:EnableMouse(true)
+    Widgets.tooltip(ui.headerLooking, "Looking now", "Tanks, healers and DPS looking for your dungeons: other "
+        .. "Forever Groups players and solo players in WoW's Group Finder. Someone who can play more roles counts "
+        .. "for each.")
+    ui.headerLookingGroups = Widgets.text(W.frame, "GameFontNormalSmall")
+    ui.otherToggle = Widgets.expander(W.frame, "Other dungeons", W.CONTENT, function()
         W.showOthers = not W.showOthers
         ns.LfgList.searchIfStale(5)
         ns.Window.refresh()

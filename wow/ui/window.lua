@@ -66,9 +66,9 @@ local function refreshMain()
     local engine = ns.engine
     local entry = engine and engine.myEntry
     local queued = entry ~= nil
-    local state = Party.state()
+    local state = Party.shownState()
     local canLead = state == "solo" or state == "leader"
-    local full = state ~= "solo" and ns.GroupView.partySize() >= 5
+    local full = state ~= "solo" and #ns.GroupView.composition(true).members >= 5
     -- In a run Forever Groups follows, an open place calls for a
     -- replacement, not for setting up a new search.
     local following = ns.GroupView.isActive()
@@ -86,6 +86,7 @@ local function refreshMain()
     end
     local cardBottom
     local function placeCard(top)
+        ui.card:Show()
         W.place(ui.card, PAD - CARD_PADDING, top)
         cardBottom = top - W.refreshCard(state, full, W.currentTab())
         return cardBottom - 12
@@ -96,7 +97,24 @@ local function refreshMain()
     local tab = W.currentTab()
     local choosing = state == "solo" and not ns.Filler.isActive()
         and ((tab == "quests" and not questsQueued) or tab == "battlegrounds" or (tab == "dungeons" and not queued))
-    if choosing then
+    -- Choosing dungeons, "Looking now" sits on the dungeons' header line
+    -- instead of in the card; alone, the card then has nothing to show.
+    W.lookingInHeader = tab == "dungeons" and setup and not W.preview
+    -- A leader choosing dungeons for a party they made: the party under the
+    -- choices, where it is set up; without its places while the class cards
+    -- show them.
+    local leaderChoosing = state == "leader" and tab == "dungeons" and setup and not W.preview
+    W.cardRoles = leaderChoosing
+    W.cardWithoutPlaces = leaderChoosing and ns.PartyCompose.isOn()
+    if leaderChoosing then
+        W.cardBelowRoles = placeCard
+        y = y - 10
+    elseif choosing and W.lookingInHeader then
+        W.cardBelowRoles = nil
+        W.refreshCard(state, full, tab)
+        ui.card:Hide()
+        y = y - 10
+    elseif choosing then
         W.cardBelowRoles = placeCard
         y = y - 10
     else
@@ -128,14 +146,8 @@ local function refreshMain()
     end
     if setup then
         W.refreshRoles(queued)
-        local members = state == "leader" and Party.members() or nil
-        local partyRowCount = W.refreshParty(members)
-        ui.partyHeader:SetShown(partyRowCount > 0)
-        if ui.partyHeader.line then
-            ui.partyHeader.line:SetShown(partyRowCount > 0)
-        end
         local levelCount, otherCount = W.refreshDungeons()
-        y = W.layoutSetup(y, partyRowCount, levelCount, otherCount)
+        y = W.layoutSetup(y, levelCount, otherCount)
     elseif queued then
         y = W.layoutQueued(y, entry)
     end
@@ -190,6 +202,10 @@ function Window.onJoinClicked()
     end
     local engine = ns.engine
     if not engine then
+        return
+    end
+    if ns.Party.isSample() and not engine.myEntry then
+        ns.Log.info("This is a sample party; /fg preview party again ends it.")
         return
     end
     if not engine.myEntry and not ns.Filler.isActive() and ns.GroupView.isActive() then
@@ -284,10 +300,11 @@ function W.build()
     W.buildTabs()
     W.buildCard()
     W.buildRoles()
+    W.buildCompose()
+    W.buildLevels()
     W.buildPlaystyle()
     W.buildQuests()
     W.buildBattlegrounds()
-    W.buildParty()
     W.buildDungeons()
     ui.setupWidgets = { ui.dungeonHeader, ui.otherToggle }
     for _, role in ipairs(Widgets.ROLES) do
@@ -308,12 +325,12 @@ function W.build()
         queueRows[i] = row
     end
     ui.queueMore = Widgets.text(W.frame, "GameFontDisableSmall")
-    ui.queueMore:SetWidth(WIDTH - 2 * PAD)
+    ui.queueMore:SetWidth(W.CONTENT)
     ui.hint = Widgets.text(W.frame, "GameFontNormalSmall")
     ui.hint:SetPoint("BOTTOMLEFT", PAD, 54)
-    ui.hint:SetWidth(WIDTH - 2 * PAD)
+    ui.hint:SetWidth(W.CONTENT)
     ui.hint:SetTextColor(1, 0.4, 0.4)
-    ui.join = Widgets.button(W.frame, "Find group", WIDTH - 2 * PAD)
+    ui.join = Widgets.button(W.frame, "Find group", W.CONTENT)
     ui.join:SetHeight(30)
     ui.join:SetPoint("BOTTOM", 0, 16)
     ui.joinSummary = Widgets.text(ui.join, "GameFontHighlightSmall", "RIGHT")

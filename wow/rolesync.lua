@@ -6,19 +6,22 @@ local Log = ns.Log
 -- Shows each player's Forever Groups role in WoW's party frames. A leader may
 -- set anyone's role, everyone else only their own (UnitSetRole). The role is
 -- set once, when the player joins; if the player picks another role after
--- that, Forever Groups adopts it instead of setting it back. Not for the
--- player's own role when it turns into one they did not queue for: WoW sets
--- a role from the spec by itself (a Feral druid becomes the tank a few seconds
--- after joining as healer), so that one is always set back: the role the
--- player chose in Forever Groups wins over the spec. At most once per
--- RESET_GAP, so a server that keeps changing it is not answered in a loop.
--- The roles are kept per character, so they still hold after a /reload.
+-- that, Forever Groups adopts it instead of setting it back. Not when it turns
+-- into one they did not offer: WoW sets a role from the spec by itself (a
+-- Feral druid becomes the tank a few seconds after joining as healer), so
+-- that one is set back: the role chosen in Forever Groups, or offered in WoW's
+-- Group Finder (`offered`), wins over the spec. The player's own always; a
+-- party member's at most MAX_RESETS times, after which it counts as theirs.
+-- At most once per RESET_GAP, so a server that keeps changing it is not
+-- answered in a loop. The roles are kept per character, so they still hold
+-- after a /reload.
 local RoleSync = {}
 
 local WOW_ROLES = { T = "TANK", H = "HEALER", D = "DAMAGER" }
 local LETTERS = { TANK = "T", HEALER = "H", DAMAGER = "D" }
 local MAX_ATTEMPTS = 3
 local RESET_GAP = 5
+local MAX_RESETS = 2
 -- Seconds between two tries: the server takes a moment to apply a role, and
 -- roster updates come in bursts.
 local RETRY_AFTER = 2
@@ -28,6 +31,8 @@ local attempts = {}
 local attemptedAt = {}
 local settled = {}
 local resets = {}
+local resetCounts = {}
+local offered = {}
 local listeners = {}
 
 -- The player's name, also before the channel told it (right after a
@@ -38,13 +43,22 @@ end
 
 local function save()
     ns.charDb.roleSync = next(expected) and RoleSync.all() or nil
+    local kept = {}
+    for name, roles in pairs(offered) do
+        if expected[name] then
+            kept[name] = roles
+        end
+    end
+    ns.charDb.roleSyncOffered = next(kept) and kept or nil
 end
 
--- Whether the player could have picked this role: anyone else's role is
--- theirs to choose; the player's own only among the roles they queued for.
+-- Whether the player could have picked this role: anyone else's among the
+-- roles they offered (any when not known, or once set back MAX_RESETS
+-- times); the player's own only among the roles they queued for.
 local function ownChoice(name, role)
     if name ~= me() then
-        return true
+        return offered[name] == nil or string.find(offered[name], role, 1, true) ~= nil
+            or (resetCounts[name] or 0) >= MAX_RESETS
     end
     local entry = ns.engine and ns.engine.myEntry
     local roles = (entry and entry.members[1].roles) or ns.charDb.lastRoles
@@ -66,7 +80,9 @@ local function cancelBossModsCheck()
     end
 end
 
-function RoleSync.expect(name, role)
+-- roles: what a party member offered (e.g. "TH" in WoW's Group Finder), kept
+-- when nil.
+function RoleSync.expect(name, role, roles)
     local self = me()
     if name and WOW_ROLES[role] and (self == nil or name == self) then
         cancelBossModsCheck()
@@ -77,6 +93,10 @@ function RoleSync.expect(name, role)
         attemptedAt[name] = nil
         settled[name] = false
         resets[name] = nil
+        resetCounts[name] = nil
+        if type(roles) == "string" and roles ~= "" then
+            offered[name] = roles
+        end
         save()
     end
 end
@@ -96,6 +116,7 @@ end
 
 function RoleSync.forget(name)
     expected[name], attempts[name], settled[name], attemptedAt[name], resets[name] = nil, nil, nil, nil, nil
+    resetCounts[name], offered[name] = nil, nil
     save()
 end
 
@@ -159,11 +180,13 @@ function RoleSync.apply()
         local waiting = attemptedAt[name] ~= nil and now - attemptedAt[name] < RETRY_AFTER
         if role and current == role then
             settled[name] = true
-        elseif role and current and settled[name] and ownChoice(name, current) then
+        elseif role and current and settled[name] and (ownChoice(name, current) or not canSet(unit)) then
+            -- Theirs, or not ours to set back (only a leader sets others' roles).
             changed(name, current)
         elseif role and current and settled[name] and now - (resets[name] or -math.huge) >= RESET_GAP then
             Log.debug("WoW made %s %s; setting %s back", name, WOW_ROLES[current], WOW_ROLES[role])
             resets[name] = now
+            resetCounts[name] = (resetCounts[name] or 0) + 1
             settled[name], attempts[name], attemptedAt[name] = false, 0, nil
             RoleSync.apply()
             return
@@ -176,7 +199,11 @@ function RoleSync.apply()
             attemptedAt[name] = now
             local ok, err = pcall(UnitSetRole, unit, WOW_ROLES[role])
             Log.debug("set role of %s to %s: %s", name, WOW_ROLES[role], ok and "ok" or tostring(err))
-        elseif current and attempts[name] >= MAX_ATTEMPTS and ownChoice(name, current) then
+            -- WoW says nothing when a role does not take: look again.
+            retryLater(RETRY_AFTER)
+        elseif current and attempts[name] >= MAX_ATTEMPTS and (name ~= me() or ownChoice(name, current)) then
+            -- The role could not be set: a party member plays the one they
+            -- have, whatever they offered.
             settled[name] = true
             changed(name, current)
         end
@@ -232,15 +259,17 @@ local function restore()
     if next(expected) or type(saved) ~= "table" then
         return
     end
+    local roles = type(ns.charDb.roleSyncOffered) == "table" and ns.charDb.roleSyncOffered or {}
     for name, role in pairs(saved) do
-        RoleSync.expect(name, role)
+        RoleSync.expect(name, role, roles[name])
     end
 end
 
 local function onRosterUpdate()
     if not IsInGroup() then
         expected, attempts, settled, attemptedAt, resets = {}, {}, {}, {}, {}
-        ns.charDb.roleSync = nil
+        resetCounts, offered = {}, {}
+        ns.charDb.roleSync, ns.charDb.roleSyncOffered = nil, nil
         return
     end
     restore()

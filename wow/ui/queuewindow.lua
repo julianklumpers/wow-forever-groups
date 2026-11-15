@@ -15,7 +15,6 @@ local ROW_HEIGHT = 18
 
 local frame
 local sections = {}
-local blocks = {}
 local wheelSearching = false
 local wheelBlocked = false
 -- "dungeons" or "quests": the main window's tab when the window opened.
@@ -410,11 +409,22 @@ end
 -- Needs: the places a party or group still has open, empty for a solo player.
 local ROW_LEFT = 25
 local ROW_WIDTH = WIDTH - 46
-local NAME_X, LEVEL_X, DUNGEONS_X, TIME_WIDTH = 100, 254, 296, 70
+local NAME_X, CLASSES_X, NEEDS_X, LEVEL_X, DUNGEONS_X, TIME_WIDTH = 54, 184, 252, 310, 348, 48
+local BADGE_SIZE = 12
+local WISH_ICON, WISH_STEP, MAX_WISH_ICONS = 12, 13, 4
+-- Where a row comes from, an icon at its far right: Forever Groups' queue or
+-- WoW's Group Finder.
+local SOURCE_WIDTH = 16
+local SOURCES = {
+    addon = { texture = Widgets.ICON },
+    finder = { texture = "Interface\\LFGFrame\\LFG-Eye", coords = { 0, 0.125, 0, 0.25 } },
+}
+local CLASS_ICON, CLASS_STEP, MAX_CLASSES = 12, 13, 5
 local COLUMNS = {
     { label = "Roles", x = 0, width = 46, sort = "role" },
-    { label = "Needs", x = 50, width = 46, sort = "needs" },
-    { label = "Name", x = NAME_X, width = 150, sort = "name" },
+    { label = "Name", x = NAME_X, width = CLASSES_X - NAME_X - 4, sort = "name" },
+    { label = "Classes", x = CLASSES_X, width = NEEDS_X - CLASSES_X - 4 },
+    { label = "Needs", x = NEEDS_X, width = LEVEL_X - NEEDS_X - 4, sort = "needs" },
     { label = "Lvl", x = LEVEL_X, width = 38, sort = "level", descending = true },
     { label = "Dungeons", x = DUNGEONS_X, width = 120 },
     { label = "Time", right = true, width = TIME_WIDTH, sort = "waiting", descending = true },
@@ -479,26 +489,24 @@ end
 -- fits what you do is open: players when you'd like to lead (you build a
 -- group), groups when you don't (you look for a place in one). A table you
 -- fold or open yourself stays so, separately for leading and not leading.
-local function foldMode()
-    local leading = ns.charDb and ns.charDb[(mode == "quests" and "wantsLeadQuests")
-        or (mode == "battlegrounds" and "wantsLeadBattlegrounds") or "wantsLead"]
-    return leading and "lead" or "join"
+-- Both tables are open until folded by hand; a fold stays, also when the
+-- player switches between joining and leading. (A fold saved per join/lead
+-- before is dropped.)
+local function folds()
+    local saved = ns.db.queueFold
+    if type(saved) ~= "table" or type(saved.join) == "table" or type(saved.lead) == "table" then
+        saved = {}
+        ns.db.queueFold = saved
+    end
+    return saved
 end
 
 local function isFolded(section)
-    local fold = foldMode()
-    local chosen = ns.db.queueFold and ns.db.queueFold[fold] and ns.db.queueFold[fold][section.key]
-    if chosen ~= nil then
-        return chosen
-    end
-    return (fold == "lead") == (section.kind == "groups")
+    return folds()[section.key] == true
 end
 
 local function toggleFold(section)
-    local fold = foldMode()
-    ns.db.queueFold = ns.db.queueFold or {}
-    ns.db.queueFold[fold] = ns.db.queueFold[fold] or {}
-    ns.db.queueFold[fold][section.key] = not isFolded(section)
+    folds()[section.key] = not isFolded(section)
     QueueWindow.refresh()
 end
 
@@ -542,6 +550,28 @@ local function buildSection(title, rows, key, kind)
     section.thumb = section.area:CreateTexture(nil, "ARTWORK")
     section.thumb:SetWidth(4)
     section.thumb:SetColorTexture(1, 0.82, 0, 0.6)
+    -- WoW's own scroll bar (MinimalScrollBar, seen working with /fgp
+    -- scrollbar): drag its thumb or click its arrows. The thin track above
+    -- stands in on a client without it.
+    local ok, bar = pcall(CreateFrame, "EventFrame", nil, section.area, "MinimalScrollBar")
+    if ok and bar and type(bar.SetScrollPercentage) == "function" and type(bar.RegisterCallback) == "function" then
+        section.bar = bar
+        bar:Hide()
+        local events = _G.BaseScrollBoxEvents
+        bar:RegisterCallback((events and events.OnScroll) or "OnScroll", function(_, percentage)
+            if section.painting then
+                return
+            end
+            local most = math.max(0, #section.items - section.maxRows)
+            local offset = math.floor((tonumber(percentage) or 0) * most + 0.5)
+            if offset ~= section.offset then
+                section.offset = offset
+                QueueWindow.refresh()
+            end
+        end, section)
+    elseif ok and bar then
+        bar:Hide()
+    end
     for i = 1, rows do
         local row = CreateFrame("Frame", nil, section.area)
         row:SetSize(WIDTH - 46, ROW_HEIGHT)
@@ -551,7 +581,7 @@ local function buildSection(title, rows, key, kind)
             row.icons[j] = Widgets.roleIcon(row, role, 14)
             row.icons[j]:SetPoint("LEFT", (j - 1) * 15, 0)
             row.needs[j] = Widgets.roleIcon(row, role, 14)
-            row.needs[j]:SetPoint("LEFT", COLUMNS[2].x + (j - 1) * 15, 0)
+            row.needs[j]:SetPoint("LEFT", NEEDS_X + (j - 1) * 15, 0)
             -- How many of that role, on the icon's top right corner, from 2 up.
             for _, icon in ipairs({ row.icons[j], row.needs[j] }) do
                 icon.count = Widgets.text(row, "GameFontHighlightSmall")
@@ -563,6 +593,22 @@ local function buildSection(title, rows, key, kind)
                 icon.count:SetPoint("TOPRIGHT", icon, "TOPRIGHT", 3, 2)
             end
         end
+        -- A party's wished classes in the Needs column (paintNeeds).
+        -- Per place a class icon and a role icon of its own: a role icon
+        -- follows the role icon style, a class icon must not.
+        row.wishIcons, row.wishRoles = {}, {}
+        for j = 1, MAX_WISH_ICONS do
+            local icon = row:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(WISH_ICON, WISH_ICON)
+            icon:SetPoint("LEFT", NEEDS_X + (j - 1) * WISH_STEP, 0)
+            icon:Hide()
+            row.wishIcons[j] = icon
+            local role = Widgets.roleIcon(row, "D", WISH_ICON)
+            role:SetPoint("LEFT", NEEDS_X + (j - 1) * WISH_STEP, 0)
+            role:Hide()
+            row.wishRoles[j] = role
+        end
+        row.wishMore = Widgets.text(row, "GameFontDisableSmall")
         -- Right-click: whisper or invite the player.
         row:EnableMouse(true)
         row.hover = row:CreateTexture(nil, "BACKGROUND")
@@ -587,17 +633,32 @@ local function buildSection(title, rows, key, kind)
         -- Fixed columns: roles, needs, name, level, dungeons, time.
         row.name = Widgets.text(row, "GameFontHighlightSmall")
         row.name:SetPoint("LEFT", NAME_X, 0)
-        row.name:SetWidth(LEVEL_X - NAME_X - 4)
+        row.name:SetWidth(CLASSES_X - NAME_X - 4)
+        row.badge = row:CreateTexture(nil, "ARTWORK")
+        row.badge:SetSize(BADGE_SIZE, BADGE_SIZE)
+        row.badge:SetPoint("LEFT", NAME_X, 0)
+        row.badge:Hide()
+        row.classIcons = {}
+        for j = 1, MAX_CLASSES do
+            local icon = row:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(CLASS_ICON, CLASS_ICON)
+            icon:SetPoint("LEFT", CLASSES_X + (j - 1) * CLASS_STEP, 0)
+            icon:Hide()
+            row.classIcons[j] = icon
+        end
         row.name:SetWordWrap(false)
         row.level = Widgets.text(row, "GameFontHighlightSmall")
         row.level:SetPoint("LEFT", LEVEL_X, 0)
         row.level:SetWidth(DUNGEONS_X - LEVEL_X - 4)
         row.dungeons = Widgets.text(row, "GameFontHighlightSmall")
         row.dungeons:SetPoint("LEFT", DUNGEONS_X, 0)
-        row.dungeons:SetWidth(ROW_WIDTH - DUNGEONS_X - TIME_WIDTH - 6)
+        row.dungeons:SetWidth(ROW_WIDTH - DUNGEONS_X - TIME_WIDTH - SOURCE_WIDTH - 6)
         row.dungeons:SetWordWrap(false)
         row.time = Widgets.text(row, "GameFontHighlightSmall", "RIGHT")
-        row.time:SetPoint("RIGHT", -4, 0)
+        row.time:SetPoint("RIGHT", -4 - SOURCE_WIDTH, 0)
+        row.source = row:CreateTexture(nil, "ARTWORK")
+        row.source:SetSize(12, 12)
+        row.source:SetPoint("RIGHT", -2, 0)
         row.time:SetWidth(TIME_WIDTH)
         for _, column in ipairs({ row.level, row.dungeons, row.time }) do
             column:SetTextColor(0.75, 0.75, 0.75)
@@ -609,6 +670,37 @@ local function buildSection(title, rows, key, kind)
 end
 
 -- counts (optional): { T = n, H = n, D = n }; a number shows from 2 up.
+-- The Needs column when a party wishes for classes: per open place of a role
+-- the classes wished for, else the role (open to any class); four icons,
+-- else three and "+n".
+local function paintNeeds(row, wishes)
+    local shown = 0
+    local room = #wishes > MAX_WISH_ICONS and MAX_WISH_ICONS - 1 or #wishes
+    for j, wish in ipairs(wishes) do
+        if j > room then
+            break
+        end
+        if wish.class then
+            row.wishIcons[j]:SetAtlas("classicon-" .. string.lower(wish.class))
+        else
+            Widgets.setRoleIcon(row.wishRoles[j], wish.role)
+        end
+        row.wishIcons[j]:SetShown(wish.class ~= nil)
+        row.wishRoles[j]:SetShown(wish.class == nil)
+        shown = j
+    end
+    for j = shown + 1, MAX_WISH_ICONS do
+        row.wishIcons[j]:Hide()
+        row.wishRoles[j]:Hide()
+    end
+    row.wishMore:SetShown(#wishes > room)
+    if #wishes > room then
+        row.wishMore:SetText("+" .. (#wishes - room))
+        row.wishMore:ClearAllPoints()
+        row.wishMore:SetPoint("LEFT", NEEDS_X + room * WISH_STEP, 0)
+    end
+end
+
 local function paintIcons(icons, roles, counts)
     local shown = 0
     for _, role in ipairs(Widgets.ROLES) do
@@ -627,16 +719,91 @@ local function paintIcons(icons, roles, counts)
     end
 end
 
+-- Under the player's class wishes (dungeons) or level limit (dungeons,
+-- quests): a solo player outside the limit, or whose class has no free place
+-- for a role they play, shows faded.
+-- Returns why, for the row's tooltip, or nil when the player fits.
+local function limitText(limit)
+    if limit.min > 0 and limit.max > 0 then
+        return string.format("%d-%d", limit.min, limit.max)
+    elseif limit.min > 0 then
+        return string.format(L["from %d"], limit.min)
+    end
+    return string.format(L["up to %d"], limit.max)
+end
+
+-- The level limit and free places are the same for every row of one
+-- refresh: worked out once (limits), not per row.
+local function limits()
+    return {
+        level = (mode == "dungeons" or mode == "quests") and ns.PartyLevels.rules(mode) or nil,
+        places = mode == "dungeons" and ns.Filler.freePlaces() or nil,
+    }
+end
+
+local function unwanted(roles, class, level, rules)
+    local limit = rules.level
+    if limit and not ns.Levels.fits(limit, level) then
+        return string.format(L["Outside your level limit (%s)."], limitText(limit))
+    end
+    local places = rules.places
+    if not places or ns.Compose.fitsPlaces(places, { { roles = roles or "", class = class } }) then
+        return nil
+    end
+    return L["Your party has no place left for this class."]
+end
+
 local function paintRow(row, item)
     row.item = item
+    row:SetAlpha(item.unwanted and 0.4 or 1)
     local name, color = item.name, item.color
     paintIcons(row.icons, item.roles)
-    paintIcons(row.needs, item.needs or "", item.needCounts)
+    if item.wishes then
+        paintIcons(row.needs, "")
+        paintNeeds(row, item.wishes)
+    else
+        paintIcons(row.needs, item.needs or "", item.needCounts)
+        paintNeeds(row, {})
+    end
     row.name:SetText(name)
     row.name:SetTextColor(color[1], color[2], color[3])
+    -- Before the name: a crown for a group (its row is its leader's name, its
+    -- members' classes in the Classes column), a player's class icon.
+    local group = item.group ~= nil or item.party ~= nil
+    local playerAtlas = not group and item.classes and item.classes[1]
+        and "classicon-" .. string.lower(item.classes[1])
+    local badge = group or (playerAtlas and Widgets.atlasExists(playerAtlas))
+    if group then
+        row.badge:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
+    elseif badge then
+        row.badge:SetAtlas(playerAtlas)
+    end
+    row.badge:SetShown(badge and true or false)
+    local indent = badge and BADGE_SIZE + 3 or 0
+    row.name:ClearAllPoints()
+    row.name:SetPoint("LEFT", NAME_X + indent, 0)
+    row.name:SetWidth(CLASSES_X - NAME_X - 4 - indent)
+    local shown = 0
+    for _, class in ipairs(group and item.classes or {}) do
+        local atlas = "classicon-" .. string.lower(class)
+        if shown < MAX_CLASSES and Widgets.atlasExists(atlas) then
+            shown = shown + 1
+            row.classIcons[shown]:SetAtlas(atlas)
+            row.classIcons[shown]:Show()
+        end
+    end
+    for j = shown + 1, MAX_CLASSES do
+        row.classIcons[j]:Hide()
+    end
     row.level:SetText(item.levelText or (item.level and tostring(item.level)) or "")
     row.dungeons:SetText(item.dungeonText)
     row.time:SetText(item.time)
+    local source = SOURCES[item.source]
+    row.source:SetShown(source ~= nil)
+    if source then
+        row.source:SetTexture(source.texture)
+        row.source:SetTexCoord(unpack(source.coords or { 0, 1, 0, 1 }))
+    end
     row:Show()
 end
 
@@ -678,7 +845,12 @@ local function fillSection(section, y, items, empty)
     section.caption.icon:SetShown(#items > 0)
     section.caption.icon:SetTexture(folded and "Interface\\Buttons\\UI-PlusButton-Up"
         or "Interface\\Buttons\\UI-MinusButton-Up")
-    section.summary:SetText(folded and summarize(section, items) or "")
+    local faded = false
+    for _, item in ipairs(items) do
+        faded = faded or (item.unwanted and true or false)
+    end
+    section.summary:SetText(folded and summarize(section, items)
+        or (faded and ("·  " .. L["faded: outside your limits"])) or "")
     if folded then
         section.line:Hide()
         section.area:Hide()
@@ -688,6 +860,8 @@ local function fillSection(section, y, items, empty)
         end
         return y - 26
     end
+    section.area:Show()
+    section.more:Show()
     y = y - 20
     -- "Needs" only heads a table that holds a party or group; its space
     -- stays, so the columns of all tables line up.
@@ -699,10 +873,10 @@ local function fillSection(section, y, items, empty)
     local listed = #items > 0 and section.area:IsShown()
     section.line:SetShown(listed)
     for _, header in ipairs(section.columns) do
-        header:SetShown(listed and (header.column.sort ~= "needs" or anyNeeds))
+        header:SetShown(listed and not header.unused and (header.column.sort ~= "needs" or anyNeeds))
         header:ClearAllPoints()
         if header.column.right then
-            header:SetPoint("TOPRIGHT", frame, "TOPLEFT", ROW_LEFT + ROW_WIDTH - 4, y)
+            header:SetPoint("TOPRIGHT", frame, "TOPLEFT", ROW_LEFT + ROW_WIDTH - 4 - SOURCE_WIDTH, y)
         else
             header:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_LEFT + header.column.x, y)
         end
@@ -726,9 +900,24 @@ local function fillSection(section, y, items, empty)
         end
     end
     local scrolls = #items > ROWS
-    section.track:SetShown(scrolls)
-    section.thumb:SetShown(scrolls)
-    if scrolls then
+    local bar = section.bar
+    section.track:SetShown(scrolls and not bar)
+    section.thumb:SetShown(scrolls and not bar)
+    if bar then
+        bar:SetShown(scrolls)
+    end
+    if scrolls and bar then
+        local most = #items - ROWS
+        bar:ClearAllPoints()
+        bar:SetPoint("TOPRIGHT", section.area, "TOPRIGHT", 0, 0)
+        bar:SetHeight(visible * ROW_HEIGHT)
+        -- Setting it calls back with the same place: not a scroll.
+        section.painting = true
+        bar:SetVisibleExtentPercentage(ROWS / #items)
+        bar:SetPanExtentPercentage(1 / most)
+        bar:SetScrollPercentage(section.offset / most)
+        section.painting = false
+    elseif scrolls then
         local height = visible * ROW_HEIGHT
         local thumb = math.max(12, height * ROWS / #items)
         section.track:ClearAllPoints()
@@ -821,11 +1010,15 @@ local function filtered(items)
     return result
 end
 
+-- Ties go to Forever Groups' queue, then the longest waiting.
 local function sorted(items, sectionKey)
     items = filtered(items)
     local key, reverse = sortOf(sectionKey)
     table.sort(items, function(a, b)
         local result = COMPARE[key](a, b)
+        if result == nil and a.source ~= b.source then
+            return a.source == "addon"
+        end
         if result == nil then
             result = COMPARE.waiting(a, b)
         end
@@ -849,7 +1042,41 @@ local function letterCounts(letters)
     return counts
 end
 
-local function queueItems()
+-- A queued party's open places with the classes its leader wishes for:
+-- { { class } or { role } } tank, healer, DPS, a class once per role; nil
+-- without wishes. needs: its open places ("HDD"). The wishes are per place;
+-- a place a member holds wishes for nothing (0), so of each role the places
+-- with a wish are open, and the role's other open places take any class.
+local function wishesOf(compose, needs)
+    local rules = compose and ns.Compose.active(compose, GetServerTime())
+    if not rules or needs == "" then
+        return nil
+    end
+    local list, any = {}, false
+    for _, role in ipairs(Widgets.ROLES) do
+        local open = select(2, string.gsub(needs, role, ""))
+        local seen, wished = {}, 0
+        for slot, slotRole in ipairs(ns.Compose.SLOT_ROLES) do
+            local mask = rules.masks[slot] or 0
+            if slotRole == role and mask ~= 0 and wished < open then
+                wished = wished + 1
+                for _, class in ipairs(ns.Compose.classesOf(mask)) do
+                    if not seen[class] and Widgets.atlasExists("classicon-" .. string.lower(class)) then
+                        seen[class] = true
+                        list[#list + 1] = { class = class, role = role }
+                        any = true
+                    end
+                end
+            end
+        end
+        if open > wished then
+            list[#list + 1] = { role = role }
+        end
+    end
+    return any and list or nil
+end
+
+local function queueItems(rules)
     local items = {}
     local engine = (mode == "quests" and ns.questEngine) or (mode == "dungeons" and ns.engine)
         or (mode == "battlegrounds" and ns.bgEngine) or nil
@@ -894,24 +1121,28 @@ local function queueItems()
             end
         end
         items[#items + 1] = { roles = roles, needs = needs, roleCounts = roleCounts, needCounts = letterCounts(needs),
-            name = name, dungeonText = dungeonText,
+            name = name, dungeonText = dungeonText, source = "addon",
+            wishes = #entry.members > 1 and mode == "dungeons" and wishesOf(entry.compose, needs) or nil,
+            compose = entry.compose,
             player = menu and entry.id or nil, party = #entry.members > 1 and entry or nil,
             time = Widgets.formatTime(now - entry.joinedAt), waited = now - entry.joinedAt,
             level = entry.members[1].level,
+            unwanted = #entry.members == 1 and entry.id ~= ns.selfName
+                and unwanted(roles, (ns.Specs.decode(entry.spec)), entry.members[1].level, rules),
+            classes = { (ns.Specs.decode(entry.spec)) },
             color = entry.id == ns.selfName and { 1, 0.82, 0 } or { Widgets.classColor(ns.Specs.decode(entry.spec)) } }
     end
     return items
 end
 
--- Queued solo players and queued parties, each list sorted; also whether any
--- party is queued at all (before the role filter).
-local function queueLists()
+-- Queued solo players and queued parties.
+local function queueLists(rules)
     local solo, parties = {}, {}
-    for _, item in ipairs(queueItems()) do
+    for _, item in ipairs(queueItems(rules)) do
         local list = item.party and parties or solo
         list[#list + 1] = item
     end
-    return sorted(solo, "addonPlayers"), sorted(parties, "addonParties"), #parties > 0
+    return solo, parties
 end
 
 -- A listed group's roles already in it and its open places, e.g. "HD" and
@@ -934,16 +1165,47 @@ local function groupRoles(listing)
 end
 
 
-local function groupFinderItems()
+local function groupFinderItems(rules)
     local items = {}
     for _, listing in ipairs(QueueWindow.groupFinderPlayers(mode)) do
         items[#items + 1] = { roles = listing.roles, needs = "", name = listing.name, listing = listing,
+            source = "finder",
             dungeonText = areaText(listing.dungeons, listing.zones, listing.battlegrounds), player = listing.name,
             time = Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
-            level = listing.level,
-            color = { Widgets.classColor(listing.classToken) } }
+            level = listing.level, unwanted = unwanted(listing.roles, listing.classToken, listing.level, rules),
+            classes = { listing.classToken }, color = { Widgets.classColor(listing.classToken) } }
     end
-    return sorted(items, "finderPlayers")
+    return items
+end
+
+-- A listed group's members tank, healer, DPS (in WoW's order within a role):
+-- { { member, leader, index } }.
+local function membersByRole(listing)
+    local members = {}
+    for i, member in ipairs(listing.memberInfo or {}) do
+        members[i] = { member = member, leader = member.leader == true, index = i }
+    end
+    table.sort(members, function(x, y)
+        local a, b = ROLE_ORDER[x.member.role] or 4, ROLE_ORDER[y.member.role] or 4
+        if a ~= b then
+            return a < b
+        end
+        return x.index < y.index
+    end)
+    return members
+end
+
+-- A listed group's classes, tank, healer, DPS: everyone's when WoW told
+-- them, else the leader's.
+local function classesOf(listing)
+    local classes = {}
+    for _, place in ipairs(membersByRole(listing)) do
+        classes[#classes + 1] = place.member.classToken
+    end
+    if #classes == 0 then
+        classes[1] = listing.classToken
+    end
+    return classes
 end
 
 local function groupFinderGroupItems()
@@ -953,12 +1215,12 @@ local function groupFinderGroupItems()
         items[#items + 1] = { roles = present, needs = needs, roleCounts = presentCounts, needCounts = needCounts,
             name = string.format("%s +%d", listing.leader, (listing.members or 1) - 1),
             dungeonText = areaText(listing.dungeons, listing.zones, listing.battlegrounds), player = listing.leader,
-            group = listing,
+            group = listing, classes = classesOf(listing), source = "finder",
             time = Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
             level = listing.level,
             color = { Widgets.classColor(listing.classToken) } }
     end
-    return sorted(items, "finderGroups")
+    return items
 end
 
 -- "Healer, 2 DPS" from the letters and, when given, how many of each.
@@ -971,20 +1233,59 @@ local function describe(letters, counts)
     return table.concat(names, ", ")
 end
 
--- Hovering a party (Forever Groups) or a listed group: who is in it and
--- what it still needs.
+-- A hint at the bottom of a tooltip, in a smaller font. GameTooltip reuses
+-- its lines, so the font goes back once the tooltip is cleared.
+local shrunk = {}
+
+local function addHint(text)
+    GameTooltip:AddLine(text, 0.6, 0.6, 0.6)
+    local count = type(GameTooltip.NumLines) == "function" and GameTooltip:NumLines()
+    local name = type(GameTooltip.GetName) == "function" and GameTooltip:GetName()
+    local line = count and name and _G[name .. "TextLeft" .. count]
+    if not line or not GameTooltipTextSmall then
+        return
+    end
+    if not shrunk.hooked then
+        shrunk.hooked = true
+        GameTooltip:HookScript("OnTooltipCleared", function()
+            for small in pairs(shrunk.lines or {}) do
+                small:SetFontObject(GameTooltipText)
+            end
+            shrunk.lines = nil
+        end)
+    end
+    line:SetFontObject(GameTooltipTextSmall)
+    shrunk.lines = shrunk.lines or {}
+    shrunk.lines[line] = true
+end
+
+local function addSourceLine(item)
+    if item.source == "addon" then
+        GameTooltip:AddLine(L["In the Forever Groups queue: matched for you by itself."], 0.6, 0.6, 0.6, true)
+    end
+end
+
+-- Hovering a row: a party's or group's members and what it still needs, a
+-- player's note and why they are faded; and where the row comes from.
 function QueueWindow.showRowTooltip(row, item)
     local listing = item and (item.group or item.listing)
     local comment = listing and listing.comment
-    if not GameTooltip or not item or not (item.party or item.group or comment) then
+    if not GameTooltip or not item then
         return
     end
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
     if not item.party and not item.group then
         GameTooltip:SetText(item.name, unpack(item.color))
-        GameTooltip:AddLine("\"" .. comment .. "\"", 1, 1, 1, true)
+        if comment then
+            GameTooltip:AddLine("\"" .. comment .. "\"", 1, 1, 1, true)
+        end
+        if item.unwanted then
+            GameTooltip:AddLine(item.unwanted, 1, 0.6, 0.2, true)
+            GameTooltip:AddLine(L["Forever Groups won't invite them for you; you still can."], 0.8, 0.8, 0.8, true)
+        end
+        addSourceLine(item)
         if item.player then
-            GameTooltip:AddLine(L["Right-click: whisper or invite"], 0.6, 0.6, 0.6)
+            addHint(L["Right-click: whisper or invite"])
         end
         GameTooltip:Show()
         return
@@ -1004,14 +1305,59 @@ function QueueWindow.showRowTooltip(row, item)
             GameTooltip:AddLine(string.format("%s%s  ·  %s%s", member.name, leader,
                 spec and (spec .. ", ") or "", Widgets.describeRoles(member.roles)), r, g, b)
         end
+        if item.wishes then
+            local byRole, order = {}, {}
+            for _, wish in ipairs(item.wishes) do
+                if wish.class then
+                    if not byRole[wish.role] then
+                        byRole[wish.role] = {}
+                        order[#order + 1] = wish.role
+                    end
+                    local names = byRole[wish.role]
+                    names[#names + 1] = ns.Spec.className(wish.class)
+                end
+            end
+            local parts = {}
+            for _, role in ipairs(order) do
+                parts[#parts + 1] = Widgets.roleName(role) .. ": " .. table.concat(byRole[role], ", ")
+            end
+            GameTooltip:AddLine(string.format(L["Wants: %s"], table.concat(parts, "  ·  ")), 0.85, 0.85, 0.85, true)
+        end
     else
         GameTooltip:SetText(string.format(L["Group of %d  ·  %s"], listing.members or 1, needs), 1, 0.82, 0)
-        local r, g, b = Widgets.classColor(listing.classToken)
-        GameTooltip:AddLine(listing.leader .. " (" .. L["leader"] .. ")", r, g, b)
+        if listing.memberInfo and #listing.memberInfo > 0 then
+            -- One line per member, tank, healer, DPS: class icon and class
+            -- (the leader with a crown and their name) on the left, role and
+            -- level on the right.
+            for _, place in ipairs(membersByRole(listing)) do
+                local member = place.member
+                local atlas = "classicon-" .. string.lower(member.classToken)
+                local left = ns.Spec.className(member.classToken)
+                if Widgets.atlasExists(atlas) then
+                    left = "|A:" .. atlas .. ":14:14|a " .. left
+                end
+                if place.leader then
+                    left = left .. "   |TInterface\\GroupFrame\\UI-Group-LeaderIcon:12:12|t " .. listing.leader
+                end
+                local right = {}
+                if member.role then
+                    right[1] = Widgets.roleName(member.role)
+                end
+                if member.level then
+                    right[#right + 1] = L["Lvl"] .. " " .. member.level
+                end
+                local r, g, b = Widgets.classColor(member.classToken)
+                GameTooltip:AddDoubleLine(left, table.concat(right, "  ·  "), r, g, b, 0.85, 0.85, 0.85)
+            end
+        else
+            local r, g, b = Widgets.classColor(listing.classToken)
+            GameTooltip:AddLine(listing.leader .. " (" .. L["leader"] .. ")", r, g, b)
+        end
         if comment then
             GameTooltip:AddLine("\"" .. comment .. "\"", 1, 1, 1, true)
         end
-        if item.roles ~= "" then
+        local membersListed = listing.memberInfo and #listing.memberInfo > 0
+        if item.roles ~= "" and not membersListed then
             GameTooltip:AddLine(string.format(L["Has: %s"], describe(item.roles, item.roleCounts)), 0.85, 0.85, 0.85)
         end
         local names = {}
@@ -1024,9 +1370,10 @@ function QueueWindow.showRowTooltip(row, item)
         GameTooltip:AddLine(table.concat(names, ", ") .. "  ·  " .. string.format(L["listed %s"], item.time), 0.85,
             0.85, 0.85, true)
     end
+    addSourceLine(item)
     if item.player then
-        GameTooltip:AddLine(L[item.group and "Right-click: request to join, or whisper the leader"
-            or "Right-click: whisper the leader"], 0.6, 0.6, 0.6)
+        addHint(item.group and L["Right-click: request to join, or whisper the leader"]
+            or L["Right-click: whisper the leader"])
     end
     GameTooltip:Show()
 end
@@ -1071,7 +1418,7 @@ function QueueWindow.openMenu(row, item)
 end
 
 local function refreshSortBar()
-    for _, section in ipairs({ sections.queue, sections.parties, sections.finder, sections.groups }) do
+    for _, section in ipairs({ sections.groups, sections.players }) do
         local key, reverse = sortOf(section.key)
         for _, header in ipairs(section.columns) do
             local active = header.sort ~= nil and header.sort == key
@@ -1100,74 +1447,38 @@ local function refreshSortBar()
     end
 end
 
-local function showSection(section, shown)
-    for _, widget in ipairs({ section.caption, section.area, section.more, section.line }) do
-        widget:SetShown(shown)
-    end
-    for _, header in ipairs(section.columns) do
-        header:SetShown(shown)
-    end
+-- "Players (27)", with how many of them are in Forever Groups' queue when the
+-- Group Finder's are there too.
+local function caption(word, count, fromAddon, withFinder, suffix)
+    local addon = withFinder and fromAddon > 0 and ("  ·  " .. string.format(L["%d in Forever Groups"], fromAddon))
+        or ""
+    return string.format("%s (%d%s)%s", L[word], count, addon, suffix)
 end
 
--- Each source gets a framed block: a header band with its icon and name,
--- then its two tables. Its fill is drawn on the window, under the rows; its
--- rounded border (WoW's tooltip edge) is a frame over them. The window's
--- inner panel sits a little right of centre, hence the uneven sides.
-local BLOCK_LEFT, BLOCK_RIGHT, BLOCK_BAND, BLOCK_GAP, BLOCK_EDGE = 17, 11, 24, 6, 3
-
-local function buildBlock(title, icon, coords)
-    local block = {}
-    block.bg = frame:CreateTexture(nil, "BORDER")
-    block.bg:SetColorTexture(1, 1, 1, 0.03)
-    block.band = frame:CreateTexture(nil, "BORDER", nil, 1)
-    block.band:SetColorTexture(1, 0.82, 0, 0.12)
-    local ok, border = pcall(CreateFrame, "Frame", nil, frame, "BackdropTemplate")
-    block.border = ok and border or CreateFrame("Frame", nil, frame)
-    block.border:SetFrameLevel((frame:GetFrameLevel() or 0) + 6)
-    if block.border.SetBackdrop then
-        block.border:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12 })
-        block.border:SetBackdropBorderColor(1, 0.82, 0, 0.6)
+-- Forever Groups' and the Group Finder's rows in one list; a player in both
+-- shows once, from Forever Groups.
+local function combined(addon, finder, nameOf)
+    local list, seen = {}, {}
+    for _, item in ipairs(addon) do
+        list[#list + 1] = item
+        seen[nameOf(item)] = true
     end
-    block.icon = frame:CreateTexture(nil, "ARTWORK")
-    block.icon:SetSize(18, 18)
-    block.icon:SetTexture(icon)
-    if coords then
-        block.icon:SetTexCoord(unpack(coords))
+    for _, item in ipairs(finder) do
+        if not seen[nameOf(item)] then
+            list[#list + 1] = item
+        end
     end
-    block.title = Widgets.text(frame, "GameFontNormal")
-    block.title:SetText(L[title])
-    block.note = Widgets.text(frame, "GameFontDisableSmall", "RIGHT")
-    return block
+    return list
 end
 
--- top and bottom: y of the block's edges (negative, from the window's top).
-local function placeBlock(block, top, bottom, shown)
-    for _, part in ipairs({ block.bg, block.band, block.icon, block.title, block.note, block.border }) do
-        part:SetShown(shown)
+local function countAddon(items)
+    local count = 0
+    for _, item in ipairs(items) do
+        if item.source == "addon" then
+            count = count + 1
+        end
     end
-    if not shown then
-        return
-    end
-    block.border:ClearAllPoints()
-    block.border:SetPoint("TOPLEFT", frame, "TOPLEFT", BLOCK_LEFT, top)
-    block.border:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -BLOCK_RIGHT, bottom)
-    block.bg:ClearAllPoints()
-    block.bg:SetPoint("TOPLEFT", block.border, "TOPLEFT", BLOCK_EDGE, -BLOCK_EDGE)
-    block.bg:SetPoint("BOTTOMRIGHT", block.border, "BOTTOMRIGHT", -BLOCK_EDGE, BLOCK_EDGE)
-    block.band:ClearAllPoints()
-    block.band:SetPoint("TOPLEFT", block.bg, "TOPLEFT")
-    block.band:SetPoint("TOPRIGHT", block.bg, "TOPRIGHT")
-    block.band:SetHeight(BLOCK_BAND - BLOCK_EDGE)
-    block.icon:ClearAllPoints()
-    block.icon:SetPoint("LEFT", block.band, "LEFT", 5, 0)
-    block.title:ClearAllPoints()
-    block.title:SetPoint("LEFT", block.icon, "RIGHT", 6, 0)
-    block.note:ClearAllPoints()
-    block.note:SetPoint("RIGHT", block.band, "RIGHT", -8, 0)
-end
-
-local function caption(word, count, suffix)
-    return string.format("%s (%d)%s", L[word], count, suffix)
+    return count
 end
 
 -- Shows the subject of the main window's page, also when that page changed
@@ -1192,62 +1503,53 @@ function QueueWindow.refresh()
     setMode(ns.WindowParts.currentTab())
     refreshSortBar()
     local quests = mode == "quests"
-    for _, section in ipairs({ sections.queue, sections.parties, sections.finder, sections.groups }) do
-        local finderTable = section == sections.finder or section == sections.groups
+    -- With WoW's Group Finder turned off only Forever Groups players are shown.
+    local useFinder = ns.Features.groupFinder()
+    for _, section in ipairs({ sections.groups, sections.players }) do
         for _, header in ipairs(section.columns) do
             if header.column.label == "Dungeons" then
                 header.label:SetText(L[(mode == "battlegrounds" and "Battleground")
-                    or (not quests and "Dungeons") or (finderTable and "Zone" or "Quests")])
+                    or (not quests and "Dungeons") or (useFinder and "Zone" or "Quests")])
+            elseif header.column.label == "Classes" then
+                header.unused = section == sections.players
             end
         end
     end
-    local suffix = shownRoles() and ("  ·  " .. L["filtered"]) or ""
-    local top = -64 - TOP
-    local y = top - BLOCK_BAND - 6
-    -- Groups first, then players, in both blocks.
-    local solo, parties, anyParty = queueLists()
-    showSection(sections.parties, true)
-    sections.parties.header:SetText(caption("Parties", #parties, suffix))
-    y = fillSection(sections.parties, y, parties, anyParty and "No party needs these roles."
-        or "No Forever Groups party is queued right now.")
-    showSection(sections.queue, true)
-    sections.queue.header:SetText(caption("Players", #solo, suffix))
-    y = fillSection(sections.queue, y, solo, shownRoles() and "Nobody with these roles in the queue."
-        or (quests and "Nobody is looking for a questing group right now."
-            or "Nobody is in the Forever Groups queue right now."))
-    placeBlock(blocks.addon, top, y + 4, true)
-    -- With WoW's Group Finder turned off only Forever Groups players are shown.
-    local useFinder = ns.Features.groupFinder()
     sections.refresh:SetShown(useFinder)
-    showSection(sections.finder, useFinder)
-    showSection(sections.groups, useFinder)
-    if not useFinder then
-        placeBlock(blocks.finder, 0, 0, false)
-        frame:SetHeight(-y + 12)
-        return
+    sections.note:SetShown(useFinder)
+    local rules = limits()
+    local solo, parties = queueLists(rules)
+    local finder, groups = {}, {}
+    if useFinder then
+        finder, groups = groupFinderItems(rules), groupFinderGroupItems()
+        local _, updatedAt = ns.LfgList.listings()
+        if quests then
+            updatedAt = select(2, ns.LfgList.zoneListings())
+        end
+        if not quests and ns.LfgList.isSearching() then
+            sections.note:SetText(L["searching..."])
+        elseif updatedAt then
+            sections.note:SetText(string.format(L["searched %s ago"], Widgets.formatTime(GetTime() - updatedAt)))
+        else
+            sections.note:SetText(L["not searched yet"])
+        end
     end
-    top = y - BLOCK_GAP
-    y = top - BLOCK_BAND - 6
-    local _, updatedAt = ns.LfgList.listings()
-    if quests then
-        updatedAt = select(2, ns.LfgList.zoneListings())
+    local function leader(item)
+        return item.player or item.name
     end
-    local finder = groupFinderItems()
-    local groups = groupFinderGroupItems()
-    if not quests and ns.LfgList.isSearching() then
-        blocks.finder.note:SetText(L["searching..."])
-    elseif updatedAt then
-        blocks.finder.note:SetText(string.format(L["searched %s ago"], Widgets.formatTime(GetTime() - updatedAt)))
-    else
-        blocks.finder.note:SetText(L["not searched yet"])
-    end
-    sections.groups.header:SetText(caption("Groups", #groups, suffix))
-    y = fillSection(sections.groups, y, groups, shownRoles() and "No group needs these roles."
+    local allGroups = sorted(combined(parties, groups, leader), sections.groups.key)
+    local allPlayers = sorted(combined(solo, finder, leader), sections.players.key)
+    local suffix = shownRoles() and ("  ·  " .. L["filtered"]) or ""
+    local y = -64 - TOP
+    sections.groups.header:SetText(caption("Groups", #allGroups, countAddon(allGroups), useFinder, suffix))
+    y = fillSection(sections.groups, y, allGroups, (shownRoles() and "No group needs these roles.")
+        or (not useFinder and "No Forever Groups party is queued right now.")
         or (quests and "No groups listed in the zones of your quests." or "No groups listed for your dungeons."))
-    sections.finder.header:SetText(caption("Players", #finder, suffix))
-    y = fillSection(sections.finder, y, finder, shownRoles() and "Nobody with these roles listed."
+    sections.players.header:SetText(caption("Players", #allPlayers, countAddon(allPlayers), useFinder, suffix))
+    y = fillSection(sections.players, y, allPlayers, (shownRoles() and "Nobody with these roles listed.")
+        or (not useFinder and (quests and "Nobody is looking for a questing group right now."
+            or "Nobody is in the Forever Groups queue right now."))
         or (quests and "Nobody listed in the zones of your quests." or "Nobody listed for your dungeons."))
-    placeBlock(blocks.finder, top, y + 4, true)
     frame:SetHeight(-y + 10)
 end
 
@@ -1258,11 +1560,14 @@ local function build()
     frame:HookScript("OnHide", function()
         ns.PlayerMenu.hide()
     end)
+    -- In line with the headings and rows below; the role choices one after
+    -- another.
     local show = Widgets.text(frame, "GameFontNormalSmall")
-    show:SetPoint("TOPLEFT", 18, -38 - TOP)
+    show:SetPoint("TOPLEFT", ROW_LEFT, -38 - TOP)
     show:SetText("Show:")
     sections.roleToggles = {}
-    for i, role in ipairs(Widgets.ROLES) do
+    local previous
+    for _, role in ipairs(Widgets.ROLES) do
         local toggle = Widgets.roleToggle(frame, role, 18, "GameFontHighlightSmall", function(self)
             local roles = Widgets.toggleRole(shownRoles() or "THD", role, self:GetChecked())
             if roles == nil then
@@ -1273,7 +1578,12 @@ local function build()
             onInput(10)
             QueueWindow.refresh()
         end)
-        toggle:SetPoint("TOPLEFT", 74 + (i - 1) * 96, -32 - TOP)
+        if previous then
+            toggle:SetPoint("LEFT", previous, "RIGHT", 10, 0)
+        else
+            toggle:SetPoint("LEFT", show, "RIGHT", 8, 0)
+        end
+        previous = toggle
         sections.roleToggles[role] = toggle
     end
     sections.refresh = Widgets.button(frame, "Refresh", 80)
@@ -1291,12 +1601,11 @@ local function build()
             ns.Log.debug("scrolling may not search the Group Finder; only clicks and keys will")
         end
     end)
-    blocks.addon = buildBlock("Forever Groups", Widgets.ICON)
-    blocks.finder = buildBlock("WoW Group Finder", "Interface\\LFGFrame\\LFG-Eye", { 0, 0.125, 0, 0.25 })
-    sections.queue = buildSection("Players", 6, "addonPlayers", "players")
-    sections.parties = buildSection("Parties", 4, "addonParties", "groups")
-    sections.finder = buildSection("Players", 8, "finderPlayers", "players")
-    sections.groups = buildSection("Groups", 8, "finderGroups", "groups")
+    -- When WoW's Group Finder was last searched, left of Refresh.
+    sections.note = Widgets.text(frame, "GameFontDisableSmall", "RIGHT")
+    sections.note:SetPoint("RIGHT", sections.refresh, "LEFT", -8, 0)
+    sections.groups = buildSection("Groups", 8, "groups", "groups")
+    sections.players = buildSection("Players", 12, "players", "players")
 end
 
 -- Who is looking is a drawer of the main window: a tab on the main window's

@@ -23,8 +23,7 @@ local PLAYERS = {
 -- Opens every table of Who is looking (by default only the half that fits
 -- what the player does is open).
 local function unfold(client)
-    local open = { addonPlayers = false, addonParties = false, finderPlayers = false, finderGroups = false }
-    client.ns.db.queueFold = { join = open, lead = open }
+    client.ns.db.queueFold = { players = false, groups = false }
 end
 
 describe("Status bar", function()
@@ -422,8 +421,9 @@ describe("Queue window", function()
         assert.is_not_nil(client:findText("^21$"))
         assert.is_not_nil(client:findText("^5:0%d$"))
         assert.is_nil(client:findText("^Wrong Dungeon$"))
-        assert.is_not_nil(client:findText("^WoW Group Finder$"))
-        assert.is_not_nil(client:findText("^Players %(1%)$"))
+        assert.is_not_nil(client:findText("^Players %(5  ·  4 in Forever Groups%)$"))
+        assert.are.equal("Interface\\LFGFrame\\LFG-Eye", client:findText("^Listed Tank$").parent.source.texture)
+        assert.are.equal(client.ns.Widgets.ICON, client:findText("^Other Healer$").parent.source.texture)
         assert.is_not_nil(client:findText("^searched 0:0%d ago$"))
         assert.are.same({ [799] = true }, client.searchFilter)
     end)
@@ -477,7 +477,7 @@ describe("Queue window", function()
         local client = world:addClient("Solo Player", { level = 13 })
         world:listGroup("Deadmines Group", 799, { T = 0, H = 0, D = 2 }, 60)
         world:advance(CONNECT)
-        client.ns.db.queueFold = { join = { finderGroups = false } }
+        client.ns.db.queueFold = { groups = false }
         client:slash("/dq")
         world:advance(1)
         client:click("Button", "Other dungeons")
@@ -593,7 +593,7 @@ describe("Queue window", function()
         assert.is_nil(client:findText("^Needs Heal %+3$"))
     end)
 
-    it("opens the groups by default, the players when leading, and keeps a fold until you switch", function()
+    it("opens both tables by default and keeps a fold, also when switching between joining and leading", function()
         local world = World.new()
         local client = world:addClient("Solo Player", { level = 20 })
         world:list("Listed Dps", "D", 799, 20, 60)
@@ -604,28 +604,20 @@ describe("Queue window", function()
         client:click("Button", "None")
         client:click("CheckButton", "The Deadmines")
         world:advance(1)
-        assert.is_nil(client:findText("^Listed Dps$"))
-        assert.is_not_nil(client:findText("^·  1 DPS$"))
-        assert.is_not_nil(client:findText("^Needs Dps %+2$"))
-        local lead = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t I'd like to lead"
-        client:click("CheckButton", lead)
         assert.is_not_nil(client:findText("^Listed Dps$"))
-        assert.is_nil(client:findText("^Needs Dps %+2$"))
-        assert.is_not_nil(client:findText("^·  1 need DPS$"))
-        local groupsCaption = client:findText("^Groups %(1%)$").parent
-        groupsCaption.scripts.OnClick(groupsCaption)
         assert.is_not_nil(client:findText("^Needs Dps %+2$"))
         local caption = client:findText("^Players %(1%)$").parent
         caption.scripts.OnClick(caption)
         assert.is_nil(client:findText("^Listed Dps$"))
-        client.ns.QueueWindow.refresh()
+        assert.is_not_nil(client:findText("^·  1 DPS$"))
+        local lead = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t Lead a group"
+        client:click("Button", lead)
         assert.is_nil(client:findText("^Listed Dps$"))
-        client:click("CheckButton", lead)
         assert.is_not_nil(client:findText("^Needs Dps %+2$"))
+        client:click("Button", "Join a group")
         assert.is_nil(client:findText("^Listed Dps$"))
-        client:click("CheckButton", lead)
+        caption.scripts.OnClick(caption)
         assert.is_not_nil(client:findText("^Listed Dps$"))
-        assert.is_nil(client:findText("^Needs Dps %+2$"))
     end)
 
     it("shows what a Forever Groups party still needs", function()
@@ -634,12 +626,12 @@ describe("Queue window", function()
         world:advance(CONNECT)
         local engine = client.ns.engine
         client:slash("/dq queue")
-        assert.is_not_nil(client:findText("^No Forever Groups party is queued right now%.$"))
+        assert.is_not_nil(client:findText("^No groups listed for your dungeons%.$"))
         engine.queue:upsert({ id = "Party Lead", joinedAt = 1, dungeons = { "5" }, reserved = "", members = {
             { name = "Party Lead", roles = "H", level = 20 }, { name = "Friend One", roles = "T", level = 20 },
         } }, engine:now())
         client.ns.QueueWindow.refresh()
-        assert.is_not_nil(client:findText("^Parties %(1%)$"))
+        assert.is_not_nil(client:findText("^Groups %(1  ·  1 in Forever Groups%)$"))
         local row = client:findText("^Party Lead %+1$").parent
         assert.is_true(row.needs[1].shown)
         assert.is_nil(row.needs[2].shown == true and row.needs[2] or nil)
@@ -662,10 +654,10 @@ describe("Queue window", function()
         assert.is_not_nil(client:findText("^·  2 groups need you$"))
         client:click("CheckButton", "Healer")
         assert.is_not_nil(client:findText("^3 groups"))
-        client:click("CheckButton", "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t I'd like to lead")
+        client:click("Button", "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t Lead a group")
         assert.is_nil(client:findText("^3 groups"))
         assert.is_nil(client:findText("groups need you$"))
-        client:click("CheckButton", "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t I'd like to lead")
+        client:click("Button", "Join a group")
         assert.is_not_nil(client:findText("^3 groups"))
         client.ns.db.noApply = true
         client.ns.Window.refresh()
@@ -828,8 +820,8 @@ describe("Queue window scrolling", function()
         world:advance(6)
         world:advance(1)
         assert.is_not_nil(client:findText("^Listed 01$"))
-        assert.is_nil(client:findText("^Listed 09$"))
-        assert.is_not_nil(client:findText("^1%-8 of 30, scroll for more$"))
+        assert.is_nil(client:findText("^Listed 13$"))
+        assert.is_not_nil(client:findText("^1%-12 of 30, scroll for more$"))
 
         local area
         for _, widget in ipairs(client.widgets) do
@@ -840,12 +832,26 @@ describe("Queue window scrolling", function()
         area.scripts.OnMouseWheel(area, -1)
         assert.is_nil(client:findText("^Listed 01$"))
         assert.is_not_nil(client:findText("^Listed 04$"))
-        assert.is_not_nil(client:findText("^4%-11 of 30, scroll for more$"))
+        assert.is_not_nil(client:findText("^4%-15 of 30, scroll for more$"))
         for _ = 1, 10 do
             area.scripts.OnMouseWheel(area, -1)
         end
         assert.is_not_nil(client:findText("^Listed 30$"))
-        assert.is_not_nil(client:findText("^23%-30 of 30, scroll for more$"))
+        assert.is_not_nil(client:findText("^19%-30 of 30, scroll for more$"))
+
+        local bar
+        for _, widget in ipairs(client.widgets) do
+            if widget.callbacks and widget.callbacks.OnScroll and widget.parent == area then
+                bar = widget
+            end
+        end
+        assert.is_true(bar.shown)
+        assert.are.equal(1, bar.scrollPercentage)
+        assert.are.equal(12 / 30, bar.visibleExtent)
+        bar.callbacks.OnScroll.fn(bar.callbacks.OnScroll.owner, 0.5)
+        assert.is_not_nil(client:findText("^10%-21 of 30, scroll for more$"))
+        bar.callbacks.OnScroll.fn(bar.callbacks.OnScroll.owner, 0)
+        assert.is_not_nil(client:findText("^Listed 01$"))
     end)
 end)
 
@@ -957,7 +963,7 @@ describe("Queue window order", function()
         assert.are.same({ "Bravo", "Alpha" }, order(false))
         local headers = nameHeaders()
         assert.are.equal(2, #headers)
-        local playersHeader, groupsHeader = headers[1], headers[2]
+        local groupsHeader, playersHeader = headers[1], headers[2]
         playersHeader.scripts.OnClick(playersHeader)
         assert.are.same({ "Alpha", "Bravo" }, order(false))
         assert.are.same({ "Zed +2", "Abe +2" }, order(true))

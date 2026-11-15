@@ -23,6 +23,8 @@ function Queue:upsert(entry, now)
         playstyle = entry.playstyle or 0,
         spec = entry.spec,
         lead = entry.lead,
+        compose = entry.compose,
+        levels = entry.levels,
         lastSeen = now,
         updatedAt = now,
     }

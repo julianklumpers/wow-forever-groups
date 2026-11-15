@@ -118,9 +118,9 @@ local function invite(pick)
         state.open = removeLetter(state.open, pick.role)
         return
     end
-    state.pending[pick.name] = { role = pick.role, at = GetTime() }
+    state.pending[pick.name] = { role = pick.role, at = GetTime(), class = pick.class }
     state.invited[pick.name] = pick.role
-    ns.RoleSync.expect(pick.name, pick.role)
+    ns.RoleSync.expect(pick.name, pick.role, pick.roles)
     local whispered = whisper(pick.name, ns.Messages.text("fillInvite", {
         dungeon = Dungeons.englishName(state.dungeon), role = string.lower(role),
         spec = ns.Spec.myLabel(ns.RoleSync.expected(ns.selfName)),
@@ -241,9 +241,11 @@ function Filler.step()
         return
     end
     local picks, open
+    local places = Filler.freePlaces()
     if state.dungeon then
         picks, open = Fill.pick(listings, {
             missing = needed, dungeon = state.dungeon, exclude = state.exclude, range = rangeOf(state.dungeon),
+            places = places, levels = ns.PartyLevels.rules("dungeons"),
         })
     else
         local ranges = {}
@@ -251,7 +253,8 @@ function Filler.step()
             ranges[id] = rangeOf(id)
         end
         local plan = Fill.plan(listings, {
-            missing = needed, dungeons = state.dungeons, exclude = state.exclude, ranges = ranges,
+            missing = needed, dungeons = state.dungeons, exclude = state.exclude, ranges = ranges, places = places,
+            levels = ns.PartyLevels.rules("dungeons"),
         })
         picks, open = plan.picks, plan.open
         if #picks > 0 then
@@ -266,8 +269,13 @@ function Filler.step()
         return
     end
     state.waitingForPlace = nil
+    local offered = {}
+    for _, listing in ipairs(listings) do
+        offered[listing.name] = listing.roles
+    end
     for i, pick in ipairs(picks) do
         if i <= room then
+            pick.roles = offered[pick.name]
             invite(pick)
         end
     end
@@ -359,15 +367,23 @@ end
 
 -- An invite sent another way (an applicant to our listing) counts like one of
 -- ours: its role is reserved, and joining or not is followed the same way.
-function Filler.trackInvite(name, role)
+-- The class wishes' free places, with the invites on their way counted
+-- (wow/partycompose.lua); nil without wishes.
+function Filler.freePlaces()
+    return ns.PartyCompose.freePlaces()
+end
+
+-- roles: the roles the player offered (their listing or application), or
+-- nil when not known.
+function Filler.trackInvite(name, role, class, roles)
     if not state or queueProposalOpen() then
         return false
     end
     state.exclude[name] = true
     -- The caller sends the invite right away.
-    state.pending[name] = { role = role, at = GetTime(), sentAt = GetTime() }
+    state.pending[name] = { role = role, at = GetTime(), sentAt = GetTime(), class = class }
     state.invited[name] = role
-    ns.RoleSync.expect(name, role)
+    ns.RoleSync.expect(name, role, roles or role)
     changed()
     return true
 end
@@ -461,6 +477,19 @@ function Filler.reservedRoles()
         counts[pending.role] = counts[pending.role] + 1
     end
     return Roles.fromCounts(counts)
+end
+
+-- Invites still out, as places, sorted by name: { { name, role, class } }
+-- (class nil when not known).
+function Filler.pendingPlaces()
+    local list = {}
+    for name, pending in pairs(state and state.pending or {}) do
+        list[#list + 1] = { name = name, role = pending.role, class = pending.class }
+    end
+    table.sort(list, function(a, b)
+        return a.name < b.name
+    end)
+    return list
 end
 
 -- Invites still out, { name = role }, so they survive a /reload.

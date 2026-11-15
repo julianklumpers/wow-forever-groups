@@ -4,10 +4,17 @@ ns = ns or {}
 local Config = ns.Config or require("core.config")
 local Roles = ns.Roles or require("core.roles")
 local Playstyles = ns.Playstyles or require("core.playstyles")
+local Specs = ns.Specs or require("core.specs")
+local Compose = ns.Compose or require("core.compose")
+local Levels = ns.Levels or require("core.levels")
 
 local Matchmaker = {}
 
 local SEARCH_BUDGET = 20000
+-- Leaders with class wishes may turn down many complete groups before one
+-- fits; together they get at most this share of a round's search, so the
+-- other players always keep the rest.
+local WISH_BUDGET = 4000
 
 function Matchmaker.comparePriority(a, b)
     if a.joinedAt ~= b.joinedAt then
@@ -142,9 +149,14 @@ end
 -- taken: names already in the group, so a player listed in two entries
 -- (a stale solo entry and a party's) is never placed twice.
 -- style: the group's playstyle so far; a candidate must go with it.
-local function search(candidates, suffixSupply, start, states, chosen, budget, hasPremade, taken, style)
+-- accept(chosen): a complete group that fails it (a leader's class wishes)
+-- is passed over and the search goes on. feasible(chosen): checked as each
+-- candidate is added, so a set that can never fit the wishes is dropped at
+-- once instead of after every way of completing it.
+local function search(candidates, suffixSupply, start, states, chosen, budget, hasPremade, taken, style, accept,
+                      feasible)
     if anyComplete(states) then
-        return true
+        return accept == nil or accept(chosen)
     end
     if not canStillComplete(states, suffixSupply[start]) then
         return false
@@ -161,13 +173,17 @@ local function search(candidates, suffixSupply, start, states, chosen, budget, h
             local nextStates = apply(states, candidate.options)
             if #nextStates > 0 then
                 chosen[#chosen + 1] = candidate
-                setTaken(candidate, taken, true)
-                if search(candidates, suffixSupply, i + 1, nextStates, chosen, budget, hasPremade or isPremade,
-                    taken, Playstyles.combine(style, candidate.playstyle)) then
-                    return true
+                if feasible and not feasible(chosen) then
+                    chosen[#chosen] = nil
+                else
+                    setTaken(candidate, taken, true)
+                    if search(candidates, suffixSupply, i + 1, nextStates, chosen, budget, hasPremade or isPremade,
+                        taken, Playstyles.combine(style, candidate.playstyle), accept, feasible) then
+                        return true
+                    end
+                    setTaken(candidate, taken, nil)
+                    chosen[#chosen] = nil
                 end
-                setTaken(candidate, taken, nil)
-                chosen[#chosen] = nil
             end
         end
     end
@@ -226,6 +242,91 @@ local function assign(entries, need, index, picked)
     return false
 end
 
+-- A leader's class wishes (core/compose.lua): the leader's entry anchors the
+-- group, only solo players join it, and each of them only in a role whose
+-- places allow their class (known from their spec). The leader's own
+-- players (the leader, the party, places held for open invites) have no
+-- class here: the leader sends their places without a wish
+-- (wow/partycompose.lua, Compose.seat), so they fit there and never take a
+-- wished place. The finished group must give every player a place of their
+-- own.
+
+-- A copy of the entry with its members' roles narrowed to what the wishes
+-- allow, or nil when a member has no role left. own: the leader's own entry.
+local function restrictFor(rules, entry, slots, own)
+    local members = {}
+    for i, member in ipairs(entry.members) do
+        local class = not own and i == 1 and not member.reserved and entry.class or nil
+        local roles = Compose.rolesFor(rules, class, member.roles)
+        if roles == "" then
+            return nil
+        end
+        members[i] = { name = member.name, roles = roles, level = member.level, reserved = member.reserved,
+            class = class }
+    end
+    local copy = {}
+    for key, value in pairs(entry) do
+        copy[key] = value
+    end
+    copy.members, copy.options = members, Roles.options(members, slots, true)
+    return copy
+end
+
+-- One role per member (as assign) that gives everyone a place of the
+-- wishes, with exactly `target` filled; nil when there is none.
+local function pickFor(entries, target, rules)
+    local picked = {}
+    local function walk(index, need)
+        if index > #entries then
+            if not isComplete(need) then
+                return false
+            end
+            local members = {}
+            for i, entry in ipairs(entries) do
+                for j, member in ipairs(entry.members) do
+                    members[#members + 1] = { role = picked[i][j], class = member.class }
+                end
+            end
+            return Compose.fits(rules, members)
+        end
+        for _, option in ipairs(entries[index].options) do
+            if fits(option.counts, need) then
+                picked[index] = option.assignment
+                local rest = { T = need.T - option.counts.T, H = need.H - option.counts.H,
+                    D = need.D - option.counts.D }
+                if walk(index + 1, rest) then
+                    return true
+                end
+            end
+        end
+        picked[index] = nil
+        return false
+    end
+    if walk(1, { T = target.T, H = target.H, D = target.D }) then
+        return picked
+    end
+    return nil
+end
+
+-- The candidates an anchor may take: none with wishes or a level limit of
+-- their own (they anchor their own group), and under the anchor's wishes or
+-- limit only solo players, within the limit, narrowed to the roles their
+-- class may take.
+local function candidateFor(anchor, entry, slots)
+    if entry.rules or entry.levels then
+        return nil
+    end
+    if not anchor.rules and not anchor.levels then
+        return entry
+    end
+    if #entry.members > 1 or (anchor.levels and not Levels.entryFits(anchor.levels, entry)) then
+        return nil
+    end
+    return anchor.rules and restrictFor(anchor.rules, entry, slots) or entry
+end
+
+Matchmaker.candidateFor = candidateFor
+
 local function isBetter(a, b)
     if not b then
         return true
@@ -252,35 +353,99 @@ local function sortedCopy(list)
     return copy
 end
 
+-- The entries an anchor may take, in queue order: those after it, and for a
+-- leader with wishes or a level limit also those before it, who cannot take
+-- that leader into their own group.
+local function candidateIndices(anchor, anchorIndex, count)
+    local list = {}
+    local first = (anchor.rules or anchor.levels) and 1 or anchorIndex + 1
+    for i = first, count do
+        if i ~= anchorIndex then
+            list[#list + 1] = i
+        end
+    end
+    return list
+end
+
 local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames)
     local anchor = sorted[anchorIndex]
     if overlaps(anchor, usedNames) then
         return nil
     end
+    local rules = anchor.rules
+    if rules then
+        anchor = restrictFor(rules, anchor, slots, true)
+        if not anchor or budget.wishLeft <= 0 then
+            return nil
+        end
+    end
+    -- The players this anchor may take, restricted once (not per dungeon).
+    local pool = {}
+    for _, i in ipairs(candidateIndices(anchor, anchorIndex, #sorted)) do
+        local candidate = not overlaps(sorted[i], usedNames) and candidateFor(anchor, sorted[i], slots)
+        if candidate and Playstyles.compatible(anchor.playstyle, candidate.playstyle) then
+            pool[#pool + 1] = candidate
+        end
+    end
+    local shared = budget
+    if rules then
+        budget = { left = math.min(shared.left, shared.wishLeft) }
+    end
+    local start = budget.left
+    local picked
+    local accept = rules and function(chosen)
+        picked = pickFor(chosen, slots, rules)
+        return picked ~= nil
+    end or nil
+    local feasible = rules and function(chosen)
+        local members = {}
+        for _, entry in ipairs(chosen) do
+            for _, member in ipairs(entry.members) do
+                members[#members + 1] = { roles = member.roles, class = member.class }
+            end
+        end
+        return Compose.fits(rules, members)
+    end or nil
     local best
     for _, dungeon in ipairs(sortedCopy(anchor.dungeons)) do
         local candidates = {}
-        for i = anchorIndex + 1, #sorted do
-            if wantsDungeon(sorted[i], dungeon) and not overlaps(sorted[i], usedNames)
-                and Playstyles.compatible(anchor.playstyle, sorted[i].playstyle) then
-                candidates[#candidates + 1] = sorted[i]
+        for _, candidate in ipairs(pool) do
+            if wantsDungeon(candidate, dungeon) then
+                candidates[#candidates + 1] = candidate
             end
+        end
+        -- Under wishes: first whether the places can be filled at all by
+        -- these players; a wish for a class nobody here plays ends it at once.
+        local fillable = true
+        if rules then
+            local everyone = {}
+            for index = 0, #candidates do
+                for _, member in ipairs((index == 0 and anchor or candidates[index]).members) do
+                    everyone[#everyone + 1] = { roles = member.roles, class = member.class }
+                end
+            end
+            fillable = Compose.canFill(rules, everyone)
         end
         local states = apply({ { T = slots.T, H = slots.H, D = slots.D } }, anchor.options)
         local chosen = { anchor }
         local taken = {}
         setTaken(anchor, taken, true)
-        if #states > 0 and search(candidates, buildSuffixSupply(candidates), 1, states, chosen, budget,
-            #anchor.members > 1, taken, anchor.playstyle) then
+        if fillable and #states > 0 and search(candidates, buildSuffixSupply(candidates), 1, states, chosen, budget,
+            #anchor.members > 1, taken, anchor.playstyle, accept, feasible) then
             local ranks = {}
             for i, entry in ipairs(chosen) do
                 ranks[i] = entry.rank
             end
-            local group = { dungeon = dungeon, entries = chosen, ranks = ranks }
+            local group = { dungeon = dungeon, entries = chosen, ranks = ranks, picked = picked }
             if isBetter(group, best) then
                 best = group
             end
         end
+    end
+    if budget ~= shared then
+        local spent = start - budget.left
+        shared.left = shared.left - spent
+        shared.wishLeft = shared.wishLeft - spent
     end
     return best
 end
@@ -289,6 +454,11 @@ end
 -- role each. A party leads (it never breaks up), then a player who would like
 -- to lead, then the tank, then the earliest entry.
 function Matchmaker.chooseLeaderEntry(entries)
+    for _, entry in ipairs(entries) do
+        if entry.composer then
+            return entry
+        end
+    end
     local best
     for _, entry in ipairs(entries) do
         local size, hasTank = entry.size or #entry.members, false
@@ -378,8 +548,11 @@ end
 
 -- target: the roles the group's own players fill (all slots for a full group).
 local function finishGroup(group, target)
-    local picked = {}
-    assign(group.entries, { T = target.T, H = target.H, D = target.D }, 1, picked)
+    local picked = group.picked
+    if not picked then
+        picked = {}
+        assign(group.entries, { T = target.T, H = target.H, D = target.D }, 1, picked)
+    end
     local assigned = {}
     local reserved = { T = 0, H = 0, D = 0 }
     for i, entry in ipairs(group.entries) do
@@ -391,7 +564,8 @@ local function finishGroup(group, target)
                 members[#members + 1] = { name = member.name, role = picked[i][j] }
             end
         end
-        assigned[i] = { id = entry.id, members = members, size = #entry.members, source = entry.source }
+        assigned[i] = { id = entry.id, members = members, size = #entry.members, source = entry.source,
+            composer = entry.rules ~= nil or entry.levels ~= nil }
     end
     local leaderEntry, perEntry, sources, members = Matchmaker.orderByLeader(assigned)
     return {
@@ -412,7 +586,9 @@ end
 -- (per entry, its members with the single role each one gets).
 -- Reserved roles (already invited from WoW's Group Finder) take part as
 -- placeholder members, so they count as taken slots.
-local function wrapAll(entries, slots)
+-- now: server time, for class wishes that end (prefer mode); without it
+-- the wishes are left out.
+local function wrapAll(entries, slots, now)
     local wrapped = {}
     for i, entry in ipairs(Matchmaker.sortByPriority(entries)) do
         local all = Roles.withReserved(entry.members, entry.reserved)
@@ -426,17 +602,20 @@ local function wrapAll(entries, slots)
             options = Roles.options(all, slots),
             rank = i,
             source = entry,
+            class = (Specs.decode(entry.spec)),
+            rules = now and Compose.active(entry.compose, now) or nil,
+            levels = now and Levels.active(entry.levels, now) or nil,
         }
     end
     return wrapped
 end
 
-function Matchmaker.findGroups(entries, slots)
+function Matchmaker.findGroups(entries, slots, now)
     slots = slots or Config.SLOTS
-    local wrapped = wrapAll(entries, slots)
+    local wrapped = wrapAll(entries, slots, now)
 
     local groups, usedNames = {}, {}
-    local budget = { left = SEARCH_BUDGET }
+    local budget = { left = SEARCH_BUDGET, wishLeft = WISH_BUDGET }
     local full = { T = slots.T, H = slots.H, D = slots.D }
     -- One pass is enough: the search is exhaustive and a group only takes
     -- players away, so an anchor that found nothing never finds a group later.
@@ -475,51 +654,71 @@ end
 -- longest-waiting of them can form, with the remaining roles left open for
 -- WoW's Group Finder. A lone entry fills itself from the Group Finder. Players
 -- are taken in priority order. Returns nil when no such group exists.
+-- The open roles (one of states) the chosen players can leave under the
+-- anchor's class wishes, with their roles; the fewest scarce roles open first.
+local function partialPick(chosen, states, slots, rules)
+    local sorted = {}
+    for i, need in ipairs(states) do
+        sorted[i] = need
+    end
+    table.sort(sorted, function(a, b)
+        return openScore(a) < openScore(b)
+    end)
+    for _, open in ipairs(sorted) do
+        local target = { T = slots.T - open.T, H = slots.H - open.H, D = slots.D - open.D }
+        local picked = not rules and {} or pickFor(chosen, target, rules)
+        if picked then
+            return open, rules and picked or nil
+        end
+    end
+    return nil
+end
+
 function Matchmaker.findPartialGroup(entries, slots, now, waitAfter, minPlayers)
     slots = slots or Config.SLOTS
-    local wrapped = wrapAll(entries, slots)
-    for anchorIndex, anchor in ipairs(wrapped) do
-        if now - anchor.joinedAt < waitAfter then
+    local wrapped = wrapAll(entries, slots, now)
+    for anchorIndex, original in ipairs(wrapped) do
+        if now - original.joinedAt < waitAfter then
             return nil
         end
+        local rules = original.rules
+        local anchor = rules and restrictFor(rules, original, slots, true) or (not rules and original) or nil
         local best
-        for _, dungeon in ipairs(sortedCopy(anchor.dungeons)) do
+        for _, dungeon in ipairs(anchor and sortedCopy(anchor.dungeons) or {}) do
             local states = apply({ { T = slots.T, H = slots.H, D = slots.D } }, anchor.options)
             local chosen, hasPremade, style = { anchor }, #anchor.members > 1, anchor.playstyle
             local names = {}
             setTaken(anchor, names, true)
-            for i = anchorIndex + 1, #wrapped do
-                local candidate = wrapped[i]
-                local isPremade = #candidate.members > 1
-                if #states > 0 and wantsDungeon(candidate, dungeon) and not (isPremade and hasPremade)
+            for _, i in ipairs(candidateIndices(anchor, anchorIndex, #wrapped)) do
+                local candidate = candidateFor(anchor, wrapped[i], slots)
+                local isPremade = candidate and #candidate.members > 1
+                if candidate and #states > 0 and wantsDungeon(candidate, dungeon) and not (isPremade and hasPremade)
                     and Playstyles.compatible(style, candidate.playstyle) and not overlaps(candidate, names) then
                     local nextStates = apply(states, candidate.options)
-                    if #nextStates > 0 then
+                    chosen[#chosen + 1] = candidate
+                    if #nextStates > 0 and (not rules or partialPick(chosen, nextStates, slots, rules)) then
                         states = nextStates
-                        chosen[#chosen + 1] = candidate
                         hasPremade = hasPremade or isPremade
                         style = Playstyles.combine(style, candidate.playstyle)
                         setTaken(candidate, names, true)
+                    else
+                        chosen[#chosen] = nil
                     end
                 end
             end
             local players = playerCount(chosen)
             if #states > 0 and #chosen >= 2 and players >= minPlayers then
-                local open = states[1]
-                for _, need in ipairs(states) do
-                    if openScore(need) < openScore(open) then
-                        open = need
-                    end
-                end
-                if not best or players > best.players
-                    or (players == best.players and openScore(open) < openScore(best.open)) then
-                    best = { dungeon = dungeon, entries = chosen, open = open, players = players }
+                local open, picked = partialPick(chosen, states, slots, rules)
+                if open and (not best or players > best.players
+                    or (players == best.players and openScore(open) < openScore(best.open))) then
+                    best = { dungeon = dungeon, entries = chosen, open = open, players = players, picked = picked }
                 end
             end
         end
         if best then
             local target = { T = slots.T - best.open.T, H = slots.H - best.open.H, D = slots.D - best.open.D }
-            local group = { dungeon = best.dungeon, entries = best.entries, missing = Roles.fromCounts(best.open) }
+            local group = { dungeon = best.dungeon, entries = best.entries, missing = Roles.fromCounts(best.open),
+                picked = best.picked }
             return finishGroup(group, target)
         end
     end

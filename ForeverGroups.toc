@@ -20,6 +20,9 @@ core\config.lua
 core\roles.lua
 core\playstyles.lua
 core\specs.lua
+core\classes.lua
+core\compose.lua
+core\levels.lua
 core\protocol.lua
 core\matchmaker.lua
 core\questmatch.lua
@@ -32,7 +35,6 @@ core\outbox.lua
 core\ratelimit.lua
 core\dungeons.lua
 core\battlegrounds.lua
-core\classes.lua
 core\fill.lua
 core\lfgpick.lua
 core\replies.lua
@@ -61,6 +63,8 @@ wow\rolesync.lua
 wow\partyroles.lua
 wow\ui\widgets.lua
 wow\invites.lua
+wow\partycompose.lua
+wow\partylevels.lua
 wow\filler.lua
 wow\keysearch.lua
 wow\ui\proposal.lua
@@ -83,6 +87,8 @@ wow\status.lua
 wow\ui\window\shared.lua
 wow\ui\window\card.lua
 wow\ui\window\setup.lua
+wow\ui\window\compose.lua
+wow\ui\window\levels.lua
 wow\ui\window\quests.lua
 wow\ui\window\battlegrounds.lua
 wow\ui\window\tabs.lua
@@ -91,6 +97,7 @@ wow\ui\tour.lua
 wow\ui\progresswindow.lua
 wow\ui\playermenu.lua
 wow\ui\playstylemenu.lua
+wow\ui\classmenu.lua
 wow\ui\queuewindow.lua
 wow\ui\minimap.lua
 wow\ui\findertab.lua

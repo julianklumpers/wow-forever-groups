@@ -188,6 +188,11 @@ function Spec.className(token)
     return className(token)
 end
 
+-- In English, for messages other players read ("Warlock").
+function Spec.englishClass(token)
+    return englishClass(token)
+end
+
 -- The tree name for a group card slot ("Enhancement"), or nil.
 function Spec.treeOf(name)
     if name == ns.selfName then

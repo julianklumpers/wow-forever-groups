@@ -4,7 +4,6 @@ local L = ns.L
 
 local W = ns.WindowParts
 local Widgets = ns.Widgets
-local WIDTH = W.WIDTH
 local PAD = W.PAD
 local CHECK_INSET = W.CHECK_INSET
 local ROW_WIDTH = W.ROW_WIDTH
@@ -91,6 +90,7 @@ function W.layoutQuests(y, state)
     end
     W.refreshRoles(false)
     y = W.layoutChoices(y, false)
+    y = W.layoutLevels(y, "quests")
     if W.cardBelowRoles then
         y = W.cardBelowRoles(y)
     end
@@ -179,7 +179,7 @@ end
 function W.buildQuests()
     ui.questHeader = Widgets.header(W.frame, "Group and elite quests", PAD, W.HEADER_GAP)
     ui.questEmpty = Widgets.text(W.frame, "GameFontDisableSmall")
-    ui.questEmpty:SetWidth(WIDTH - 2 * PAD)
+    ui.questEmpty:SetWidth(W.CONTENT)
     for i = 1, MAX_QUEST_ROWS do
         local row = Widgets.check(W.frame, "", function(self)
             W.questUnticked()[self.key] = not self:GetChecked() or nil

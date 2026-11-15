@@ -326,7 +326,7 @@ function QuestShare.askParty(dungeon, party, known)
         local text = ns.Messages.text("partyAskQuests", { dungeon = Dungeons.englishName(dungeon) })
         if text then
             ns.Comm.sendParty(ASK .. dungeon)
-            pcall(C_ChatInfo.SendChatMessage or SendChatMessage, text, "PARTY")
+            ns.Whispers.sayParty(text)
         end
     end)
     return true

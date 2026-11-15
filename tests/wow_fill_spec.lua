@@ -494,6 +494,14 @@ describe("A group filled to five", function()
         leader:joins("Dps C")
         world:advance(1)
         assert.are.same({ "Group complete! The Deadmines" }, leader.notices)
+        local said = {}
+        for _, w in ipairs(leader.whispers) do
+            if w.chatType == "PARTY" then
+                said[#said + 1] = w.text
+            end
+        end
+        assert.are.same({ "[Forever Groups] Group complete for The Deadmines! Meet at the entrance." }, said)
+        assert.is_true(leader:logged("Said in party chat: %[Forever Groups%] Group complete"))
         assert.is_not_nil(leader:findText("^Group complete  ·  you lead"))
         assert.is_not_nil(leader:findText("^The Deadmines$"))
         for _, name in ipairs({ "Tanky Mctank", "Heal", "Dps A", "Dps B", "Dps C" }) do
@@ -512,7 +520,7 @@ describe("A player who switches roles after joining", function()
     it("is followed: the addon looks for the role that became free", function()
         local world = World.new()
         local leader = world:addClient("Tanky Mctank", { level = 20 })
-        world:list("Listed Heal", "H", 799, 20, 300)
+        world:list("Listed Heal", "HD", 799, 20, 300)
         world:list("Dps A", "D", 799, 20, 200)
         world:list("Dps B", "D", 799, 20, 100)
         world:advance(CONNECT)
@@ -537,6 +545,52 @@ describe("A player who switches roles after joining", function()
         invitedOnly(leader, { "Second Heal" })
         world:advance(10)
         assert.are.equal("DAMAGER", leader.roles["Listed Heal"])
+    end)
+
+    it("is taken over when it cannot be set, even one the player never offered", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        world:list("Feral Heal", "H", 799, 20, 300)
+        world:advance(CONNECT)
+        leader:slash("/dq")
+        leader:click("CheckButton", "Tank")
+        leader:click("Button", "None")
+        leader:click("CheckButton", "The Deadmines")
+        leader:slash("/dq fill")
+        world:advance(2)
+        leader.rolesIgnored = { ["Feral Heal"] = true }
+        leader.roles["Feral Heal"] = "TANK"
+        leader:joins("Feral Heal")
+        world:advance(10)
+        assert.are.equal("T", leader.ns.RoleSync.expected("Feral Heal"))
+    end)
+
+    it("is set back when WoW gives a role from the spec the player never offered, until they insist", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        world:list("Feral Heal", "H", 799, 20, 300)
+        world:list("Dps A", "D", 799, 20, 200)
+        world:advance(CONNECT)
+        leader:slash("/dq")
+        leader:click("CheckButton", "Tank")
+        leader:click("Button", "None")
+        leader:click("CheckButton", "The Deadmines")
+        leader:slash("/dq fill")
+        world:advance(2)
+        leader:joins("Feral Heal")
+        world:advance(6)
+        assert.are.equal("HEALER", leader.roles["Feral Heal"])
+        for _ = 1, 2 do
+            leader.roles["Feral Heal"] = "TANK"
+            leader:fire("ROLE_CHANGED_INFORM")
+            world:advance(6)
+            assert.are.equal("HEALER", leader.roles["Feral Heal"])
+        end
+        leader.roles["Feral Heal"] = "TANK"
+        leader:fire("ROLE_CHANGED_INFORM")
+        world:advance(6)
+        assert.are.equal("TANK", leader.roles["Feral Heal"])
+        assert.are.equal("T", leader.ns.RoleSync.expected("Feral Heal"))
     end)
 end)
 

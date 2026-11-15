@@ -7,8 +7,7 @@ end
 -- Opens every table of Who is looking (by default only the half that fits
 -- what the player does is open).
 local function unfold(client)
-    local open = { addonPlayers = false, addonParties = false, finderPlayers = false, finderGroups = false }
-    client.ns.db.queueFold = { join = open, lead = open }
+    client.ns.db.queueFold = { players = false, groups = false }
 end
 
 describe("with WoW's Group Finder turned off", function()

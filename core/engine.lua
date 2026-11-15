@@ -9,6 +9,9 @@ local Election = ns.Election or require("core.election")
 local Proposal = ns.Proposal or require("core.proposal")
 local Roles = ns.Roles or require("core.roles")
 local Playstyles = ns.Playstyles or require("core.playstyles")
+local Compose = ns.Compose or require("core.compose")
+local Levels = ns.Levels or require("core.levels")
+local Specs = ns.Specs or require("core.specs")
 
 local Engine = {}
 Engine.__index = Engine
@@ -95,7 +98,7 @@ local function heartbeatMessage(entry)
     return {
         kind = "queue", joinedAt = entry.joinedAt, dungeons = entry.dungeons, members = entry.members,
         reserved = entry.reserved, since = entry.since, playstyle = entry.playstyle, spec = entry.spec,
-        lead = #entry.members == 1 and entry.lead or nil,
+        lead = #entry.members == 1 and entry.lead or nil, compose = entry.compose, levels = entry.levels,
     }
 end
 
@@ -117,6 +120,8 @@ function Engine:join(members, dungeons, joinedAt)
         playstyle = self.playstyle,
         spec = self.spec,
         lead = self.lead,
+        compose = self.compose,
+        levels = self.levels,
     }
     if not entry.members[1] or entry.members[1].name ~= self.name then
         return false, "first member must be the player"
@@ -149,7 +154,8 @@ function Engine:updateEntry(members, reserved, dungeons)
     local entry = {
         id = self.name, joinedAt = current.joinedAt, dungeons = dungeons or current.dungeons,
         members = copyMembers(members), reserved = reserved or "", since = current.since,
-        playstyle = self.playstyle, spec = self.spec, lead = self.lead,
+        playstyle = self.playstyle, spec = self.spec, lead = self.lead, compose = self.compose,
+        levels = self.levels,
     }
     if not entry.members[1] or entry.members[1].name ~= self.name then
         return false, "first member must be the player"
@@ -167,11 +173,13 @@ function Engine:updateEntry(members, reserved, dungeons)
 end
 
 -- Sets a field of the next queue entry; a queued entry changes right away
--- when it still fits in the queue message. Returns false when it did not fit.
+-- when it still fits in the queue message. Returns false when it did not
+-- fit; then the field stays as it was, or every later change of the entry
+-- would fail on it too.
 function Engine:changeEntry(field, value)
-    self[field] = value
     local entry = self.myEntry
     if not entry or entry[field] == value then
+        self[field] = value
         return true
     end
     local before = entry[field]
@@ -180,6 +188,7 @@ function Engine:changeEntry(field, value)
         entry[field] = before
         return false
     end
+    self[field] = value
     self:publish()
     return true
 end
@@ -187,7 +196,7 @@ end
 -- The playstyle for the next queue entry; a queued entry changes right away.
 function Engine:setPlaystyle(playstyle)
     if not self:changeEntry("playstyle", playstyle) then
-        self:emit("error", { message = "the new playstyle does not fit in the queue message; it applies next time" })
+        self:emit("error", { message = "The new playstyle does not fit in the queue message; tick fewer dungeons." })
     end
 end
 
@@ -200,6 +209,36 @@ end
 -- matchmaking).
 function Engine:setLead(lead)
     self:changeEntry("lead", lead and true or nil)
+end
+
+-- The classes wanted per place of the group (core/compose.lua), or nil.
+-- Returns false when it does not fit in the queue message.
+-- A change that does not fit is told once, not on every later try.
+function Engine:reportTooLong(field, value, message)
+    self.tooLong = self.tooLong or {}
+    if self.tooLong[field] ~= value then
+        self.tooLong[field] = value
+        self:emit("error", { message = message })
+    end
+end
+
+function Engine:setCompose(compose)
+    local ok = self:changeEntry("compose", compose)
+    if not ok then
+        self:reportTooLong("compose", compose,
+            "Your class choices do not fit in the queue message; tick fewer dungeons.")
+    end
+    return ok
+end
+
+-- The level limit for players joining (core/levels.lua), or nil.
+function Engine:setLevels(levels)
+    local ok = self:changeEntry("levels", levels)
+    if not ok then
+        self:reportTooLong("levels", levels,
+            "Your level limit does not fit in the queue message; tick fewer dungeons.")
+    end
+    return ok
 end
 
 -- Puts the own entry in the local queue and tells the others, unless held.
@@ -357,9 +396,44 @@ function Engine:acceptProposalForMe(proposal)
     self:emit("proposal", proposalView(proposal, self.fakes))
 end
 
+-- Under our class wishes and level limit: whether every other player of the
+-- proposal fits them. A matchmaker of an older version does not know them,
+-- so the leader checks for themselves. Classes as in matchmaking
+-- (restrictFor): another entry's first player by their spec; our own players
+-- and held places none, as their places go without a wish.
+function Engine:proposalKeepsMyWishes(proposal)
+    local mine, now = self.myEntry, self:now()
+    local rules = mine.compose and Compose.active(mine.compose, now)
+    local limit = mine.levels and Levels.active(mine.levels, now)
+    if not rules and not limit then
+        return true
+    end
+    local members = {}
+    for _, entry in ipairs(proposal.entries) do
+        local own = entry.id == self.name
+        local known = own and mine or self.queue:get(entry.id)
+        local levels = {}
+        for _, member in ipairs(known and known.members or {}) do
+            levels[member.name] = member.level
+        end
+        for i, member in ipairs(entry.members) do
+            if not own and limit and not Levels.fits(limit, levels[member.name]) then
+                return false
+            end
+            local class = not own and i == 1 and known and (Specs.decode(known.spec)) or nil
+            members[#members + 1] = { role = member.role, class = class }
+        end
+    end
+    for letter in string.gmatch(mine.reserved or "", ".") do
+        members[#members + 1] = { role = letter }
+    end
+    return not rules or Compose.fits(rules, members)
+end
+
 -- Whether the proposal was built from the current version of our entry:
 -- the same players, each in a role they can play, and room for the roles we
--- reserved for Group Finder invites.
+-- reserved for Group Finder invites; and, under our wishes or level limit,
+-- only players who fit them.
 function Engine:proposalFitsMyEntry(proposal)
     local mine = self.myEntry
     local listed
@@ -399,7 +473,7 @@ function Engine:proposalFitsMyEntry(proposal)
         end
         missing = string.sub(missing, 1, at - 1) .. string.sub(missing, at + 1)
     end
-    return true
+    return self:proposalKeepsMyWishes(proposal)
 end
 
 function Engine:handleOwnInvolvement(proposal)
@@ -572,7 +646,8 @@ function handlers.queue(self, sender, msg)
     end
     self.queue:upsert({
         id = sender, joinedAt = msg.joinedAt, dungeons = msg.dungeons, members = msg.members, reserved = msg.reserved,
-        since = since, playstyle = msg.playstyle, spec = msg.spec, lead = msg.lead,
+        since = since, playstyle = msg.playstyle, spec = msg.spec, lead = msg.lead, compose = msg.compose,
+        levels = msg.levels,
     }, self:now())
 end
 
@@ -847,7 +922,7 @@ function Engine:runMatchmaking()
                 real[#real + 1] = entry
             end
         end
-        local groups = self.matcher.findGroups(real, self.config.SLOTS)
+        local groups = self.matcher.findGroups(real, self.config.SLOTS, self:now())
         for _, group in ipairs(groups) do
             self:proposeGroup(group, false)
         end
@@ -875,7 +950,7 @@ function Engine:runMatchmaking()
             end
         end
         local mine = {}
-        for _, group in ipairs(self.matcher.findGroups(pool, self.config.SLOTS)) do
+        for _, group in ipairs(self.matcher.findGroups(pool, self.config.SLOTS, self:now())) do
             if self:groupIncludesMe(group) then
                 mine[#mine + 1] = group
             end

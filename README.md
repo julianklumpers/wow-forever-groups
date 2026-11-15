@@ -24,8 +24,8 @@ in the group, with roles set for you.
   players, join a group listed in WoW's Group Finder, or build a party of five or a premade of
   ten (a raid, with at least two healers) from listed players. Sign up at a battlemaster as a
   group. You can wait for a dungeon, a quest and a battleground at the same time.
-- **Lead if you like** — tick "I'd like to lead" and you become the leader of the group that
-  forms; Forever Groups builds it for you.
+- **Join or lead** — "Join a group" finds you a group; with "Lead a group" you become the leader
+  of the group that forms, and Forever Groups builds it for you.
 - **Playstyle** — "Any" by default, so you're grouped with everyone; pick Learning, Relaxed,
   Competitive or Carry Offered in the dropdown under the role tiles to be grouped with
   like-minded players only.
@@ -43,6 +43,9 @@ in the group, with roles set for you.
 - **Disconnected?** Back within 15 minutes and you're in the queue again.
 - **Status bar** — boss progress (e.g. 4/7 bosses) and everyone's quest progress, folded out
   under the bar.
+- **Limit levels** — leading, set the lowest and highest level of the players who join you.
+- **Choose the classes in your party** — leading a dungeon group, switch it on and pick the
+  classes you want per place (a Mage for water, a Warrior to tank); only those classes join you.
 - **Who is looking** — a drawer on the side of the window with the players and groups looking
   for your dungeons or group quests, from Forever Groups and WoW's Group Finder (Quests & Zones
   for quests); right-click to whisper, invite or request to join. Open by default; the tab with

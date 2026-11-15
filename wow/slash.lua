@@ -168,7 +168,68 @@ local function cmdDungeons(rest)
     end
 end
 
-local function cmdPreview()
+-- Thin red lines on the main window's content edges, and in chat where the
+-- window, its inner panel and the content start and end, to check that the
+-- margins are the same on both sides. Again to hide them.
+local guides
+
+local function cmdGuides()
+    local W = ns.WindowParts
+    ns.Window.show()
+    if guides and guides[1]:IsShown() then
+        for _, line in ipairs(guides) do
+            line:Hide()
+        end
+        return
+    end
+    if not guides then
+        guides = {}
+        for i, x in ipairs({ W.PAD, W.RIGHT }) do
+            local line = W.frame:CreateTexture(nil, "OVERLAY", nil, 7)
+            line:SetColorTexture(1, 0, 0, 0.8)
+            line:SetWidth(1)
+            line:SetPoint("TOPLEFT", W.frame, "TOPLEFT", x - (i == 2 and 1 or 0), 0)
+            line:SetPoint("BOTTOMLEFT", W.frame, "BOTTOMLEFT", x - (i == 2 and 1 or 0), 0)
+            guides[i] = line
+        end
+    end
+    for _, line in ipairs(guides) do
+        line:Show()
+    end
+    local frame, inset = W.frame, W.frame.Inset
+    local left, right = frame:GetLeft() or 0, frame:GetRight() or 0
+    local insetLeft = inset and inset.GetLeft and inset:GetLeft()
+    local insetRight = inset and inset.GetRight and inset:GetRight()
+    Log.info("Window %.1f wide; content from %d to %d (margins %d and %d).", right - left, W.PAD, W.RIGHT, W.PAD,
+        W.WIDTH - W.RIGHT)
+    if insetLeft and insetRight then
+        Log.info("Inner panel from %.1f to %.1f (%.1f in on the left, %.1f on the right).", insetLeft - left,
+            insetRight - left, insetLeft - left, right - insetRight)
+    end
+end
+
+local function cmdPreviewParty()
+    local on = not ns.Party.isSample()
+    if on and IsInGroup() then
+        Log.info("You are in a party already; the window shows it.")
+        return
+    end
+    if on and ns.engine and ns.engine.myEntry then
+        Log.info("Leave the queue first.")
+        return
+    end
+    ns.Party.setSample(on)
+    ns.Window.show()
+    ns.Window.refresh()
+    Log.info(on and "Showing your window as the leader of a sample party (a tank and a mage); it can't queue. "
+        .. "/fg preview party again ends it." or "Sample party ended.")
+end
+
+local function cmdPreview(rest)
+    if string.lower(trim(rest or "")) == "party" then
+        cmdPreviewParty()
+        return
+    end
     local W = ns.WindowParts
     W.preview = not W.preview or nil
     W.previewAt = GetTime()
@@ -425,7 +486,9 @@ local COMMANDS = {
     { "dungeons", "[all] list dungeons for your level", cmdDungeons },
     { "invite", "send the group invites again (leader)", Group.inviteAll },
     { "debug", "[on | off]  show what Forever Groups does (asking, inviting, whispers, messages)", cmdDebug },
-    { "preview", "show the group card with a sample group (again to hide it)", cmdPreview },
+    { "preview", "[party] show the group card with a sample group, or (party) the window as the leader of a "
+        .. "sample party (again to hide it)", cmdPreview },
+    { "guides", "show the main window's content edges and margins (again to hide them)", cmdGuides },
     { "tour", "show the tour of the main window again", function() ns.Tour.restart() end },
     { "slots", "<t> <h> <d> | reset  test with a smaller group", cmdSlots },
     { "log", "[n] show the last n log lines", cmdLog },

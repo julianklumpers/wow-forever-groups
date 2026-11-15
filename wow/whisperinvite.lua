@@ -78,7 +78,20 @@ local function neededNames(needed)
     return table.concat(names, ", ")
 end
 
+-- Under the leader's class wishes a player who whispers (class not known)
+-- only gets a place open to any class, next to the invites still out.
+local function openToAnyClass(role)
+    return ns.PartyCompose.fits({ { role = role } })
+end
+
+-- The first role the player named that is needed and has a place for them:
+-- "heal or dps" still gets the DPS place when the healer place wants a class.
 local function pickRole(roles, needed)
+    for _, role in ipairs({ "T", "H", "D" }) do
+        if string.find(roles, role, 1, true) and string.find(needed, role, 1, true) and openToAnyClass(role) then
+            return role
+        end
+    end
     for _, role in ipairs({ "T", "H", "D" }) do
         if string.find(roles, role, 1, true) and string.find(needed, role, 1, true) then
             return role
@@ -87,6 +100,11 @@ local function pickRole(roles, needed)
 end
 
 local function inviteForDungeon(name, role)
+    if not openToAnyClass(role) then
+        Log.detail("Not inviting %s, who whispered you: the open %s places want other classes.", name,
+            Widgets.ROLE_NAMES[role])
+        return false
+    end
     local dungeonId = ns.Filler.dungeon() or ns.Filler.dungeonIds()[1]
     local dungeon = dungeonId and Dungeons.englishName(dungeonId) or "our dungeon"
     local roleName = Widgets.ROLE_NAMES[role]

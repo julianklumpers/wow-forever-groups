@@ -104,7 +104,8 @@ local function roleOf(unit, name)
 end
 
 -- { members = { { name, role } }, slots = { { role, name } x5 }, open = "D" }
-function GroupView.composition()
+-- withSample: for the window, with the sample party of /fg preview party.
+function GroupView.composition(withSample)
     local members = {}
     for _, unit in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
         if unit == "player" or UnitExists(unit) then
@@ -113,6 +114,11 @@ function GroupView.composition()
                 local _, classToken = UnitClass(unit)
                 members[#members + 1] = { name = name, role = roleOf(unit, name), classToken = classToken, unit = unit }
             end
+        end
+    end
+    if withSample and Party.isSample() then
+        for _, member in ipairs(Party.shownMembers()) do
+            members[#members + 1] = { name = member.name, role = member.wowRole, classToken = member.classToken }
         end
     end
     -- Every member in the place of their own role (two tanks show as two
@@ -233,11 +239,15 @@ local function announce()
         ns.Entrances.request(context.dungeon)
     end
     local lockdown = C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()
-    if Party.state() == "leader" and not ns.db.noPartyAnnounce and not lockdown then
-        local announcement = ns.Messages.text("partyComplete", { dungeon = Dungeons.englishName(context.dungeon) })
-        if announcement then
-            pcall(C_ChatInfo.SendChatMessage or SendChatMessage, announcement, "PARTY")
-        end
+    local announcement = ns.Messages.text("partyComplete", { dungeon = Dungeons.englishName(context.dungeon) })
+    if Party.state() ~= "leader" then
+        Log.debug("no party chat for the complete group: not the leader")
+    elseif ns.db.noPartyAnnounce or not announcement then
+        Log.debug("no party chat for the complete group: turned off in the settings")
+    elseif lockdown then
+        Log.debug("no party chat for the complete group: WoW blocks chat messages right now")
+    else
+        ns.Whispers.sayParty(announcement)
     end
     ns.Filler.stop(true)
     if ns.engine and ns.engine.myEntry then

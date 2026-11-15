@@ -126,6 +126,18 @@ function Whispers.sendIfAllowed(name, text)
     return ok == true
 end
 
+-- A line in party chat for the player; logged either way, since WoW says
+-- nothing when it does not go out.
+function Whispers.sayParty(text)
+    local ok, err = pcall(C_ChatInfo.SendChatMessage or SendChatMessage, text, "PARTY")
+    if ok then
+        ns.Log.detail("Said in party chat: %s", text)
+    else
+        ns.Log.debug("party chat failed: %s", tostring(err))
+    end
+    return ok
+end
+
 function Whispers.init()
     local add = (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter) or ChatFrame_AddMessageEventFilter
     if type(add) ~= "function" then

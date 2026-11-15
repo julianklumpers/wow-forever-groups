@@ -16,7 +16,14 @@ How the addon works inside, for anyone reading or changing the code. The player-
   card, and in a party the tabs stay away while connecting (`W.groupTab`); while connecting the dot pulses (an
   OnUpdate on the bar) and the join button reads "Connecting..."
   leads the window, except alone and choosing: then the roles come first and
-  the card, without a title, follows them (`W.cardBelowRoles`)
+  the card, without a title, follows them (`W.cardBelowRoles`); a party leader choosing dungeons also gets the card
+  ("Your party: n/5" and its places) there, under the choices where the party is set up, its places hidden while
+  the class cards show them (`W.cardWithoutPlaces`); hovering a member's place tells the roles they are queued for
+  and where those come from (`PartyRoles.sourceOf`); on the Dungeons tab while choosing, "Looking now"
+  sits on the dungeons' header line instead ("Dungeons for level 20   Looking now: ...", `W.layoutHeaderLooking`,
+  `W.lookingInHeader`), and alone the card is not shown at all
+- a line the addon says in party chat goes through `Whispers.sayParty`, which logs whether it went out (WoW is silent
+  when it does not); the group-complete message also logs why it was not said
 - every whisper the addon sends goes through `wow/whispers.lua` (`Whispers.send`), which hides its "To ..." echo in
   the player's chat with a `CHAT_MSG_WHISPER_INFORM` filter (exact text and name, for 10 s); a leader asked
   automatically (`Whispers.expectReplies`, 90 s) has their whispers kept out with a `CHAT_MSG_WHISPER` filter, and a
@@ -33,8 +40,82 @@ How the addon works inside, for anyone reading or changing the code. The player-
   `LFGForeverBlizzardTab` when present, re-placed on show). It only opens our window and closes theirs
   (`HideUIPanel`, out of combat); that Group Finder is secure code, so its panels are never shown or read
 - `tests/helpers/wowmock.lua` has no `require`, like WoW: a module loaded before one it uses fails the tests
+- the main window's design system (`wow/ui/window/shared.lua`): one content box with the same margin (`W.MARGIN`,
+  18) inside the gold frame's border on both sides, which is what the eye measures against; that border is about 8
+  wide on the left and 6 on the right (`W.BORDER_LEFT`/`W.BORDER_RIGHT`, measured with `/fg guides`, which draws the
+  box's edges and prints the window's and inner panel's edges): `W.PAD` its left edge, `W.RIGHT` its right edge (`W.RIGHT_OFFSET` for a TOPRIGHT anchor), `W.CONTENT` its width.
+  Gaps are steps of `W.SPACE` (4, 6, 8, 12, 16, 24). Rows of tiles or cards are cut with `W.columns(count, gap)`,
+  which hands the pixels left over from dividing to the first columns so a row fills the box exactly (the role
+  tiles and the party cards, both `W.SPACE.s` apart)
 - the one-second tick (`wow/main.lua`) and the Group Finder's result listeners (`wow/lfglist.lua`) run each part in
   its own `pcall`: an error goes to WoW's error handler and the other parts go on
+- Limiting levels (Dungeons and Quests tabs, under "Lead a group"): `core/levels.lua` (min and max, 0 for no limit on
+  that side, `untilAt` as for the class wishes) goes with the queue entry as its 12th field (`<until>:<min>:<max>`)
+  while the player builds the group and has switched it on (`wow/partylevels.lua`, `charDb.levelsOn`; `untilAt` always 0: it holds for as long as the queue
+  entry). Each side is a default until the player types a level there
+  (`PartyLevels.limit`): the lowest and highest level of the ticked dungeons (the queue entry's while queued), on the
+  Quests tab or with none ticked the player's level ±3; a typed level (`charDb.levelLimit`, `{ min, max }`, nil for a
+  default side) never changes by itself, and emptying the box puts the side back to its default (a limit saved
+  before, with `at`, is dropped). A default never crosses a typed side. One limit
+  for every ticked dungeon or quest; a ticked dungeon whose range has no level within it gets an orange warning
+  (`PartyLevels.outside`). Matchmaking: an entry with a limit in force anchors its own group and takes only solo
+  players whose level fits (`Matchmaker.candidateFor`, also used by `core/questmatch.lua`); it leads. `Fill.pick`
+  (`levels`), applicants and the quest finder's invites take only listed players within it (an unknown level does
+  not fit); Who is looking fades players outside it, with the reason in the row's tooltip (`item.unwanted`; also for
+  a class without a free place) and "faded: outside your limits" in the table's caption; right-click still invites. A whisperer's level is not known: one who joins outside it is
+  named in chat once (the party there when the limit began counts as fixed). The block (`wow/ui/window/levels.lua`):
+  "Limit levels" with "from [ ] to [ ]" (numeric boxes, saved on leaving the box when changed; a default in grey, a
+  typed level in white)
+- Choosing the classes in the party: a leader's class wishes per place of a dungeon group (`core/compose.lua`: places T, H, D, D,
+  D; per place a mask of the nine classes, 0 for any; `untilAt` server time after which anyone may join, always 0
+  from the window: the wishes hold for as long as the queue entry, without a time after which anyone may join). They go
+  with the dungeon queue entry as its 11th field (`v2|Q|...|<lead>|<until>:<m>.<m>.<m>.<m>.<m>`; older clients
+  ignore it) while the player builds the group (party leader, or alone with "Lead a group") and has switched it on
+  ("Choose the classes in my party", `charDb.composeOn`; switched off, the choices stay in `charDb.compose`;
+  `wow/partycompose.lua`, set on join and on every change). The player's own place and the party
+  members' are fixed (no wish), each in the first place of their role. Matchmaking (`Matchmaker.findGroups`/
+  `findPartialGroup`, given `now`): an entry with wishes in force only anchors its own group, takes only solo
+  players (their class from their spec), narrows each candidate's roles to those with a place for their class
+  (`restrictFor`), and a finished group must give everyone a place of their own (`pickFor`, `Compose.place`: exact,
+  so two Mages don't share one Mage place); a player of unknown class only takes a place open to any class. Such
+  an entry leads its group (`composer` in `chooseLeaderEntry`), and as an anchor it may also take players who queued
+  before it (`candidateIndices`; they cannot take it in; also in `core/questmatch.lua` for a level limit).
+  One seating decides the leader's own group for everything (`Compose.seat` through `PartyCompose`'s `layout`):
+  the player and the party first: a player keeps the place they were seated in before (`charDb.composeSeats`, by
+  name, also after a /reload), else a place of their role without a wish (they never use up a wish meant for
+  someone still to come; a Mage leader wishing for a Mage wants a second one), only then a wished place their
+  class fits. Then the players on their way (`Group.expectedPlayers`, their class from their queue entry, and the
+  invites still out, `Filler.pendingPlaces`, sorted by name) with `match`: a wished place their class fits first,
+  the strictest first, as that is what they were taken for; the place they get is remembered, so they keep it
+  once they join. The queue entry sends every place so taken without a wish (`seat.wire`; the matchmaker knows
+  these players, and held places, only by role, so it counts them without a class: `restrictFor(..., own)`)
+  and the filler, applicants, whisper invites and Who is looking use the places left (`seat.free`). A new player
+  is taken when everyone picked so far and they still all fit those places (`Compose.fitsPlaces`), not by
+  deciding a place for each in turn. While a party member's name loads, the entry keeps what it sent. `syncEntry`
+  sends the wishes and the level limit with every queue update in the same message; when it no longer fits, the
+  update goes without them (reported once, `reportTooLong`), as `ns.join` does, and they are not tried again until
+  they change (`engine.unfit`). The matchmaker checks the wishes
+  as each candidate is added (`feasible`, `Compose.fits` on everyone's roles so far), so a set that can never fit
+  is dropped at once; before each dungeon's search a quick matching tells whether the places can be filled at
+  all by the anchor and its candidates (`Compose.canFill`), so a wish for a class nobody queued costs next to
+  nothing, and all leaders with wishes together get at most `WISH_BUDGET` of a round's search (`wishLeft`). A leader with
+  wishes or a level limit also checks a proposal itself and turns it down when a player does not fit
+  (`Engine:proposalKeepsMyWishes`, as a matchmaker of an older version doesn't know them; classes as
+  `restrictFor` counts them). `Engine:changeEntry` keeps a field that does not fit the queue message out. The
+  window passes `shown` (`isBuilder(true)`, `fixed(true)`) to see the sample party of `/fg preview party`; the
+  queue never does. An applicant's class comes from `GetApplicantMemberInfo`; a player who whispers (class not
+  known) only gets a place open to any class. Who is looking fades solo players who don't fit the places left. The
+  block
+  sits under the join/lead buttons on the Dungeons tab: the switch, and while it is on the five places side by side
+  as cards in the window's quiet style: the role small in the top left corner, the wished classes as their round
+  `classicon-<class>` icons in a grid of up to three by three (on a client without those atlases by name in their
+  class colour, two, then "+n more"), and on the player's and the party's places their class's icon, who is there
+  and their class; those places have the party card's art instead (`Widgets.addArt`/`Widgets.paintArt`,
+  spec art or the dimmed class emblem) with class and spec (those can't be
+  clicked). A place open to any class has a dashed edge, a "+" and "Any class". Each card is a dropdown like the playstyle's (a `DropdownButton` with WoW's dropdown
+  arrow at its bottom right): WoW's own menu with "Any class" and a check per class the role allows, the names in
+  their class colour, open while ticking; our own list (`wow/ui/classmenu.lua`) on a client without it. And Reset. Not done: a note in the own Group Finder listing (whether Forever's CreateListing takes
+  one is unknown)
 - the tour (`wow/ui/tour.lua`): `ns.db.tourSeen` is false on a fresh install (no saved variables at all) and true for
   players who used Forever Groups before; while false, the window opens by itself 5 s into the first login (after
   a fight, `PLAYER_REGEN_ENABLED`; `db.welcomed`) and each opening (`Window.show`/`toggle`, `Tour.maybeStart`) starts
@@ -144,7 +225,7 @@ to copy.
 
 ## In game
 
-`/fg` (or the AddOns menu at the minimap) opens the window: role, party roles (party leader), dungeons, Join/Leave.
+`/fg` (or the AddOns menu at the minimap) opens the window: role, dungeons, Join/Leave.
 
 `/fg join <tank|healer|dps> [auto | dungeon, ...]`, `/fg leave`, `/fg status`, `/fg dungeons`,
 `/fg accept`, `/fg decline`, `/fg invite`, `/fg debug`, `/fg log [n]`,
@@ -156,7 +237,7 @@ to copy.
 A dropdown on the line under the role tiles, on the left (dungeons tab only; `W.buildPlaystyle` in `wow/ui/window/setup.lua`): the choice
 and WoW's own dropdown button (atlas `common-dropdown-a-button`, with its `-hover` and `-pressedhover` states; the
 plain `Arrow-Down-Up` when the atlas is missing) in a rounded box like the role tiles, as wide as the longest
-playstyle and centred on the "I'd like to lead" checkbox, on a `DropdownButton` whose `SetupMenu` builds WoW's own menu with a radio per
+playstyle, on a `DropdownButton` whose `SetupMenu` builds WoW's own menu with a radio per
 playstyle (its tooltip says who you're grouped with). A client without `DropdownButton` gets our own list instead
 (`wow/ui/playstylemenu.lua`). It offers "Any" (the default, `Playstyles.ANY`) and the four playstyles of WoW's Group
 Finder: Relaxed, Learning, Serious or Expert (the words come from `GetGeneralPlaystyleString`). "Any" goes with
@@ -196,7 +277,10 @@ the same through `Spec.labelInRole`); when several trees could, or nothing is kn
 (`classicon-<class>`, dimmed), both filling the place, with class and spec on one line; art is cut to shape by `Widgets.coverAtlas`. In the
 rounded boxes (role tiles, member places) art runs up to the border and follows the round corners through a mask
 (`Widgets.roundArt`, `Interface\Common\common-iconmask`; `/fgp mask`); without mask support it stays 5 px in. `/fg preview` shows the card with a sample group
-(`W.previewComposition`), to see it without being in a group.
+(`W.previewComposition`), to see it without being in a group. `/fg preview party` shows the window as the leader of
+a sample party (a tank and a mage, `Party.setSample`): only the window sees it (`Party.shownState`,
+`Party.shownMembers`, `GroupView.composition(true)`); queueing, matching and messages use `Party.state` and
+`Party.members`, and the Find button does nothing while it shows.
 
 ### Battlegrounds tab
 
@@ -353,7 +437,12 @@ only the other roles go to the Group Finder, and that role too if the matchmaker
 (`Log.detail`, chat with `/fg debug on`) and the status bar shows who is invited.
 
 Roles in the group (`wow/rolesync.lua`): each player's Forever Groups role is set in WoW's party frames once. A
-player who then picks another role keeps it, except the player's own role when it is one they did not queue for:
+party member who then gets another role keeps it when they offered it (the roles of their Group Finder listing or
+application, `RoleSync.expect`'s third argument, kept in `charDb.roleSyncOffered`; any role when not known); one they
+did not offer is WoW setting the role from their spec (a Feral druid invited as healer becomes the tank 6 s after
+joining), so the leader sets it back, at most twice (`MAX_RESETS`), after which it counts as their own choice; a
+player who is not the leader (who cannot set others' roles) takes the member's role over at once. The
+same goes for the player's own role when it is one they did not queue for:
 the spec decides it elsewhere: Deadly Boss Mods sets the role from the spec 2 s after joining a group or a /reload
 (`DBM:RoleCheck`, first DAMAGER, then the spec's role; found with the probe's role watch, which logs every
 `UnitSetRole` with its Lua stack). While Forever Groups holds the player's role, `DBM.RoleCheck` is wrapped to do
@@ -399,7 +488,9 @@ past the 60 s (`core/replies.lua` reads the answer: refusal and yes words and ph
 both or neither is left open). An invite from an asked leader holds off building; joining that group leaves the
 Forever Groups queue. With no fitting group, or no invite in time, the player builds a group instead (inviting a player
 makes you a party leader, after which another group's invite cannot be accepted, hence this order). A solo player who
-ticked "I'd like to lead" (on the right of the line under the role tiles; `charDb.wantsLead` for dungeons,
+chose "Lead a group" (one of two buttons, "Join a group" | "Lead a group", at the left of the line under the role
+tiles on every tab, with the playstyle (dungeons) or the group size (battlegrounds) at its right and the questing
+hint on the line below; `W.layoutLead`; a party leader sees "You lead this party" there; `charDb.wantsLead` for dungeons,
 `charDb.wantsLeadQuests` for group quests, each going into its own queue's entry) asks no groups (`Apply.isSeeker`, and the questing
 side in `wow/questfinder.lua`) and builds the group right away. The wish travels as the last field of the queue
 entry (`v2|Q|…|<lead>`, "1"; older clients ignore it), and `Matchmaker.chooseLeaderEntry` picks the leader in this
@@ -455,18 +546,33 @@ main window unless the player closed it (the tab, its close button or Escape whi
 `db.whoClosed`); `/fg queue` opens it. Opening with the main window doesn't search (that can come from code; a
 search must follow a click), the tab and `/fg queue` do. `Window.refresh` also refreshes it, so it follows the main
 window's tab, roles and dungeons, and so do new Group Finder results (`LfgList.onUpdate`). Ticking a dungeon the
-last search didn't ask for searches at once (`LfgList.searchIfMissing`, from that click); unticking only filters. It moves with the main window and hides with it. No tabs: two framed blocks, one per source, each with a header band (icon and name; the Group Finder's also says
-when it last searched): **Forever Groups** with Parties and then Players (queued solo players), and **WoW Group
-Finder** with Groups and then Players (solo players listed for your dungeons). Every table has the same columns: Roles (what the
-players can play; a party or group: the roles already in it), Needs (the places a party or group still has open,
-empty for a solo player; a party's from `Filler.missingFor`, a listed group's from its `remaining`), Name ("+N" for
-the other members), Lvl, Dungeons and Time. Hovering a party or group lists who is in it and what it needs, plus a Group Finder listing's note
+last search didn't ask for searches at once (`LfgList.searchIfMissing`, from that click); unticking only filters. It moves with the main window and hides with it. No tabs and no part per source: two tables that each hold both sources, **Groups** (Forever Groups' queued
+parties and the Group Finder's listed groups) and then **Players** (queued solo players and solo players listed
+for your dungeons), with "(n  ·  m in Forever Groups)" in the caption while the Group Finder is used. Every row
+has an icon at its far right for where it comes from (the addon's icon or the Group Finder eye, `row.source`; a
+Forever Groups row's tooltip says it too). A player in both sources shows once, from Forever Groups (`combined`), and on a sort tie
+Forever Groups comes first. When the Group Finder was last searched sits left of Refresh, on the line of the
+role filter. Both tables have the same columns: Roles (what the
+players can play; a party or group: the roles already in it), Name ("+N" for
+the other members; before it, `row.badge`, a crown for a party or group, a solo player's `classicon-<class>`),
+Classes (up to five class icons: a listed group's members, a Forever Groups party's leader; its header and cells
+stay empty in the Players table, so the columns still line up), Needs (the places a party or group still has open,
+empty for a solo player; a party's from `Filler.missingFor`, a listed group's from its `remaining`; a Forever
+Groups party with class wishes shows per open place the classes wished for, else the role, four icons or three and
+"+n", with "Wants: ..." in its tooltip, `wishesOf`: of each role the places with a wish are open, since a place a
+member holds wishes for nothing), Lvl, Dungeons and Time. A listing's and an applicant's roles are only those its class can play
+(`Classes.filter`: WoW lets a Warlock tick tank and healer too). A table longer than its rows scrolls with the mouse
+wheel and WoW's own scroll bar (`MinimalScrollBar` through `CreateFrame("EventFrame", ...)`, its `OnScroll` callback
+and `SetScrollPercentage`/`SetVisibleExtentPercentage`; found with `/fgp scrollbar`; a thin track on a client
+without it). A listed
+group's members are read with `GetSearchResultPlayerInfo(id, i)` (class, assigned role and level, the leader first;
+`listing.memberInfo`) and listed in its row's tooltip, tank, healer, DPS, as two columns (`AddDoubleLine`: class
+icon through `|A:classicon-<class>:14:14|a`, class, the leader's crown and name; role and level). Hovering a party or group lists who is in it and what it needs, plus a Group Finder listing's note
 (`listing.comment`, also for a solo player). WoW passes the note as a protected `|K...|k` string: shown as text by a
 font string or tooltip, but unreadable to addons, so it cannot be matched to quests. An empty table shows only its caption and a line of
 text, without column headers. Each table folds (its caption is a +/- button) to one line with a summary ("5 tanks,
-16 DPS", "12 need DPS"). By default the half that fits what the player does is open: players with "I'd like to
-lead" on (they build a group), groups otherwise (they look for a place); a fold the player sets is kept in
-`db.queueFold` until the wish to lead changes, which brings back that choice's defaults. A click
+16 DPS", "12 need DPS"). Both tables are open by default; a fold the player sets is kept in `db.queueFold`
+(`{ groups, players }`), also when they switch between joining and leading. A click
 on a header sorts that table only, a second click reverses; each table keeps its own order for the session only (not saved, a reload
 brings back the default: by role), shown by WoW's `Arrow-Up-Up`/`Arrow-Down-Up` next to the active header (a column marked
 `descending` points down unreversed); the Show filter
@@ -485,7 +591,7 @@ Quests/Zone column; it searches those zones on input. An open window switches al
 the same counts per quest (`lookingCounts(wanted, "quests")`, `groupsNeedingMe(wanted, "quests")`). The main window
 counts, per dungeon and in "Looking now", the listed groups that need one of the player's ticked roles
 (`QueueWindow.groupsNeedingMe`, from the listings' `remaining`); the dungeon's tooltip names their leaders. These
-counts are hidden when Forever Groups won't ask groups for you: with "I'd like to lead" on (per tab) or with asking
+counts are hidden when Forever Groups won't ask groups for you: with "Lead a group" chosen (per tab) or with asking
 groups switched off (`db.noApply`); "Who is looking" still lists the groups. Next to that count a dungeon row says
 how much the player's roles are wanted (`W.demand` in `wow/ui/window/setup.lua`): "Tank needed" (green) when fewer
 others looking can play that role than a group has places for it, "quiet" when no group needs them and nobody
@@ -516,7 +622,9 @@ not on the Quests tab.
   Forever Groups player stood on just before zoning in, shared on the channel (`v1|E|id|map|x|y`, asked for with
   `v1|E?|id`; `wow/entrances.lua`).
 - **Level ranges:** only from WoW's Group Finder suggestion per activity (`C_LFGList.GetActivityInfoTable`), read at
-  login. A dungeon without one (The Stockade) is only listed under "Other dungeons".
+  login. A dungeon without one (The Stockade) is only listed under "Other dungeons". Below level 10 (`W.DUNGEON_LEVEL`; WoW's Group
+  Finder is closed to the player then) the window lists no dungeons and no "Other dungeons", only "Dungeons open up
+  at level 10."
 - **Quest sharing:** in a group being built, party members with Forever Groups exchange which quests they have for the
   dungeon over PARTY addon messages (`v1|QL|dungeon|questID,...`, asked for with `v1|QR|dungeon`); the window shows
   the counts per player, and "Share my quests" shares every shareable quest, 1.5 s apart (`wow/questshare.lua`).
@@ -608,6 +716,9 @@ Releases go to CurseForge, Wago and WoWInterface through the BigWigs packager
 3. The workflow runs luacheck and busted, checks that the tag matches the .toc
    version, then builds `ForeverGroups/` and uploads it to every site whose id is
    in the .toc (`X-Curse-Project-ID`, `X-Wago-ID`, `X-WoWI-ID`).
+4. The project pages' description is not uploaded: when features changed, update
+   `OVERVIEW.md` and paste it as the Overview on CurseForge (and the
+   description on Wago and WoWInterface) by hand.
 
 The repository needs the secrets `CF_API_KEY`, `WAGO_API_TOKEN` and
 `WOWI_API_TOKEN` (Settings → Secrets and variables → Actions), and workflow

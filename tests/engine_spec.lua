@@ -26,6 +26,95 @@ local function queuedIds(sim, name)
     return sim:engine(name).queue:ids()
 end
 
+describe("Engine: a field that does not fit", function()
+    it("is left out and keeps the entry as it was, so later changes still go out", function()
+        local sim = Sim.new()
+        sim:add("Lead-R")
+        local engine = sim:engine("Lead-R")
+        local errors = {}
+        engine.emitEvent = function(event, data)
+            if event == "error" then
+                errors[#errors + 1] = data.message
+            end
+        end
+        sim:join("Lead-R", "T", { "DM" })
+        local Protocol = require("core.protocol")
+        local encode = Protocol.encode
+        Protocol.encode = function(msg, space)
+            if msg.compose == "0:511.511.511.511.511" then
+                return nil, "message too long"
+            end
+            return encode(msg, space)
+        end
+        finally(function()
+            Protocol.encode = encode
+        end)
+        assert.is_false(engine:setCompose("0:511.511.511.511.511"))
+        assert.is_nil(engine.compose)
+        assert.is_nil(engine.myEntry.compose)
+        assert.are.equal(1, #errors)
+        assert.is_true(engine:setCompose("0:0.0.64.0.0"))
+        assert.are.equal("0:0.0.64.0.0", engine.myEntry.compose)
+    end)
+end)
+
+describe("Engine: a proposal under the leader's wishes", function()
+    it("is turned down when a player does not fit the wished classes or the level limit", function()
+        local sim = Sim.new()
+        sim:add("Lead-R")
+        local engine = sim:engine("Lead-R")
+        engine:setCompose("0:0.0.64.0.0")
+        engine:setLevels("0:18:22")
+        sim:join("Lead-R", "T", { "DM" })
+        local now = engine:now()
+        for _, other in ipairs({ { "Heal-R", "H", "PRIEST", 20 }, { "Mage-R", "D", "MAGE", 20 },
+            { "Rogue-R", "D", "ROGUE", 20 }, { "Rogue2-R", "D", "ROGUE", 20 }, { "Rogue3-R", "D", "ROGUE", 20 },
+            { "Low-R", "D", "ROGUE", 12 } }) do
+            engine.queue:upsert({ id = other[1], joinedAt = 1, dungeons = { "DM" }, spec = other[3],
+                members = { { name = other[1], roles = other[2], level = other[4] } } }, now)
+        end
+        local function proposal(names)
+            local entries = { { id = "Lead-R", members = { { name = "Lead-R", role = "T" } } } }
+            for _, pair in ipairs(names) do
+                entries[#entries + 1] = { id = pair[1], members = { { name = pair[1], role = pair[2] } } }
+            end
+            return { entries = entries }
+        end
+        assert.is_true(engine:proposalKeepsMyWishes(proposal({ { "Heal-R", "H" }, { "Mage-R", "D" },
+            { "Rogue-R", "D" } })))
+        assert.is_true(engine:proposalKeepsMyWishes(proposal({ { "Heal-R", "H" }, { "Rogue-R", "D" } })))
+        assert.is_false(engine:proposalKeepsMyWishes(proposal({ { "Heal-R", "H" }, { "Rogue-R", "D" },
+            { "Rogue2-R", "D" }, { "Rogue3-R", "D" } })))
+        assert.is_false(engine:proposalKeepsMyWishes(proposal({ { "Heal-R", "H" }, { "Mage-R", "D" },
+            { "Low-R", "D" } })))
+    end)
+
+    it("counts the leader's own players without a class, as the matchmaker does", function()
+        local sim = Sim.new()
+        sim:add("Lead-R")
+        local engine = sim:engine("Lead-R")
+        engine:setCompose("0:0.0.0.8.8")
+        sim:join("Lead-R", "D", { "DM" })
+        engine.myEntry.spec = "MAGE"
+        local now = engine:now()
+        for _, other in ipairs({ { "Tank-R", "T", "WARRIOR" }, { "Heal-R", "H", "PRIEST" },
+            { "Rogue1-R", "D", "ROGUE" }, { "Rogue2-R", "D", "ROGUE" }, { "Mage-R", "D", "MAGE" } }) do
+            engine.queue:upsert({ id = other[1], joinedAt = 1, dungeons = { "DM" }, spec = other[3],
+                members = { { name = other[1], roles = other[2], level = 20 } } }, now)
+        end
+        local function proposal(names)
+            local entries = { { id = "Lead-R", members = { { name = "Lead-R", role = "D" } } } }
+            for _, name in ipairs(names) do
+                local role = name:sub(1, 4) == "Tank" and "T" or (name:sub(1, 4) == "Heal" and "H" or "D")
+                entries[#entries + 1] = { id = name, members = { { name = name, role = role } } }
+            end
+            return { entries = entries }
+        end
+        assert.is_true(engine:proposalKeepsMyWishes(proposal({ "Tank-R", "Heal-R", "Rogue1-R", "Rogue2-R" })))
+        assert.is_false(engine:proposalKeepsMyWishes(proposal({ "Tank-R", "Heal-R", "Rogue1-R", "Mage-R" })))
+    end)
+end)
+
 describe("Engine: the wish to lead", function()
     it("is only sent for a solo entry", function()
         local sim = Sim.new()

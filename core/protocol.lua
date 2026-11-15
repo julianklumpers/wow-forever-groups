@@ -1,6 +1,7 @@
 -- Wire format. Every message is broadcast on the shared channel and the sender
 -- is the player the message speaks for.
---   v2|Q|<joinedAt>|<dungeon,...>|<name:roles:level,...>[|<reserved>[|<since>[|<playstyle>[|<spec>[|<lead>]]]]]
+--   v2|Q|<joinedAt>|<dungeon,...>|<name:roles:level,...>[|<reserved>[|<since>[|<playstyle>[|<spec>[|<lead>
+--       [|<compose>[|<levels>]]]]]]]
 --       queue entry / heartbeat; the first member is the sender (entry owner);
 --       roles is one or more of T, H, D in that order ("D", "TD", "THD");
 --       reserved ("HD") are roles the party already invited someone for from
@@ -8,7 +9,11 @@
 --       sender's client came online (the longest-online player matches);
 --       playstyle is 1-4 (core/playstyles.lua), empty for no preference;
 --       spec is the owner's class and talent tree ("SHAMAN2", core/specs.lua);
---       lead is "1" when the owner would like to lead the group
+--       lead is "1" when the owner would like to lead the group;
+--       compose is the classes the owner wants per place of the group
+--       ("<until>:<mask>.<mask>.<mask>.<mask>.<mask>", core/compose.lua);
+--       levels is the owner's level limit for players joining
+--       ("<until>:<min>:<max>", core/levels.lua)
 --   v2|K                  keep-alive from a likely matchmaker
 --   v2|L[|<matchmaker>|<seq>]  sender left the queue; with a proposal: it
 --                         left because that proposal formed (counts as Yes)
@@ -38,6 +43,8 @@ local Config = ns.Config or require("core.config")
 local Roles = ns.Roles or require("core.roles")
 local Playstyles = ns.Playstyles or require("core.playstyles")
 local Specs = ns.Specs or require("core.specs")
+local Compose = ns.Compose or require("core.compose")
+local Levels = ns.Levels or require("core.levels")
 
 local Protocol = {}
 
@@ -222,7 +229,9 @@ function encoders.queue(msg, space)
     end
     local optional = { msg.reserved or "", msg.since and tostring(msg.since) or "",
         (msg.playstyle or Playstyles.ANY) ~= Playstyles.ANY and tostring(msg.playstyle) or "",
-        msg.spec and Specs.decode(msg.spec) and msg.spec or "", msg.lead and "1" or "" }
+        msg.spec and Specs.decode(msg.spec) and msg.spec or "", msg.lead and "1" or "",
+        msg.compose and Compose.isValid(msg.compose) and msg.compose or "",
+        msg.levels and Levels.isValid(msg.levels) and msg.levels or "" }
     while #optional > 0 and optional[#optional] == "" do
         optional[#optional] = nil
     end
@@ -405,6 +414,8 @@ decoders.Q = function(fields, space)
         playstyle = (fields[8] == nil or fields[8] == "") and Playstyles.ANY or tonumber(fields[8]) or -1,
         spec = Specs.decode(fields[9]) and fields[9] or nil,
         lead = fields[10] == "1" or nil,
+        compose = Compose.isValid(fields[11]) and fields[11] or nil,
+        levels = Levels.isValid(fields[12]) and fields[12] or nil,
     }
     local ok, err = Protocol.validateEntry(msg, space)
     if not ok then

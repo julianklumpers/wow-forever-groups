@@ -41,14 +41,16 @@ end
 -- Every distinct role composition the members can take within the slots,
 -- each with one concrete assignment. Earlier members get the earlier role in
 -- T, H, D order when several assignments give the same composition.
-function Roles.options(members, slots)
+-- every: keep each assignment, not one per count of roles (under a leader's
+-- class wishes it matters who takes which role).
+function Roles.options(members, slots, every)
     local options, seen = {}, {}
     local assignment = {}
     local counts = { T = 0, H = 0, D = 0 }
     local function walk(index)
         if index > #members then
             local k = key(counts)
-            if not seen[k] then
+            if every or not seen[k] then
                 seen[k] = true
                 local copy = {}
                 for i, role in ipairs(assignment) do

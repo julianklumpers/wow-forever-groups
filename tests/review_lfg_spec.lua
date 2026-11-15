@@ -119,3 +119,118 @@ describe("Group Finder flows after review", function()
         assert.are.equal(1, invitedCount(tank, "Seeker Dps"))
     end)
 end)
+
+describe("Who is looking", function()
+    it("puts a crown before a group's leader, its classes in a column, a player's class before them", function()
+        local world = World.new()
+        world:listGroup("Group Lead", 799, { T = 0, H = 0, D = 2 })
+        world.listings[#world.listings].memberList = { { class = "MAGE", role = "DAMAGER", level = 19 },
+            { class = "SHAMAN", role = "HEALER", level = 18 } }
+        world:list("Solo Mage", "D", 799, 20, 200)
+        world.listings[#world.listings].class = "MAGE"
+        world:list("Solo Unknown", "D", 799, 20, 100)
+        local client = world:addClient("Look Player", { level = 20,
+            atlases = { ["classicon-mage"] = true, ["classicon-shaman"] = true } })
+        world:advance(30)
+        client:slash("/dq")
+        client:click("CheckButton", "Healer")
+        client:press("W")
+        world:advance(1)
+        client.ns.QueueWindow.refresh()
+        local group = client:findText("^Group Lead %+").parent
+        assert.is_true(group.badge.shown)
+        client.ns.QueueWindow.showRowTooltip(group, group.item)
+        assert.are.same({
+            "Paladin   |TInterface\\GroupFrame\\UI-Group-LeaderIcon:12:12|t Group Lead | Tank  ·  Lvl 20",
+            "|A:classicon-shaman:14:14|a Shaman | Healer  ·  Lvl 18",
+            "|A:classicon-mage:14:14|a Mage | DPS  ·  Lvl 19",
+        }, { client.env.GameTooltip.lines[1], client.env.GameTooltip.lines[2], client.env.GameTooltip.lines[3] })
+        for _, line in ipairs(client.env.GameTooltip.lines) do
+            assert.is_nil(line:find("^Has:"))
+        end
+        assert.are.equal("Interface\\GroupFrame\\UI-Group-LeaderIcon", group.badge.texture)
+        assert.is_true(group.name.point[2] > group.badge.point[2])
+        assert.are.same({ true, true, false },
+            { group.classIcons[1].shown, group.classIcons[2].shown, group.classIcons[3].shown })
+        assert.are.same({ "classicon-shaman", "classicon-mage" },
+            { group.classIcons[1].atlas, group.classIcons[2].atlas })
+        client:click("Button", "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t Lead a group")
+        client.ns.QueueWindow.refresh()
+        local mage = client:findText("^Solo Mage$").parent
+        local unknown = client:findText("^Solo Unknown$").parent
+        assert.is_true(mage.badge.shown)
+        assert.are.equal("classicon-mage", mage.badge.atlas)
+        assert.is_false(mage.classIcons[1].shown)
+        assert.is_false(unknown.badge.shown)
+        assert.is_true(mage.name.point[2] > unknown.name.point[2])
+    end)
+
+    it("shows a listed player only in the roles their class can play", function()
+        local world = World.new()
+        world:list("Lock Everything", "THD", 799, 20, 200)
+        world.listings[#world.listings].class = "WARLOCK"
+        world:list("Priest Tank", "T", 799, 20, 100)
+        world.listings[#world.listings].class = "PRIEST"
+        local client = world:addClient("Look Player", { level = 20 })
+        world:advance(30)
+        client:slash("/dq")
+        client:click("CheckButton", "Tank")
+        client:click("Button", "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t Lead a group")
+        client:press("W")
+        world:advance(1)
+        local roles = {}
+        for _, listing in ipairs(client.ns.LfgList.listings()) do
+            roles[listing.name] = listing.roles
+        end
+        assert.are.same({ ["Lock Everything"] = "D" }, roles)
+    end)
+
+    it("lists both sources in one table, a player in both once, Forever Groups first on a tie", function()
+        local world = World.new()
+        local client = world:addClient("Look Player", { level = 20 })
+        local both = world:addClient("Both Player", { level = 20 })
+        world:list("Both Player", "D", 799, 20, 300)
+        world:list("Listed Only", "D", 799, 20, 300)
+        world:advance(30)
+        client.ns.db.queueFold = { players = false }
+        both:slash("/dq join dps dm")
+        client:slash("/dq")
+        client:click("CheckButton", "Healer")
+        client:press("W")
+        world:advance(1)
+        client.ns.QueueWindow.refresh()
+        local rows = {}
+        for _, widget in ipairs(client.widgets) do
+            if widget.kind == "FontString" and widget.parent and widget.parent.item and widget == widget.parent.name
+                and widget.parent.shown and widget.parent.parent.shown then
+                rows[#rows + 1] = widget.text .. " " .. widget.parent.item.source
+            end
+        end
+        assert.are.same({ "Both Player addon", "Listed Only finder" }, rows)
+    end)
+
+    it("shows a party's wished classes in the Needs column, its other places by role", function()
+        local world = World.new()
+        local client = world:addClient("Look Player", { level = 20, atlases = { ["classicon-mage"] = true } })
+        world:advance(30)
+        client.ns.db.queueFold = { groups = false }
+        local engine = client.ns.engine
+        client:slash("/dq queue")
+        engine.queue:upsert({ id = "Party Lead", joinedAt = 1, dungeons = { "5" }, reserved = "",
+            compose = "0:0.0.64.0.0", members = {
+                { name = "Party Lead", roles = "H", level = 20 }, { name = "Friend One", roles = "T", level = 20 },
+            } }, engine:now())
+        client.ns.QueueWindow.refresh()
+        local row = client:findText("^Party Lead %+1$").parent
+        assert.is_false(row.needs[1].shown == true)
+        assert.are.same({ true, false, false },
+            { row.wishIcons[1].shown, row.wishIcons[2].shown, row.wishIcons[3].shown })
+        assert.are.same({ false, true, false },
+            { row.wishRoles[1].shown, row.wishRoles[2].shown, row.wishRoles[3].shown })
+        assert.are.equal("classicon-mage", row.wishIcons[1].atlas)
+        client.ns.QueueWindow.showRowTooltip(row, row.item)
+        local tip = table.concat(client.env.GameTooltip.lines, "\n")
+        assert.is_truthy(tip:find("Wants: DPS: Mage", 1, true))
+    end)
+end)
+

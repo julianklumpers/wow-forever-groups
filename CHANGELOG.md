@@ -2,6 +2,76 @@
 
 ## Unreleased
 
+- Choosing classes or limiting levels as leader works much more reliably: your own class no
+  longer uses up one of your wished places, the Group Finder invites, the queue and your own check
+  of a proposed group now all count the places the same way (so groups no longer fail to form or
+  form against your choices), a group now also forms when players who suit you queued before you,
+  and leaders waiting for a class nobody plays no longer hold up everyone else's groups. A choice that doesn't fit in the queue
+  message (many dungeons ticked) now says so once instead of breaking later updates, and you still
+  queue, without it.
+- Limit levels also points out the first player who joins you while you are alone, and your
+  default range (Quests tab) is right on the moment you level up.
+- A party member whose role can't be set in WoW is now taken over in the role they play.
+- Who is looking: the columns are now Roles, Name, Classes, Needs, Lvl, Dungeons and Time, so the
+  name follows the roles.
+- Who is looking: Groups and Players are both open by default, and what you fold stays folded;
+  choosing "Join a group" or "Lead a group" no longer folds or unfolds them.
+- Who is looking: a Forever Groups party that chose its classes shows them in the Needs column
+  (the class icons per open place, the role for a place open to any class), and its tooltip
+  says which classes it wants for which role.
+- Who is looking has two tables instead of four: Groups and Players, each with both the
+  Forever Groups queue and WoW's Group Finder. A small icon at the right of each row says where
+  it comes from (the caption counts the Forever Groups ones); a player in both shows once.
+  When the Group Finder was last searched now sits next to Refresh.
+- Who is looking: a table with more players than fit gets WoW's own scroll bar, to drag or
+  click its arrows; the mouse wheel still scrolls too.
+- A player listed in WoW's Group Finder counts only in the roles their class can play: a
+  Warlock who ticked tank, healer and DPS shows (and is invited) as DPS only. The same for
+  players who apply to your listing.
+- Who is looking: a crown before a group's leader and a class icon before a player's name, a
+  Classes column with the class icons of a group's members (tank, healer, DPS), and a little more room between the
+  Roles, Needs and Name columns. Hovering a group from WoW's Group
+  Finder lists everyone in it, tank, healer, DPS: class icon and class in their class colour (the
+  leader with a crown and their name) on the left, role and level on the right.
+- A player invited from WoW's Group Finder keeps the role they were invited for when WoW
+  changes it to their spec's role a few seconds after joining (a Feral druid listed as healer
+  became the tank, leaving the group with two tanks): as leader, Forever Groups sets it back.
+  A role they also offered in their listing is taken over as their choice, and after two times
+  a role they insist on is too.
+- Every line Forever Groups says in party chat is now in the log, and so is why the "group
+  complete" message was not said.
+- As party leader setting up dungeons, your party (and its places) shows under your choices
+  instead of at the top, and the list "Party: roles follow each member's role in WoW" is gone:
+  hover a member's place to see the roles they are queued for and where those come from. While
+  you choose the classes in your party, the class cards show your party, with the same art, and
+  the places above them stay away. `/fg preview party` shows the window as the leader of a sample party, to try
+  it without one.
+- Who is looking says why a player is faded (outside your level limit, or no place left for their
+  class): in the table's caption and in the player's tooltip, which also says you can still
+  invite them yourself.
+- Below level 10, when WoW's Group Finder is not open to you yet, "Other dungeons" stays away and
+  the list says dungeons open up at level 10.
+- "Looking now" sits on the dungeons' header line while you choose, in place of "· 1 selected"
+  (the Find button already counts your dungeons); the window gets a line shorter.
+- "Join a group" or "Lead a group": two buttons under the role tiles take the place of the
+  "I'd like to lead" tick box, on every tab, with the playstyle (or the battleground group
+  size) on the right of the same line; a party leader sees "You lead this party".
+- Limit levels (Dungeons and Quests tabs, when you lead): only players from the lowest to the
+  highest level you set join your group, for every dungeon or quest you ticked, from the queue
+  and from WoW's Group Finder. A ticked dungeon
+  the limit leaves nobody for gets a warning. It holds for as long as you look; switched off,
+  your levels are kept. The boxes start at the lowest and highest level of the dungeons you
+  ticked (on the Quests tab your own level, 3 either way), in grey; a level you type stays put
+  until you empty the box. A player who joins outside
+  it (after a whisper) is pointed out.
+- Choose the classes in your party (Dungeons tab, under "Lead a group" or as party leader):
+  switch it on and your group's five places show as cards with the classes you want there by
+  name, in their class colour (an open place is a dashed slot with a "+"); each card is a dropdown where you tick the classes you want there by name, in their class colour, for
+  example a Mage for one DPS place. Switched off, your
+  choices are kept for next time. Forever Groups then only puts players of those classes in your group, from its queue
+  and from WoW's Group Finder (invites, applicants; a player who whispers you only gets a place
+  open to any class), for as long as you look. Players who
+  don't fit show faded in Who is looking. Your choice is kept per character.
 - A short tour for new players: on the first login the window opens by itself and points out
   the roles, who is looking now and the Who is looking list, the dungeons and what a dungeon
   row tells you, the tabs and Find group, one at a time (Next or Skip), with the rest of the

@@ -168,6 +168,28 @@ local function onRosterUpdate()
     end
 end
 
+-- The players a formed group brought who have not joined the party yet,
+-- sorted by name: { { name, role } } (role as agreed, RoleSync).
+function Group.expectedPlayers()
+    local list = {}
+    if Group.status() == nil then
+        return list
+    end
+    local inParty = {}
+    for _, member in ipairs(ns.Party.members() or {}) do
+        inParty[member.name] = true
+    end
+    for name in pairs(pending) do
+        if not inParty[name] then
+            list[#list + 1] = { name = name, role = ns.RoleSync.expected(name) or "D" }
+        end
+    end
+    table.sort(list, function(a, b)
+        return a.name < b.name
+    end)
+    return list
+end
+
 -- A player Forever Groups invited into this group who has not joined yet.
 function Group.isExpected(name)
     return pending[name] == true and Group.status() ~= nil

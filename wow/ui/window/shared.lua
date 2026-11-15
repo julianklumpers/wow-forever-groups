@@ -12,20 +12,51 @@ W.CLASS_REASON = ns.Locale.mark("Your class cannot play this role.")
 
 W.WIDTH = 610
 W.COLUMNS, W.MAX_ROWS = 2, 18
-W.PAD = 26
+
+-- The window's small design system: every gap is a step of SPACE, and the
+-- content sits in one box with the same margin to the inside of the gold
+-- frame on both sides, which is what the eye measures against. The frame's
+-- border is not as wide on both sides (about 8 on the left, 6 on the right,
+-- measured in game with /fg guides). PAD is the box's left edge, RIGHT its
+-- right edge, CONTENT its width; rows of tiles or cards are cut with
+-- W.columns so they fill the box to the pixel.
+W.SPACE = { xs = 4, s = 6, m = 8, l = 12, xl = 16, xxl = 24 }
+W.BORDER_LEFT, W.BORDER_RIGHT = 8, 6
+W.MARGIN = 18
+W.PAD = W.BORDER_LEFT + W.MARGIN
+W.RIGHT = W.WIDTH - W.BORDER_RIGHT - W.MARGIN
+W.CONTENT = W.RIGHT - W.PAD
+-- How far a right-aligned widget's TOPRIGHT anchor sits from the frame's.
+W.RIGHT_OFFSET = W.RIGHT - W.WIDTH
+
+-- count columns over width (the content box by default) with gap between
+-- them: { { x, width } } from the left edge `left` (PAD), the pixels left
+-- over from dividing going one each to the first columns, so the row ends
+-- exactly at the right edge.
+function W.columns(count, gap, width, left)
+    width, left = width or W.CONTENT, left or W.PAD
+    local base = math.floor((width - (count - 1) * gap) / count)
+    local extra = width - (count - 1) * gap - base * count
+    local list, x = {}, left
+    for i = 1, count do
+        local w = base + (i <= extra and 1 or 0)
+        list[i] = { x = x, width = w }
+        x = x + w + gap
+    end
+    return list
+end
 W.CHECK_INSET = 3
 W.CARD_PADDING = 12
-W.CELL_WIDTH, W.CELL_HEIGHT = (W.WIDTH - 2 * W.PAD) / 2, 22
+W.CELL_WIDTH, W.CELL_HEIGHT = W.CONTENT / 2, 22
 W.DETAIL_LIMIT, W.DETAIL_HEIGHT = 10, 24
-W.ROW_WIDTH = W.WIDTH - 2 * W.PAD + W.CHECK_INSET
+W.ROW_WIDTH = W.CONTENT + W.CHECK_INSET
 W.COUNT_SIZE = 13
 W.RANGE_X = 190
 W.COUNTS_X = W.ROW_WIDTH - (3 * (W.COUNT_SIZE + 32) - 8)
 W.ROLE_COUNTS = ns.Locale.mark({ T = { "%d tank", "%d tanks" }, H = { "%d healer", "%d healers" },
     D = { "%d DPS", "%d DPS" } })
-W.TILE_GAP = 12
-W.TILE_WIDTH = math.floor((W.WIDTH - 2 * W.PAD - 2 * W.TILE_GAP) / 3)
-W.PARTY_ROW_HEIGHT = 26
+W.TILE_GAP = W.SPACE.s
+W.TILE_WIDTH = math.floor((W.CONTENT - 2 * W.TILE_GAP) / 3)
 W.SLOT_WIDTH, W.SLOT_GAP = ns.Widgets.SLOT_WIDTH, 8
 -- The main window's section headers: room under the text for the controls
 -- on the header line (playstyle, I'd like to lead, All / None) before the
@@ -41,7 +72,6 @@ W.CONNECTION_COLORS = {
 
 W.ui = {}
 W.roleToggles = {}
-W.partyRows = {}
 W.dungeonCells = {}
 W.queueRows = {}
 W.questRows = {}
@@ -98,18 +128,17 @@ function W.setWantsLead(wants)
     if engine then
         engine:setLead(value)
     end
-    -- Who is looking opens the half that fits the new choice, whatever was
-    -- folded by hand before.
-    if ns.db.queueFold then
-        ns.db.queueFold[value and "lead" or "join"] = nil
+    if tab == "dungeons" then
+        ns.PartyCompose.apply()
     end
+    ns.PartyLevels.apply()
     W.setHint("")
     ns.Window.refresh()
 end
 
 -- "lead" for the Find group summary when a solo player wants to lead.
 function W.leadWord(tab)
-    return W.wantsLead(tab or W.currentTab()) and ns.Party.state() == "solo" and L["lead"] or nil
+    return W.wantsLead(tab or W.currentTab()) and ns.Party.shownState() == "solo" and L["lead"] or nil
 end
 
 function W.place(widget, x, y)

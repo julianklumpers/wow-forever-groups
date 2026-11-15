@@ -142,14 +142,15 @@ end
 -- (name, class, localizedClass, level, itemLevel, honorLevel, tank, healer,
 -- damage) in others.
 local function applicantMember(id)
-    local ok, a, _, _, level, _, _, tank, healer, damage = call("GetApplicantMemberInfo", id, 1)
+    local ok, a, class, _, level, _, _, tank, healer, damage = call("GetApplicantMemberInfo", id, 1)
     if not ok then
         return nil
     end
     if type(a) == "table" then
-        return { name = a.name, level = a.level, tank = a.tank, healer = a.healer, damage = a.damage }
+        return { name = a.name, level = a.level, tank = a.tank, healer = a.healer, damage = a.damage,
+            class = a.classFilename or a.class }
     end
-    return { name = a, level = level, tank = tank, healer = healer, damage = damage }
+    return { name = a, level = level, tank = tank, healer = healer, damage = damage, class = class }
 end
 
 function Listing.checkApplicants()
@@ -161,7 +162,7 @@ function Listing.checkApplicants()
         return
     end
     local dungeon = ns.Filler.dungeon()
-    local candidates, byName = {}, {}
+    local candidates, byName, rolesOf = {}, {}, {}
     for _, id in ipairs(ids) do
         local infoOk, info = call("GetApplicantInfo", id)
         local member = applicantMember(id)
@@ -170,12 +171,17 @@ function Listing.checkApplicants()
         if readable and info.applicationStatus == "applied"
             and (info.numMembers or 1) == 1 and not handled[id] and type(member.name) == "string" then
             local roles = (member.tank and "T" or "") .. (member.healer and "H" or "") .. (member.damage and "D" or "")
+            if type(member.class) == "string" and not ns.isSecret(member.class) then
+                roles = ns.Classes.filter(roles, member.class) or ""
+            end
             if roles ~= "" then
                 candidates[#candidates + 1] = {
                     name = member.name, roles = roles, dungeons = { dungeon }, solo = true,
                     level = tonumber(member.level), age = 0,
+                    classToken = not ns.isSecret(member.class) and member.class or nil,
                 }
                 byName[member.name] = id
+                rolesOf[member.name] = roles
             end
         end
     end
@@ -183,14 +189,17 @@ function Listing.checkApplicants()
     local picks = Fill.pick(candidates, {
         missing = ns.Filler.stillNeeded(), dungeon = dungeon, exclude = ns.Filler.excluded(),
         range = entry and entry.min and { min = entry.min, max = entry.max } or nil,
+        places = ns.Filler.freePlaces(), levels = ns.PartyLevels.rules("dungeons"),
     })
     for _, pick in ipairs(picks) do
         local id = byName[pick.name]
         local roleName = ns.Widgets.ROLE_NAMES[pick.role]
-        handled[id] = true
         if ns.db.dryRun then
+            handled[id] = true
             Log.info("Dry run: would invite applicant %s as %s.", pick.name, roleName)
-        elseif ns.Filler.trackInvite(pick.name, pick.role) then
+        elseif ns.Filler.trackInvite(pick.name, pick.role, pick.class, rolesOf[pick.name]) then
+            -- Only now: one refused while a queue proposal is open is asked again later.
+            handled[id] = true
             Input.queue("applicant:" .. id, "invite applicant " .. pick.name, function()
                 C_LFGList.InviteApplicant(id)
                 Log.info("Invited %s, who applied to your group, as %s.", pick.name, roleName)

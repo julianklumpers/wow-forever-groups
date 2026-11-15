@@ -35,7 +35,13 @@ local STEPS = {
             "in Forever Groups and in WoW's Group Finder, and how many listed groups have a place for you."),
         place = "below",
         target = function()
-            local card = W.ui.card
+            local ui = W.ui
+            if shown(ui.headerLookingLabel) then
+                local groups = ui.headerLookingGroups
+                return ui.headerLookingLabel, shown(groups) and (groups:GetText() or "") ~= "" and groups
+                    or ui.headerLooking
+            end
+            local card = ui.card
             if not card or not shown(card.lookingLabel) then
                 return false
             end

@@ -294,11 +294,21 @@ function Client:click(kind, text, root)
     self.inClick = false
 end
 
--- The radios of a WoW dropdown menu (SetupMenu), as WoW builds them on
--- opening: { text, selected, pick(), tooltip lines }.
+-- The radios and checks of a WoW dropdown menu (SetupMenu), as WoW builds
+-- them on opening: { text, selected, pick(), tooltip lines }; a check's
+-- text without its colour code.
 function Client:dropdownItems(button)
     local items = {}
     local root = {}
+    function root.CreateCheckbox(_, text, isSelected, setSelected, data)
+        local plain = string.gsub(string.gsub(text, "|c%x%x%x%x%x%x%x%x", ""), "|r", "")
+        local item = { text = plain, selected = isSelected(data) and true or false, check = true }
+        item.pick = function()
+            setSelected(data)
+        end
+        items[#items + 1] = item
+        return {}
+    end
     function root.CreateRadio(_, text, isSelected, setSelected, data)
         local item = { text = text, selected = isSelected(data) and true or false }
         item.pick = function()
@@ -523,7 +533,12 @@ local function buildEnv(world, client)
         end
         return nil
     end
-    env.UnitLevel = function()
+    -- A party member's own level when the test gives one (client.partyLevels).
+    env.UnitLevel = function(unit)
+        local name = unit ~= "player" and unitName(unit)
+        if name and client.partyLevels and client.partyLevels[name] then
+            return client.partyLevels[name]
+        end
         return client.level
     end
     env.UnitFullName = function(unit)
@@ -752,6 +767,9 @@ local function buildEnv(world, client)
             error("only the leader can set other roles")
         end
         client.roleSets[#client.roleSets + 1] = name .. "=" .. role
+        if client.rolesIgnored and client.rolesIgnored[name] then
+            return
+        end
         if client.roleDelay then
             -- The server applies the role a moment later.
             world:schedule(client, client.roleDelay, function()
@@ -865,6 +883,11 @@ local function buildEnv(world, client)
         widget.lines = widget.lines or {}
         widget.lines[#widget.lines + 1] = text
     end
+    -- A two-column line, kept as "left | right".
+    function methods.AddDoubleLine(widget, left, right)
+        widget.lines = widget.lines or {}
+        widget.lines[#widget.lines + 1] = left .. " | " .. right
+    end
     function methods.GetText(widget)
         return widget.text
     end
@@ -900,6 +923,25 @@ local function buildEnv(world, client)
     end
     function methods.SetHeight(widget, height)
         widget.height = height
+    end
+    -- A scroll bar (MinimalScrollBar): like WoW's, setting the place calls
+    -- back with it too.
+    function methods.RegisterCallback(widget, event, fn, owner)
+        widget.callbacks = widget.callbacks or {}
+        widget.callbacks[event] = { fn = fn, owner = owner }
+    end
+    function methods.SetScrollPercentage(widget, percentage)
+        widget.scrollPercentage = percentage
+        local callback = widget.callbacks and widget.callbacks.OnScroll
+        if callback then
+            callback.fn(callback.owner, percentage)
+        end
+    end
+    function methods.SetVisibleExtentPercentage(widget, percentage)
+        widget.visibleExtent = percentage
+    end
+    function methods.SetPanExtentPercentage(widget, percentage)
+        widget.panExtent = percentage
     end
     function methods.SetTexture(widget, texture)
         widget.texture, widget.atlas = texture, nil
@@ -1320,9 +1362,24 @@ local function buildEnv(world, client)
                 comment = l.comment or "" }
             return client.lockdown and secretCopy(info) or info
         end,
+        -- Member 1 is the leader; a group's others come from listing.memberList
+        -- ({ { class, role, level } }), when the test gives them.
+        GetSearchResultPlayerInfo = function(id, index)
+            local l = world.listings[id]
+            local member = (l.memberList or {})[index - 1]
+            if index == 1 then
+                member = { class = l.class or "PALADIN", role = l.assignedRole or "NONE", level = l.level }
+            end
+            if not member then
+                return nil
+            end
+            local info = { classFilename = member.class, assignedRole = member.role, level = member.level }
+            return client.lockdown and secretCopy(info) or info
+        end,
         GetSearchResultLeaderInfo = function(id)
             local l = world.listings[id]
-            local info = { name = l.leaderName, level = l.level, lfgRoles = l.lfgRoles, classFilename = "WARRIOR",
+            local info = { name = l.leaderName, level = l.level, lfgRoles = l.lfgRoles,
+                classFilename = l.class or "PALADIN",
                 assignedRole = l.assignedRole or "NONE" }
             return client.lockdown and secretCopy(info) or info
         end,

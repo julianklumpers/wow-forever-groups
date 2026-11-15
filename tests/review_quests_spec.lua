@@ -203,15 +203,17 @@ describe("questing in the Group Finder, reviewed", function()
 end)
 
 describe("the window, reviewed", function()
-    it("hides the party header outside the dungeon setup", function()
+    it("shows a leader's party under the choices while setting up dungeons, on top elsewhere", function()
         local world = World.new()
         local client = world:addClient("Lead Player", { level = 20 })
         world:advance(12)
         client.party, client.isLeader = { "Pal Player" }, true
         client:slash("/dq")
-        assert.is_not_nil(client:findText("^Party: roles follow"))
+        local card = client.ns.WindowParts.ui.card
+        local tank = client:find("CheckButton", "Tank")
+        assert.is_true(card.point[5] < tank.point[5])
         client:click("Button", "Quests")
-        assert.is_nil(client:findText("^Party: roles follow"))
+        assert.is_true(card.point[5] > client:find("CheckButton", "Tank").point[5])
     end)
 
     it("answers a questing proposal with /dq accept", function()

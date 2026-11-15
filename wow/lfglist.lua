@@ -17,6 +17,7 @@ local CATEGORY_ZONES = 116
 local CATEGORY_BATTLEGROUNDS = 118
 local SEARCH_TIMEOUT = 15
 local EXPECTED = { T = 1, H = 1, D = 3 }
+local ROLE_LETTERS = { TANK = "T", HEALER = "H", DAMAGER = "D" }
 local ROLE_KEYS = { TANK = "T", HEALER = "H", DAMAGER = "D", DPS = "D" }
 
 local listings = {}
@@ -171,6 +172,12 @@ local function readResult(id, areasOf, field)
         return nil
     end
     local areas, roles = areasOf(info), rolesOf(leader)
+    -- WoW lets anyone tick any role; a Warlock listed as tank or healer
+    -- only plays DPS.
+    local class = leader.classFilename
+    if type(class) == "string" and not isSecret(class) then
+        roles = ns.Classes.filter(roles, class) or ""
+    end
     if #areas == 0 or roles == "" then
         return nil
     end
@@ -188,6 +195,21 @@ local function readResult(id, areasOf, field)
             end
         end
     end
+    -- Who is in a group: class, role and level per member, the leader first.
+    local memberInfo
+    if (info.numMembers or 1) > 1 then
+        memberInfo = {}
+        for i = 1, math.min(info.numMembers, 5) do
+            local member = call("GetSearchResultPlayerInfo", id, i)
+            local memberClass = type(member) == "table" and member.classFilename
+            if type(memberClass) == "string" and not isSecret(memberClass) and not isSecret(member.assignedRole)
+                and not isSecret(member.level) then
+                memberInfo[#memberInfo + 1] = { leader = i == 1, classToken = memberClass,
+                    role = ROLE_LETTERS[member.assignedRole],
+                    level = tonumber(member.level) }
+            end
+        end
+    end
     -- The listing's note is a protected string (|K...|k): it can be shown in
     -- a tooltip or font string, but its text cannot be read.
     local comment = info.comment
@@ -199,7 +221,7 @@ local function readResult(id, areasOf, field)
         comment = comment,
         roles = roles, [field] = areas, age = tonumber(info.age) or 0, solo = info.numMembers == 1,
         members = tonumber(info.numMembers) or 1,
-        remaining = remaining, playstyle = ns.Playstyle.fromWoW(info.generalPlaystyle),
+        remaining = remaining, playstyle = ns.Playstyle.fromWoW(info.generalPlaystyle), memberInfo = memberInfo,
     }
 end
 

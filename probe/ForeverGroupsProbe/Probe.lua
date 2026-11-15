@@ -2886,6 +2886,91 @@ local function cmdMask()
     log("INFO", "mask: shown; please take a screenshot")
 end
 
+-- Commands added later live in one table: the main chunk is near Lua's 200
+-- locals.
+local Extra = {}
+
+-- Scroll bars for Who is looking: each candidate template in a test window,
+-- which exist and what they offer, and where a drag or a click on an arrow
+-- scrolls to.
+Extra.SCROLLBAR_TEMPLATES = { "WowTrimScrollBar", "MinimalScrollBar", "WowClassicScrollBar",
+    "UIPanelScrollBarTemplate" }
+Extra.SCROLLBAR_METHODS = { "SetScrollPercentage", "GetScrollPercentage", "SetVisibleExtentPercentage",
+    "SetPanExtentPercentage", "RegisterCallback", "SetMinMaxValues", "SetValue", "SetValueStep" }
+
+function Extra.scrollbar()
+    if Extra.scrollFrame then
+        Extra.scrollFrame:SetShown(not Extra.scrollFrame:IsShown())
+        return
+    end
+    local f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+    Extra.scrollFrame = f
+    f:SetSize(460, 250)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    title:SetPoint("TOP", 0, -5)
+    title:SetText("Scroll bars (/fgp scrollbar)")
+    for i, name in ipairs(Extra.SCROLLBAR_TEMPLATES) do
+        local kind = name == "UIPanelScrollBarTemplate" and "Slider" or "EventFrame"
+        local ok, bar = pcall(CreateFrame, kind, "ForeverGroupsProbeScroll" .. i, f, name)
+        if not ok or not bar then
+            ok, bar = pcall(CreateFrame, "Frame", "ForeverGroupsProbeScrollF" .. i, f, name)
+        end
+        local label = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("TOPLEFT", 20 + (i - 1) * 110, -210)
+        label:SetText(i .. ") " .. name .. ((ok and bar) and "" or " (missing)"))
+        if ok and bar then
+            bar:ClearAllPoints()
+            bar:SetPoint("TOPLEFT", 40 + (i - 1) * 110, -40)
+            bar:SetHeight(160)
+            local methods = {}
+            for _, method in ipairs(Extra.SCROLLBAR_METHODS) do
+                if type(bar[method]) == "function" then
+                    methods[#methods + 1] = method
+                end
+            end
+            store("INFO", "scrollbar %s: made (%s), width %s, methods %s", name, kind, show(bar:GetWidth()),
+                table.concat(methods, ","))
+            if bar.SetVisibleExtentPercentage then
+                pcall(bar.SetVisibleExtentPercentage, bar, 0.3)
+            end
+            if bar.SetPanExtentPercentage then
+                pcall(bar.SetPanExtentPercentage, bar, 0.1)
+            end
+            if bar.SetScrollPercentage then
+                pcall(bar.SetScrollPercentage, bar, 0)
+            end
+            if bar.SetMinMaxValues then
+                pcall(bar.SetMinMaxValues, bar, 0, 100)
+                pcall(bar.SetValue, bar, 0)
+            end
+            if bar.RegisterCallback then
+                local events = _G.BaseScrollBoxEvents
+                local event = (events and events.OnScroll) or "OnScroll"
+                local cbOk, err = pcall(bar.RegisterCallback, bar, event, function(_, percentage)
+                    log("RECV", "scrollbar %s scrolled to %s", name, show(percentage))
+                end, f)
+                store("INFO", "scrollbar %s: callback %s on %s %s", name, show(cbOk), show(event), show(err))
+            end
+            if bar.HookScript then
+                pcall(bar.HookScript, bar, "OnValueChanged", function(_, value)
+                    log("RECV", "scrollbar %s value %s", name, show(value))
+                end)
+            end
+        else
+            store("WARN", "scrollbar %s: missing (%s)", name, show(bar))
+        end
+    end
+    f:Show()
+    log("INFO", "scrollbar: shown; drag each bar and click its arrows, take a screenshot, then /reload")
+end
+
 -- Raids for battleground premades: whether the addon may turn the party
 -- into a raid without a click (from a timer), and back again. Only as the
 -- leader of a party outside an instance: the group is a raid for a few
@@ -3068,6 +3153,75 @@ local function cmdShareQuest(rest)
     end
 end
 
+-- A note on our own Group Finder listing: what WoW's own window sends when
+-- the player lists with a note (CreateListing/UpdateListing are watched and
+-- their arguments logged, then the active listing), and with "try" a
+-- listing of our own with a note in a few likely fields. "remove" takes the
+-- listing down again. Listing is protected, so all from the command.
+local listNoteHooked = false
+
+local function dumpActiveListing(when)
+    local _, info = lfgCall("GetActiveEntryInfo")
+    log("RECV", "listnote %s: GetActiveEntryInfo -> %s", when, dumpValue(info))
+end
+
+local function hookListing()
+    if listNoteHooked or not C_LFGList then
+        return
+    end
+    listNoteHooked = true
+    for _, name in ipairs({ "CreateListing", "UpdateListing" }) do
+        if type(C_LFGList[name]) == "function" then
+            hooksecurefunc(C_LFGList, name, function(...)
+                local args = {}
+                for i = 1, select("#", ...) do
+                    args[i] = dumpValue((select(i, ...)))
+                end
+                log("RECV", "listnote: %s(%s)", name, table.concat(args, ", "))
+                C_Timer.After(2, function()
+                    dumpActiveListing("after " .. name)
+                end)
+            end)
+        end
+    end
+end
+
+local function cmdListNote(rest)
+    hookListing()
+    local what = (rest or ""):lower()
+    if what:find("remove") then
+        log("INFO", "listnote: RemoveListing -> %s", show(lfgCall("RemoveListing")))
+        return
+    end
+    if not what:find("try") then
+        dumpActiveListing("now")
+        log("INFO", "listnote: watching. List yourself in WoW's own Group Finder WITH a note now, then /reload.")
+        return
+    end
+    local activity
+    for _, id in ipairs({ 799, 796, 1982, 800 }) do
+        local _, info = lfgCall("GetActivityInfoTable", id)
+        if type(info) == "table" then
+            activity = id
+            break
+        end
+    end
+    if not activity then
+        log("FAIL", "listnote try: no dungeon activity found")
+        return
+    end
+    local note = "Forever Groups note test"
+    local ok, err = lfgCall("CreateListing", { activityIDs = { activity }, isAutoAccept = false,
+        isPrivateGroup = false, generalPlaystyle = 1, isCrossFactionListing = false,
+        comment = note, description = note, note = note, questID = nil })
+    log(ok and "INFO" or "FAIL", "listnote try: CreateListing with comment/description/note -> %s",
+        ok and "called" or show(err))
+    C_Timer.After(2, function()
+        dumpActiveListing("after try")
+        log("INFO", "listnote: done; /fgp listnote remove takes it down, then /reload")
+    end)
+end
+
 local COMMANDS = {
     { "all", "run info, api, join, chan, whisper, big, ping and popup", cmdAll },
     { "info", "build, names, time, lockdown, group state", cmdInfo },
@@ -3103,11 +3257,14 @@ local COMMANDS = {
     { "finderart", "the art of the Group Finder's category buttons (open the Group Finder first)", cmdFinderArt },
     { "pvp", "battlegrounds: functions, the battlegrounds and the Group Finder's battleground activities", cmdPvp },
     { "mask", "draw art with rounded-corner mask candidates, to see which one fits the frames", cmdMask },
+    { "scrollbar", "draw WoW's scroll bar templates, to see which one Who is looking can use", Extra.scrollbar },
     { "raid", "as party leader outside an instance: turn the party into a raid and back, from a timer", cmdRaid },
     { "rescind", "[Name] [expire] invite your target (or Name), take it back on a key press after 5 s", cmdRescind },
     { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },
     { "sharequest", "[later] share the first shareable quest with the party (later: from a timer, no click)",
         cmdShareQuest },
+    { "listnote", "[try | remove] how a note gets on our Group Finder listing (watch WoW's window, or try)",
+        cmdListNote },
     { "channels", "[name] member count of every joined channel (with a name: join it for the check)", cmdChannels },
     { "log", "[n] print the last n stored log lines", cmdLog },
     { "clear", "clear the stored log", cmdClear },

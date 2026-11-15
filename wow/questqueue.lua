@@ -145,6 +145,7 @@ function QuestQueue.join(keys, members, joinedAt)
     if #keys == 0 then
         return false, "your party is already big enough for these quests"
     end
+    quests:setLevels(ns.PartyLevels.wireText("quests"))
     local ok, err = quests:join(members, keys, joinedAt)
     if ok and not joinedAt then
         Log.info("Looking for a questing group for: %s.", QuestQueue.describe(keys))

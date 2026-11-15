@@ -3,6 +3,7 @@ ns = ns or {}
 
 local Roles = ns.Roles or require("core.roles")
 local Matchmaker = ns.Matchmaker or require("core.matchmaker")
+local Levels = ns.Levels or require("core.levels")
 
 -- Questing groups: players who share at least one group or elite quest.
 -- Playstyles do not apply to quests.
@@ -64,15 +65,17 @@ end
 
 -- nil when no group of this size can be formed around the anchor; a party
 -- that is already big enough for the quest needs nobody.
--- The candidates are the entries after the anchor: list[from] onwards.
+-- The candidates are the entries after the anchor: list[from] onwards; for a
+-- leader with a level limit every entry, since those before cannot take that
+-- leader in (Matchmaker.candidateFor leaves the leader itself out).
 local function groupFor(anchor, list, from, key, size, taken)
     if #anchor.members >= size or not bestAssignment({ anchor }, size) then
         return nil
     end
     local candidates = {}
-    for i = from, #list do
-        local entry = list[i]
-        if has(entry, key) and not shares(entry, taken) then
+    for i = (anchor.levels or anchor.rules) and 1 or from, #list do
+        local entry = Matchmaker.candidateFor(anchor, list[i])
+        if entry and has(entry, key) and not shares(entry, taken) then
             candidates[#candidates + 1] = { entry = entry, overlap = overlap(anchor, entry), heals = canHeal(entry) }
         end
     end
@@ -129,7 +132,8 @@ local function finish(group, size)
                 list[#list + 1] = { name = member.name, role = option.assignment[at] }
             end
         end
-        parts[i] = { id = entry.id, members = list, size = #entry.members, source = entry.source }
+        parts[i] = { id = entry.id, members = list, size = #entry.members, source = entry.source,
+            composer = entry.levels ~= nil }
     end
     local leader, assigned, sources, members = Matchmaker.orderByLeader(parts)
     return {
@@ -144,13 +148,14 @@ end
 
 -- Same shape as Matchmaker.findGroups; slots are not used (the quest key
 -- sets the size).
-function QuestMatch.findGroups(entries)
+-- now: server time, for a leader's level limit (core/levels.lua).
+function QuestMatch.findGroups(entries, _, now)
     local sorted = {}
     for i, entry in ipairs(Matchmaker.sortByPriority(entries)) do
         local members = Roles.withReserved(entry.members, entry.reserved)
         sorted[i] = {
             id = entry.id, dungeons = entry.dungeons, members = members, rank = i,
-            players = #members, source = entry,
+            players = #members, source = entry, levels = now and Levels.active(entry.levels, now) or nil,
         }
     end
     local groups, used, taken = {}, {}, {}

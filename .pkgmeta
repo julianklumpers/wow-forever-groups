@@ -17,4 +17,5 @@ ignore:
   - media/source
   - docs
   - CHANGELOG.md
+  - OVERVIEW.md
   - media/screenshots

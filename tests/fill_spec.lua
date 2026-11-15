@@ -6,6 +6,19 @@ local function listing(name, roles, dungeons, age, level, solo)
 end
 
 describe("Fill", function()
+    it("takes a player when everyone picked still fits the wished places, without deciding places early", function()
+        local Compose = require("core.compose")
+        local rogue, mage = listing("Rogue A", "D", nil, 300), listing("Mage B", "D", nil, 100)
+        rogue.classToken, mage.classToken = "ROGUE", "MAGE"
+        local places = {
+            { role = "D", mask = Compose.maskOf({ "MAGE", "ROGUE" }) },
+            { role = "D", mask = Compose.maskOf({ "ROGUE" }) },
+        }
+        local picks, open = Fill.pick({ rogue, mage }, { missing = "DD", dungeon = "5", places = places })
+        assert.are.equal(2, #picks)
+        assert.are.equal("", open)
+    end)
+
     it("picks a player for each open role, longest listed first", function()
         local listings = {
             listing("NewHeal", "H", nil, 10), listing("OldHeal", "H", nil, 300), listing("Dps", "D", nil, 50),

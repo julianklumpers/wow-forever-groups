@@ -225,7 +225,8 @@ function QuestFinder.onResults()
             local picked = 0
             for _, listing in ipairs(ns.Features.fill() and listings or {}) do
                 local role = listing.solo and hasZone(listing, quest.zone) and not tried[listing.name]
-                    and listing.name ~= ns.selfName and not inParty(listing.name) and roleFor(listing.roles, taken)
+                    and listing.name ~= ns.selfName and not inParty(listing.name)
+                    and ns.Levels.fits(ns.PartyLevels.rules("quests"), listing.level) and roleFor(listing.roles, taken)
                 if role and picked < open then
                     taken[role] = taken[role] + 1
                     picked = picked + 1
