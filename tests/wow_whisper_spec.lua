@@ -104,4 +104,62 @@ describe("whisper invites while building a group", function()
         assert.is_false(invited(tank, "New Builder"))
         assert.are.same({}, repliesTo(tank, "Old Builder"))
     end)
+
+    it("does not promise a place every open invite holds, and invites the whisperer when one frees up", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        world:list("Heal A", "H", 799, 20, 900)
+        for i = 1, 3 do
+            world:list("Dps " .. i, "D", 799, 20, 900 - i)
+        end
+        world:advance(30)
+        tank.ns.charDb.wantsLead = true
+        tank:slash("/dq join tank dm")
+        world:advance(3)
+        tank:joins("Dps 1")
+        tank:joins("Dps 2")
+        world:advance(30)
+        assert.are.equal("HD", tank.ns.Filler.stillNeeded())
+        tank:whisperFrom("Whisper Dps", "dps inv?")
+        world:advance(2)
+        assert.are.same({}, tank.refusedInvites)
+        assert.are.same({}, repliesTo(tank, "Whisper Dps"))
+        world:advance(40)
+        assert.is_true(invited(tank, "Whisper Dps"))
+        assert.truthy(repliesTo(tank, "Whisper Dps")[1]:find("Inviting you as dps for The Deadmines"))
+    end)
+
+    local function wantsDruidTank(world)
+        local lead = world:addClient("Lead Priest", { level = 20, class = "PRIEST" })
+        world:advance(30)
+        lead.ns.charDb.wantsLead = true
+        lead.ns.charDb.compose = { masks = { 256, 0, 0, 0, 0 } }
+        lead.ns.charDb.composeOn = true
+        lead:slash("/dq join heal dm")
+        world:advance(2)
+        assert.is_true(lead.ns.Filler.isActive())
+        return lead
+    end
+
+    it("reads a whisperer's class to give them a place the class wishes keep for it", function()
+        local world = World.new()
+        local lead = wantsDruidTank(world)
+        lead:whisperFrom("Warrior Tank", "tank inv?", "WARRIOR")
+        lead:whisperFrom("Unknown Tank", "tank inv?")
+        assert.is_false(invited(lead, "Warrior Tank"))
+        assert.is_false(invited(lead, "Unknown Tank"))
+        lead:whisperFrom("Paj Verus", "tank inv?", "DRUID")
+        assert.is_true(invited(lead, "Paj Verus"))
+        assert.are.equal("T", lead.ns.Filler.roleOf("Paj Verus"))
+    end)
+
+    it("takes a whisperer's class from their Group Finder listing", function()
+        local world = World.new()
+        world:list("Bear Druid", "T", 799, 60, 300)
+        world.listings[#world.listings].class = "DRUID"
+        local lead = wantsDruidTank(world)
+        assert.is_false(invited(lead, "Bear Druid"))
+        lead:whisperFrom("Bear Druid", "tank?")
+        assert.is_true(invited(lead, "Bear Druid"))
+    end)
 end)

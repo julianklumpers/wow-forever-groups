@@ -32,6 +32,18 @@ describe("WoW layer", function()
         assert.are.equal(6, client.channels.ForeverGroupsNet)
     end)
 
+    it("keeps the version pings out of the saved log, also with debug on", function()
+        local world = World.new()
+        local one = world:addClient("One Player")
+        local two = world:addClient("Two Player")
+        one.ns.db.debug, two.ns.db.debug = true, true
+        world:advance(120)
+        for _, client in ipairs({ one, two }) do
+            assert.is_false(client:logged("DQV|"), client.name)
+            assert.is_true(client:logged("<- "), client.name)
+        end
+    end)
+
     it("leaves the channel of the old DungeonQueue name", function()
         local world = World.new()
         local client = world:addClient("Roos Bieff", { beforeLogin = function(c)

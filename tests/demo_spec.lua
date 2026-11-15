@@ -33,6 +33,27 @@ local function outgoing(client)
         roles = copy(client.groupFinderRoles) }
 end
 
+local function screenLabel(client)
+    local label = client:findText("^%d/8  ·  ")
+    return label and label.text
+end
+
+-- Next until the bar shows another screen (or the demo ended).
+local function nextScreen(client)
+    local before = screenLabel(client)
+    for _ = 1, 10 do
+        client:click("Button", "Next")
+        if screenLabel(client) ~= before then
+            return
+        end
+    end
+end
+
+local function startDemo(client)
+    client:slash("/fg demo")
+    client:click("Button", "Show me around")
+end
+
 local function anyTextWith(client, plain)
     for _, widget in ipairs(client.widgets) do
         local visible, w = true, widget
@@ -57,11 +78,23 @@ describe("/fg demo", function()
         assert.are.equal("Aldric Dawnmere", ns.selfName)
         assert.are.equal("PALADIN", ns.Party.playerClass())
         assert.are.equal(20, ns.Party.playerLevel())
-        assert.is_false(client:find("Button", "Previous screen").enabled)
+        assert.is_not_nil(client:findText("^Welcome to Forever Groups$"))
+        assert.is_not_nil(client:findText("^Pick your roles, press Find group"))
+        assert.is_nil(client:find("Button", "Previous"))
+        client:click("Button", "Show me around")
 
         assert.is_not_nil(client:findText("^1/8  ·  Choosing a dungeon$"))
+        assert.is_not_nil(client:findText("^Step 1 of 7$"))
         assert.is_not_nil(client:findText("^Example$"))
-        assert.is_not_nil(client:findText("^Tick every role you can play%. .* These numbers count"))
+        assert.is_not_nil(client:findText("^Tick every role you can play%."))
+        client:click("Button", "Next")
+        assert.is_not_nil(client:findText("^Step 2 of 7$"))
+        assert.is_not_nil(client:findText("^Join a group, or lead one"))
+        client:click("Button", "Previous")
+        client:click("Button", "Previous")
+        assert.is_not_nil(client:findText("^Welcome to Forever Groups$"))
+        client:click("Button", "Show me around")
+        assert.is_not_nil(client:findText("^Step 1 of 7$"))
         assert.is_not_nil(client:findText("^Dungeons for level 20$"))
         assert.is_true(ns.WindowParts.ui.headerLooking.shown)
         assert.is_true(client:frame("ForeverGroupsQueueFrame").shown)
@@ -69,7 +102,7 @@ describe("/fg demo", function()
         assert.is_not_nil(client:findText("^Haldor Stormbanner$"))
         assert.is_not_nil(client:findText("^Liora Thornwick %+1$"))
 
-        client:click("Button", "Next screen")
+        nextScreen(client)
         assert.is_not_nil(client:findText("^2/8  ·  Leading your party$"))
         assert.is_not_nil(client:findText("^Your party: 2/5$"))
         assert.is_true(client:find("CheckButton", "Choose the classes in my party").checked)
@@ -79,15 +112,15 @@ describe("/fg demo", function()
         assert.are.equal("18", ns.WindowParts.ui.levelsMin.text)
         assert.are.equal("24", ns.WindowParts.ui.levelsMax.text)
 
-        client:click("Button", "Next screen")
+        nextScreen(client)
         assert.is_not_nil(client:findText("^3/8  ·  Waiting in the queue$"))
         assert.is_not_nil(client:findText("^In queue 4:2%d as Tank$"))
         assert.is_not_nil(client:findText("^Searching 3 dungeons"))
         assert.are.equal("dungeons", ns.WindowParts.fixedTab())
 
-        client:click("Button", "Next screen")
+        nextScreen(client)
         assert.is_not_nil(client:findText("^4/8  ·  Group found$"))
-        assert.is_not_nil(client:findText("^A group was found: accept before the time runs out%."))
+        assert.is_not_nil(client:findText("^Who was found: everyone's role and spec"))
         assert.is_true(client:proposalShown())
         assert.is_not_nil(client:findText("^Aldric Dawnmere %(you%)$"))
         assert.is_not_nil(client:findText("^Restoration Shaman$"))
@@ -98,7 +131,7 @@ describe("/fg demo", function()
         assert.is_not_nil(client:findText("^Accepted%. Waiting for the others%.%.%.$"))
         assert.is_not_nil(client:findText("^4/5 accepted$"))
 
-        client:click("Button", "Next screen")
+        nextScreen(client)
         assert.is_false(client:proposalShown())
         assert.is_not_nil(client:findText("^5/8  ·  In your group$"))
         assert.is_not_nil(client:findText("^Group complete  ·  Relaxed  ·  3 of 5 at the entrance$"))
@@ -108,7 +141,7 @@ describe("/fg demo", function()
         assert.is_true(client:find("Button", "Share my quests").enabled)
         assert.is_true(client:find("Button", "Quest progress").enabled)
 
-        client:click("Button", "Next screen")
+        nextScreen(client)
         assert.is_not_nil(client:findText("^6/8  ·  Group quests$"))
         assert.is_not_nil(client:findText("^Group and elite quests  ·  4 selected$"))
         assert.is_not_nil(client:findText("^Wanted: Gath'Ilzogg$"))
@@ -116,20 +149,26 @@ describe("/fg demo", function()
         assert.is_not_nil(client:findText("^Kaelis Hollowmere %+1$"))
         assert.is_not_nil(client:findText("^Redridge Mountains$"))
 
-        client:click("Button", "Next screen")
+        nextScreen(client)
         assert.is_not_nil(client:findText("^7/8  ·  Questing group$"))
         assert.is_not_nil(client:findText("^Questing group: Wanted: Gath'Ilzogg, Wanted: Lieutenant Fangore$"))
         assert.is_not_nil(client:findText("^Questing: Wanted: Gath'Ilzogg"))
         assert.is_not_nil(client:findText("^Elowen Frostmantle$"))
         assert.is_not_nil(client:findText("^ready to turn in$"))
 
-        client:click("Button", "Next screen")
+        nextScreen(client)
         assert.is_not_nil(client:findText("^8/8  ·  Battlegrounds$"))
         assert.is_not_nil(client:findText("^Battlegrounds for level 20  ·  2 selected$"))
         assert.is_not_nil(client:findText("^Zephyra Duskwhisper %+2$"))
-        assert.is_false(client:find("Button", "Next screen").enabled)
+        client:click("Button", "Next")
+        client:click("Button", "Next")
+        assert.is_not_nil(client:findText("^That's all"))
+        assert.is_false(client:find("Button", "Next").enabled)
+        assert.is_not_nil(client:find("Button", "Done"))
 
-        client:click("Button", "Previous screen")
+        for _ = 1, 3 do
+            client:click("Button", "Previous")
+        end
         assert.is_not_nil(client:findText("^7/8  ·  Questing group$"))
         world:advance(5)
         assert.is_not_nil(client:findText("^7/8  ·  Questing group$"))
@@ -142,7 +181,7 @@ describe("/fg demo", function()
         local world, client = connected("Real Person", { level = 37, class = "MAGE" })
         client:slash("/fg")
         local before = outgoing(client)
-        client:slash("/fg demo")
+        startDemo(client)
         for scene = 1, 8 do
             assert.is_nil(anyTextWith(client, "Real Person"), "scene " .. scene)
             if scene == 1 then
@@ -163,7 +202,7 @@ describe("/fg demo", function()
             end
             world:advance(3)
             if scene < 8 then
-                client:click("Button", "Next screen")
+                nextScreen(client)
             end
         end
         world:advance(30)
@@ -176,9 +215,9 @@ describe("/fg demo", function()
         local ns = client.ns
         local engine, questEngine, bgEngine = ns.engine, ns.questEngine, ns.bgEngine
         local db, charDb = withoutLog(client.env.ForeverGroupsDB), copy(client.env.ForeverGroupsCharDB)
-        client:slash("/fg demo")
+        startDemo(client)
         for _ = 1, 7 do
-            client:click("Button", "Next screen")
+            nextScreen(client)
         end
         client:click("Button", "End the demo")
         assert.is_false(ns.Demo.isOn())
@@ -257,14 +296,32 @@ describe("/fg demo", function()
         assert.are.same(before, saved.charDb)
     end)
 
+    it("ends with Done on the last step, or Skip at the welcome", function()
+        local _, client = connected()
+        startDemo(client)
+        for _ = 1, 7 do
+            nextScreen(client)
+        end
+        for _ = 1, 2 do
+            client:click("Button", "Next")
+        end
+        client:click("Button", "Done")
+        assert.is_false(client.ns.Demo.isOn())
+        assert.are.equal("Real Person", client.ns.selfName)
+
+        client:slash("/fg demo")
+        client:click("Button", "Skip")
+        assert.is_false(client.ns.Demo.isOn())
+    end)
+
     it("ends cleanly when a screen fails", function()
         local _, client = connected()
-        client:slash("/fg demo")
+        startDemo(client)
         client.ns.Popup.show = function()
             error("broken popup")
         end
         for _ = 1, 3 do
-            client:click("Button", "Next screen")
+            nextScreen(client)
         end
         assert.is_false(client.ns.Demo.isOn())
         assert.is_true(client:said("The demo stopped after an error"))

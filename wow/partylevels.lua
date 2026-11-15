@@ -118,9 +118,25 @@ function PartyLevels.isBuilder(tab)
     return TABS[tab] ~= nil and (state == "leader" or (state == "solo" and ns.charDb[TABS[tab]] == true))
 end
 
+-- Noted at each new search: whether the player then saw the class choices
+-- and level limit. With "Join a group" they did not, and leading the group
+-- Forever Groups builds for them later does not bring them back for that
+-- search (charDb.wishesHidden, per tab).
+function PartyLevels.noteStart(tab)
+    local hidden = ns.charDb.wishesHidden or {}
+    hidden[tab] = not PartyLevels.isBuilder(tab) or nil
+    ns.charDb.wishesHidden = next(hidden) and hidden or nil
+end
+
+-- Whether the class choices and level limit count on this tab right now.
+function PartyLevels.wishesCount(tab)
+    local hidden = ns.charDb.wishesHidden
+    return PartyLevels.isBuilder(tab) and not (hidden and hidden[tab])
+end
+
 -- dungeons: the ones being joined (ns.join), else the queued or ticked ones.
 function PartyLevels.wireText(tab, dungeons)
-    if not PartyLevels.isOn() or not PartyLevels.isBuilder(tab) then
+    if not PartyLevels.isOn() or not PartyLevels.wishesCount(tab) then
         return nil
     end
     local limit = PartyLevels.limit(tab, dungeons)

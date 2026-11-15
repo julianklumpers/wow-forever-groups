@@ -1655,10 +1655,109 @@ do
     end
 end
 
+-- /fgp languages: what Forever Groups assumes about game languages. The
+-- client's language and the languages the Group Finder offers; whether a
+-- whisper's GUID gives the whisperer's class (GetPlayerInfoByGUID); and
+-- whether the server filters search results by the lister's language
+-- (own | ru | all: one search each, counting Cyrillic leader names).
+local languageProbe = {}
+
+do
+    local whisperUntil = 0
+    local test
+
+    local function cyrillic(name)
+        return type(name) == "string" and not isSecret(name) and name:find("[\208\209][\128-\191]") ~= nil
+    end
+
+    local function classOfGuid(guid)
+        local fn = _G.GetPlayerInfoByGUID
+        if type(fn) ~= "function" then
+            return "GetPlayerInfoByGUID missing"
+        end
+        local ok, localized, token = pcall(fn, guid)
+        return ok and string.format("%s / %s", show(localized), show(token)) or ("error " .. show(localized))
+    end
+
+    function languageProbe.cmd(rest)
+        local mode = (rest or ""):match("^%s*(%S*)") or ""
+        if mode == "" then
+            log("INFO", "languages: GetLocale = %s", show(GetLocale and GetLocale()))
+            local _, offered = lfgCall("GetAvailableLanguageSearchFilter")
+            log("INFO", "languages: offered = %s", dumpValue(offered))
+            local _, defaults = lfgCall("GetDefaultLanguageSearchFilter")
+            log("INFO", "languages: default filter = %s", dumpValue(defaults))
+            local guidOk, guid = pcall(UnitGUID, "player")
+            log("INFO", "languages: own GUID %s -> class %s", show(guidOk and guid), classOfGuid(guidOk and guid))
+            whisperUntil = GetTime() + 600
+            log("INFO", "languages: for 10 minutes every whisper you get logs the sender's class from its GUID; "
+                .. "then /fgp languages own, /fgp languages ru and /fgp languages all (one search each)")
+            return
+        end
+        local filter
+        if mode == "ru" then
+            filter = { ruRU = true }
+        elseif mode == "all" then
+            local _, offered = lfgCall("GetAvailableLanguageSearchFilter")
+            filter = {}
+            for _, code in ipairs(type(offered) == "table" and offered or {}) do
+                filter[code] = true
+            end
+        elseif mode ~= "own" then
+            log("FAIL", "languages: use /fgp languages, or own | ru | all")
+            return
+        end
+        local _, activities = lfgCall("GetAvailableActivities", 2)
+        activities = type(activities) == "table" and activities or {}
+        test = { mode = mode, at = GetTime() }
+        local ok, err = lfgCall("Search", 2, 0, 0, filter, false, nil, activities)
+        log(ok and "INFO" or "FAIL", "languages %s: Search over %d dungeon activities with filter %s -> %s", mode,
+            #activities, dumpValue(filter), ok and "called" or show(err))
+    end
+
+    function languageProbe.check()
+        if not test then
+            return
+        end
+        local current = test
+        test = nil
+        local _, count, results = pcall(C_LFGList.GetSearchResults)
+        results = type(results) == "table" and results or {}
+        local names, sample = 0, {}
+        for _, id in ipairs(results) do
+            local _, info = lfgCall("GetSearchResultInfo", id)
+            local leader = type(info) == "table" and info.leaderName or nil
+            if cyrillic(leader) then
+                names = names + 1
+                if #sample < 5 then
+                    sample[#sample + 1] = leader
+                end
+            end
+        end
+        log("RECV", "languages %s: %s found, %d returned in %.1f s, %d with a Cyrillic name%s", current.mode,
+            show(count), #results, GetTime() - current.at, names,
+            #sample > 0 and (" (" .. table.concat(sample, ", ") .. ")") or "")
+    end
+
+    function languageProbe.onWhisper(...)
+        if GetTime() > whisperUntil then
+            return
+        end
+        local sender, guid = select(2, ...), select(12, ...)
+        if isSecret(guid) or isSecret(sender) then
+            log("WARN", "languages: whisper with a secret sender or GUID")
+            return
+        end
+        log("RECV", "languages: whisper from %s, GUID %s -> class %s", show(sender), show(guid),
+            guid and classOfGuid(guid) or "no GUID")
+    end
+end
+
 local function onLfgResults(event)
     log("EVENT", "%s%s", event, keySearch.on and " (keysearch active)" or "")
     checkFilterTest()
     checkApiTest()
+    languageProbe.check()
     checkTwice(event)
     checkGap(event)
     lfgDumpResults()
@@ -3263,6 +3362,8 @@ local COMMANDS = {
     { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },
     { "sharequest", "[later] share the first shareable quest with the party (later: from a timer, no click)",
         cmdShareQuest },
+    { "languages", "[own | ru | all] game language, Group Finder language filter, class from a whisper's GUID",
+        function(rest) languageProbe.cmd(rest) end },
     { "listnote", "[try | remove] how a note gets on our Group Finder listing (watch WoW's window, or try)",
         cmdListNote },
     { "channels", "[name] member count of every joined channel (with a name: join it for the check)", cmdChannels },
@@ -3520,6 +3621,9 @@ local handlers = {
     ROLE_CHANGED_INFORM = onRoleChanged,
     GROUP_ROSTER_UPDATE = onRoster,
     CHAT_MSG_SYSTEM = onSystem,
+    CHAT_MSG_WHISPER = function(_, ...)
+        languageProbe.onWhisper(...)
+    end,
     PLAYER_REGEN_DISABLED = onCombat,
     PLAYER_REGEN_ENABLED = onCombat,
     LFG_LIST_SEARCH_RESULTS_RECEIVED = onLfgResults,

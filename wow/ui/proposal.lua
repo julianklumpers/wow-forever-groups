@@ -385,4 +385,9 @@ function Popup.isShown()
     return frame ~= nil and frame:IsShown()
 end
 
+-- The popup, its member rows and its parts, for the demo to point at.
+function Popup.parts()
+    return frame, rows, ui
+end
+
 ns.Popup = Popup

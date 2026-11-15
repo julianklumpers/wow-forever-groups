@@ -53,6 +53,74 @@ describe("questing groups", function()
         assert.are.same({ "A:T", "B:T", "C:T" }, names(tanks[1]))
     end)
 
+    it("never puts two parties in one group", function()
+        local function party(id, joinedAt, second)
+            local group = entry(id, joinedAt, "D", { TOWER })
+            group.members[2] = { name = second, roles = "D", level = 20 }
+            return group
+        end
+        local groups = QuestMatch.findGroups({
+            party("A", 1, "A2"), party("B", 2, "B2"), entry("C", 3, "D", { TOWER }), entry("D", 4, "D", { TOWER }),
+            entry("E", 5, "D", { TOWER }),
+        })
+        assert.are.equal(1, #groups)
+        assert.are.same({ "A2:D", "A:D", "C:D", "D:D", "E:D" }, names(groups[1]))
+    end)
+
+    it("tries a player's other quests when the first one can never fill", function()
+        local entries = { entry("S", 1, "D", { TOWER, "200-2" }) }
+        for i = 1, 60 do
+            local party = entry("P" .. i, 1 + i, "D", { TOWER })
+            party.members[2] = { name = "P" .. i .. "b", roles = "D", level = 20 }
+            entries[#entries + 1] = party
+        end
+        entries[#entries + 1] = entry("T", 100, "D", { "200-2" })
+        local groups = QuestMatch.findGroups(entries)
+        assert.are.equal(1, #groups)
+        assert.are.equal("200-2", groups[1].dungeon)
+        assert.are.same({ "S:D", "T:D" }, names(groups[1]))
+    end)
+
+    it("passes over a player who would keep the group from filling", function()
+        local function lang(group, language)
+            group.language = language
+            return group
+        end
+        local groups = QuestMatch.findGroups({
+            lang(entry("E", 1, "D", { HOGGER }), "enUS:3"), lang(entry("A", 2, "D", { HOGGER }), "deDE:3"),
+            lang(entry("B", 3, "D", { HOGGER }), "enUS:1"), lang(entry("C", 4, "D", { HOGGER }), "enUS:1"),
+        })
+        assert.are.equal(1, #groups)
+        assert.are.same({ "B:D", "C:D", "E:D" }, names(groups[1]))
+
+        local pair = entry("P", 2, "D", { "200-4", "300-2" })
+        pair.members[2] = { name = "P2", roles = "D", level = 20 }
+        local three = entry("Q", 3, "D", { "200-4" })
+        three.members[2] = { name = "Q2", roles = "D", level = 20 }
+        three.members[3] = { name = "Q3", roles = "D", level = 20 }
+        groups = QuestMatch.findGroups({ entry("S", 1, "D", { "200-4", "300-2" }), pair, three })
+        assert.are.equal(1, #groups)
+        assert.are.equal("200-4", groups[1].dungeon)
+        assert.are.same({ "Q2:D", "Q3:D", "Q:D", "S:D" }, names(groups[1]))
+    end)
+
+    it("stays fast when a large queue cannot fill a quest, and still forms the groups behind it", function()
+        local list = { entry("Solo", 1, "D", { TOWER }) }
+        for i = 1, 400 do
+            local group = entry("P" .. i, i + 1, "D", { TOWER })
+            group.members[2] = { name = "P" .. i .. "b", roles = "D", level = 20 }
+            list[#list + 1] = group
+        end
+        for i, id in ipairs({ "X", "Y", "Z" }) do
+            list[#list + 1] = entry(id, 1000 + i, "D", { HOGGER })
+        end
+        local started = os.clock()
+        local groups = QuestMatch.findGroups(list)
+        assert.is_true(os.clock() - started < 1)
+        assert.are.equal(1, #groups)
+        assert.are.same({ "X:D", "Y:D", "Z:D" }, names(groups[1]))
+    end)
+
     it("reads quest keys", function()
         assert.are.same({ "176", 3 }, { QuestMatch.parse("176-3") })
         assert.is_nil(QuestMatch.parse("176-1"))

@@ -19,6 +19,10 @@ local ROLE_WORDS = {
 local JOIN_WORDS = { "inv", "invite", "join", "spot", "room", "lfg", "lf", "group", "grp" }
 
 local asked = {}
+-- Whisperers a role was found for while every party place was held by an
+-- open invite: { roles, class, at }. They are invited when a place frees up,
+-- which happens within an invite's lifetime or not at all.
+local waiting = {}
 
 local function readable(value)
     if canaccessvalue ~= nil then
@@ -78,17 +82,43 @@ local function neededNames(needed)
     return table.concat(names, ", ")
 end
 
--- Under the leader's class wishes a player who whispers (class not known)
--- only gets a place open to any class, next to the invites still out.
-local function openToAnyClass(role)
-    return ns.PartyCompose.fits({ { role = role } })
+-- The whisperer's class: from their Group Finder listing, else from the
+-- whisper's GUID; nil when neither tells.
+local function classOf(name, guid)
+    local listings = ns.LfgList.listings()
+    for _, listing in ipairs(listings or {}) do
+        local class = listing.classToken
+        if type(class) == "string" and readable(class) and ns.Whispers.find({ [listing.name] = true }, name) then
+            return class
+        end
+    end
+    local playerInfo = _G.GetPlayerInfoByGUID
+    if type(playerInfo) ~= "function" or type(guid) ~= "string" or not readable(guid) or guid == "" then
+        return nil
+    end
+    local ok, _, class = pcall(playerInfo, guid)
+    if ok and type(class) == "string" and readable(class) then
+        for _, known in ipairs(ns.Compose.CLASSES) do
+            if known == class then
+                return class
+            end
+        end
+    end
+    return nil
+end
+
+-- Whether a player of this class (nil: not known, then only a place open to
+-- any class) fits a free place under the leader's class wishes, next to the
+-- invites still out.
+local function fits(role, class)
+    return ns.PartyCompose.fits({ { role = role, class = class } })
 end
 
 -- The first role the player named that is needed and has a place for them:
 -- "heal or dps" still gets the DPS place when the healer place wants a class.
-local function pickRole(roles, needed)
+local function pickRole(roles, needed, class)
     for _, role in ipairs({ "T", "H", "D" }) do
-        if string.find(roles, role, 1, true) and string.find(needed, role, 1, true) and openToAnyClass(role) then
+        if string.find(roles, role, 1, true) and string.find(needed, role, 1, true) and fits(role, class) then
             return role
         end
     end
@@ -99,16 +129,24 @@ local function pickRole(roles, needed)
     end
 end
 
-local function inviteForDungeon(name, role)
-    if not openToAnyClass(role) then
+local function inviteForDungeon(name, role, class, roles)
+    if not fits(role, class) then
         Log.detail("Not inviting %s, who whispered you: the open %s places want other classes.", name,
             Widgets.ROLE_NAMES[role])
+        return false
+    end
+    if ns.Filler.room() <= 0 then
+        if not waiting[name] then
+            Log.detail("%s whispered you for a %s place, but every place is held by an open invite; inviting "
+                .. "them when one frees up.", name, Widgets.ROLE_NAMES[role])
+        end
+        waiting[name] = { roles = roles or role, class = class, at = GetTime() }
         return false
     end
     local dungeonId = ns.Filler.dungeon() or ns.Filler.dungeonIds()[1]
     local dungeon = dungeonId and Dungeons.englishName(dungeonId) or "our dungeon"
     local roleName = Widgets.ROLE_NAMES[role]
-    if not ns.Filler.trackInvite(name, role) then
+    if not ns.Filler.trackInvite(name, role, class) then
         return false
     end
     if not ns.Invites.send(name, "filler") then
@@ -146,10 +184,11 @@ local function target()
     return nil
 end
 
-function WhisperInvite.onWhisper(text, sender)
+function WhisperInvite.onWhisper(text, sender, ...)
     if not readable(text) or not readable(sender) or type(text) ~= "string" or type(sender) ~= "string" then
         return
     end
+    local guid = select(10, ...)
     local goal = target()
     if not goal or sender == ns.selfName or goal.excluded[sender] then
         return
@@ -164,9 +203,10 @@ function WhisperInvite.onWhisper(text, sender)
     local needed = goal.needed
     local roles = WhisperInvite.rolesIn(text)
     if roles ~= "" then
-        local role = pickRole(roles, needed)
+        local class = goal.invite == inviteForDungeon and classOf(sender, guid) or nil
+        local role = pickRole(roles, needed, class)
         if role then
-            if goal.invite(sender, role) then
+            if goal.invite(sender, role, class, roles) then
                 asked[sender] = nil
             end
         elseif not asked[sender] or asked[sender] ~= needed then
@@ -178,6 +218,33 @@ function WhisperInvite.onWhisper(text, sender)
     if WhisperInvite.asksToJoin(text) and not asked[sender] then
         asked[sender] = needed
         reply(sender, ns.Messages.text("whisperWhich", { roles = neededNames(needed) }))
+    end
+end
+
+-- Invites a waiting whisperer once a place is free, for a role still needed.
+function WhisperInvite.tick()
+    if next(waiting) == nil then
+        return
+    end
+    local goal = target()
+    local now = GetTime()
+    for name, wait in pairs(waiting) do
+        if not goal or goal.invite ~= inviteForDungeon or goal.excluded[name]
+            or now - wait.at >= ns.Invites.LIFETIME then
+            waiting[name] = nil
+        elseif ns.Filler.room() > 0 then
+            local role = pickRole(wait.roles, goal.needed, wait.class)
+            if not role or not fits(role, wait.class) then
+                waiting[name] = nil
+            elseif inviteForDungeon(name, role, wait.class) then
+                waiting[name] = nil
+                asked[name] = nil
+            end
+            goal = target()
+            if not goal then
+                return
+            end
+        end
     end
 end
 

@@ -439,6 +439,14 @@ describe("sharing dungeon quests in a new group", function()
         assert.are.same({}, heal.pushed)
     end)
 
+    local function fill(world, leader, heal)
+        leader.party = { "Heally Mcheal", "No Addon", "Ann Addonless", "Bo Addonless" }
+        heal.party = { "Tanky Mctank", "No Addon", "Ann Addonless", "Bo Addonless" }
+        leader:fire("GROUP_ROSTER_UPDATE")
+        heal:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+    end
+
     it("asks the party once to share, when someone has no Forever Groups, by one player only", function()
         local world, leader, heal = party(true)
         heal.ns.GroupView.track("5")
@@ -453,6 +461,8 @@ describe("sharing dungeon quests in a new group", function()
             end
             return n
         end
+        assert.are.equal(0, asks(heal) + asks(leader))
+        fill(world, leader, heal)
         assert.are.equal(1, asks(heal) + asks(leader))
         heal:fire("GROUP_ROSTER_UPDATE")
         leader:fire("GROUP_ROSTER_UPDATE")
@@ -493,15 +503,15 @@ describe("sharing dungeon quests in a new group", function()
 
     it("lets a player who joins a run under way ask for quests too", function()
         local world, leader, heal = party(true)
-        world:advance(12)
+        fill(world, leader, heal)
         assert.are.equal(1, askedIn(leader))
         leader.ns.Run.current = function()
             return { dungeon = "5", kills = 1 }
         end
         local new = world:addClient("Aaa Newcomer", { level = 20, questLog = {} })
         world:advance(12)
-        leader.party = { "Heally Mcheal", "No Addon", "Aaa Newcomer" }
-        new.party = { "Tanky Mctank", "Heally Mcheal", "No Addon" }
+        leader.party = { "Heally Mcheal", "No Addon", "Ann Addonless", "Aaa Newcomer" }
+        new.party = { "Tanky Mctank", "Heally Mcheal", "No Addon", "Ann Addonless" }
         leader:fire("GROUP_ROSTER_UPDATE")
         new.ns.GroupView.track("5")
         new:fire("GROUP_ROSTER_UPDATE")

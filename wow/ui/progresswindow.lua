@@ -142,4 +142,8 @@ function ProgressWindow.isExpanded()
     return expanded()
 end
 
+function ProgressWindow.panel()
+    return panel
+end
+
 ns.ProgressWindow = ProgressWindow

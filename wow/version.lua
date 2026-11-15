@@ -9,6 +9,7 @@ local Version = {}
 -- Deliberately outside the "v1|" protocol: a client that only speaks an old
 -- protocol must still understand that a newer one exists.
 local PREFIX = "DQV|"
+Version.PREFIX = PREFIX
 local CONFIRMATIONS = 2
 
 local mine

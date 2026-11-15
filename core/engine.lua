@@ -12,6 +12,7 @@ local Playstyles = ns.Playstyles or require("core.playstyles")
 local Compose = ns.Compose or require("core.compose")
 local Levels = ns.Levels or require("core.levels")
 local Specs = ns.Specs or require("core.specs")
+local Languages = ns.Languages or require("core.languages")
 
 local Engine = {}
 Engine.__index = Engine
@@ -23,6 +24,7 @@ Engine.__index = Engine
 -- opts.random  function() -> [0, 1) (optional)
 -- opts.config  overrides for core.config (optional)
 -- opts.playstyle  core/playstyles.lua id for the own entries (optional)
+-- opts.language  the own entries' language field (core/languages.lua, optional)
 -- opts.space   Protocol.QUESTS for the questing queue (optional)
 -- opts.lastSent  function() -> when this client last sent anything (optional);
 --              a keep-alive is skipped while that is recent
@@ -49,6 +51,7 @@ function Engine.new(opts)
         playstyle = opts.playstyle or Playstyles.ANY,
         spec = opts.spec,
         lead = opts.lead and true or nil,
+        language = opts.language,
         lastSent = opts.lastSent,
         space = opts.space,
         matcher = opts.matchmaker or Matchmaker,
@@ -99,6 +102,7 @@ local function heartbeatMessage(entry)
         kind = "queue", joinedAt = entry.joinedAt, dungeons = entry.dungeons, members = entry.members,
         reserved = entry.reserved, since = entry.since, playstyle = entry.playstyle, spec = entry.spec,
         lead = #entry.members == 1 and entry.lead or nil, compose = entry.compose, levels = entry.levels,
+        language = entry.language,
     }
 end
 
@@ -122,6 +126,7 @@ function Engine:join(members, dungeons, joinedAt)
         lead = self.lead,
         compose = self.compose,
         levels = self.levels,
+        language = self.language,
     }
     if not entry.members[1] or entry.members[1].name ~= self.name then
         return false, "first member must be the player"
@@ -155,7 +160,7 @@ function Engine:updateEntry(members, reserved, dungeons)
         id = self.name, joinedAt = current.joinedAt, dungeons = dungeons or current.dungeons,
         members = copyMembers(members), reserved = reserved or "", since = current.since,
         playstyle = self.playstyle, spec = self.spec, lead = self.lead, compose = self.compose,
-        levels = self.levels,
+        levels = self.levels, language = self.language,
     }
     if not entry.members[1] or entry.members[1].name ~= self.name then
         return false, "first member must be the player"
@@ -239,6 +244,21 @@ function Engine:setLevels(levels)
             "Your level limit does not fit in the queue message; tick fewer dungeons.")
     end
     return ok
+end
+
+-- The own language and those the player is grouped with (core/languages.lua).
+function Engine:setLanguage(language)
+    local ok = self:changeEntry("language", language)
+    if not ok then
+        self:reportTooLong("language", language,
+            "Your languages do not fit in the queue message; tick fewer dungeons.")
+    end
+    return ok
+end
+
+-- Whether a queued entry may be grouped with the player, by language.
+function Engine:sharesLanguage(entry)
+    return Languages.compatible(self.language, entry.language)
 end
 
 -- Puts the own entry in the local queue and tells the others, unless held.
@@ -461,7 +481,8 @@ function Engine:proposalFitsMyEntry(proposal)
     end
     for _, entry in ipairs(proposal.entries) do
         local known = self.queue:get(entry.id)
-        if known and not Playstyles.compatible(known.playstyle, mine.playstyle) then
+        if known and (not Playstyles.compatible(known.playstyle, mine.playstyle)
+            or not Languages.compatible(known.language, mine.language)) then
             return false
         end
     end
@@ -647,7 +668,7 @@ function handlers.queue(self, sender, msg)
     self.queue:upsert({
         id = sender, joinedAt = msg.joinedAt, dungeons = msg.dungeons, members = msg.members, reserved = msg.reserved,
         since = since, playstyle = msg.playstyle, spec = msg.spec, lead = msg.lead, compose = msg.compose,
-        levels = msg.levels,
+        levels = msg.levels, language = msg.language,
     }, self:now())
 end
 

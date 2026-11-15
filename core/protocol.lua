@@ -1,7 +1,7 @@
 -- Wire format. Every message is broadcast on the shared channel and the sender
 -- is the player the message speaks for.
 --   v2|Q|<joinedAt>|<dungeon,...>|<name:roles:level,...>[|<reserved>[|<since>[|<playstyle>[|<spec>[|<lead>
---       [|<compose>[|<levels>]]]]]]]
+--       [|<compose>[|<levels>[|<language>]]]]]]]]
 --       queue entry / heartbeat; the first member is the sender (entry owner);
 --       roles is one or more of T, H, D in that order ("D", "TD", "THD");
 --       reserved ("HD") are roles the party already invited someone for from
@@ -13,7 +13,10 @@
 --       compose is the classes the owner wants per place of the group
 --       ("<until>:<mask>.<mask>.<mask>.<mask>.<mask>", core/compose.lua);
 --       levels is the owner's level limit for players joining
---       ("<until>:<min>:<max>", core/levels.lua)
+--       ("<until>:<min>:<max>", core/levels.lua);
+--       language is the owner's game language and the languages the owner
+--       is grouped with ("<code>:<mask>", core/languages.lua); without it
+--       the entry goes with every language
 --   v2|K                  keep-alive from a likely matchmaker
 --   v2|L[|<matchmaker>|<seq>]  sender left the queue; with a proposal: it
 --                         left because that proposal formed (counts as Yes)
@@ -45,6 +48,7 @@ local Playstyles = ns.Playstyles or require("core.playstyles")
 local Specs = ns.Specs or require("core.specs")
 local Compose = ns.Compose or require("core.compose")
 local Levels = ns.Levels or require("core.levels")
+local Languages = ns.Languages or require("core.languages")
 
 local Protocol = {}
 
@@ -232,7 +236,8 @@ function encoders.queue(msg, space)
         (msg.playstyle or Playstyles.ANY) ~= Playstyles.ANY and tostring(msg.playstyle) or "",
         msg.spec and Specs.decode(msg.spec) and msg.spec or "", msg.lead and "1" or "",
         msg.compose and Compose.isValid(msg.compose) and msg.compose or "",
-        msg.levels and Levels.isValid(msg.levels) and msg.levels or "" }
+        msg.levels and Levels.isValid(msg.levels) and msg.levels or "",
+        msg.language and Languages.isValid(msg.language) and msg.language or "" }
     while #optional > 0 and optional[#optional] == "" do
         optional[#optional] = nil
     end
@@ -417,6 +422,7 @@ decoders.Q = function(fields, space)
         lead = fields[10] == "1" or nil,
         compose = Compose.isValid(fields[11]) and fields[11] or nil,
         levels = Levels.isValid(fields[12]) and fields[12] or nil,
+        language = Languages.isValid(fields[13]) and fields[13] or nil,
     }
     local ok, err = Protocol.validateEntry(msg, space)
     if not ok then

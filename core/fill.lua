@@ -103,6 +103,38 @@ function Fill.pick(listings, opts)
     return bestPicks, bestOpen
 end
 
+-- Why the solo players listed in a role for one of the dungeons were not
+-- picked, for the log. opts: dungeons ({ ids }), ranges ({ [id] = range }),
+-- exclude, levels, places. Returns { listed, excluded, level, limit, class }
+-- (a player counts for the first reason only).
+function Fill.skipped(listings, opts, role)
+    local why = { listed = 0, excluded = 0, level = 0, limit = 0, class = 0 }
+    local exclude = opts.exclude or {}
+    local ranges = opts.ranges or {}
+    for _, listing in ipairs(listings) do
+        local dungeon, inRange
+        for _, id in ipairs(opts.dungeons) do
+            if lists(listing, id) then
+                dungeon = dungeon or id
+                inRange = inRange or levelFits(listing, ranges[id])
+            end
+        end
+        if listing.solo and dungeon and Roles.has(listing.roles, role) then
+            why.listed = why.listed + 1
+            if exclude[listing.name] then
+                why.excluded = why.excluded + 1
+            elseif not inRange then
+                why.level = why.level + 1
+            elseif not limitFits(listing, opts.levels) then
+                why.limit = why.limit + 1
+            elseif not fitsWith(opts.places, {}, role, listing.classToken) then
+                why.class = why.class + 1
+            end
+        end
+    end
+    return why
+end
+
 -- For a group that may go to several dungeons: the dungeon whose listings
 -- fill the most open roles (the first one on a tie).
 -- opts: missing, dungeons ({ ids }), exclude, ranges ({ [id] = { min, max } }).

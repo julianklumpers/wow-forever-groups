@@ -25,6 +25,9 @@ end
 local chosenDungeons
 local parked
 
+local LANGUAGE_DROPPED = "Your languages do not fit in the queue message with this many dungeons; you queue "
+    .. "without them and are grouped with players of any language."
+
 local function persistQueue()
     local entry = ns.engine and ns.engine.myEntry
     if entry then
@@ -32,7 +35,15 @@ local function persistQueue()
             members = copyMembers(entry.members),
             dungeons = chosenDungeons or entry.dungeons,
             joinedAt = entry.joinedAt,
-            invited = Filler.pendingInvites(),
+            filler = Filler.saved(),
+            savedAt = GetServerTime(),
+        }
+    elseif parked and Filler.isActive() then
+        ns.charDb.queue = {
+            parked = true,
+            dungeons = parked.dungeons,
+            joinedAt = parked.joinedAt,
+            filler = Filler.saved(),
             savedAt = GetServerTime(),
         }
     else
@@ -45,20 +56,32 @@ function ns.join(members, dungeons, joinedAt)
     if not ns.engine then
         return false, "not connected to the channel yet, try again in a few seconds"
     end
-    ns.engine:setCompose(ns.PartyCompose.wireText())
-    ns.engine:setLevels(ns.PartyLevels.wireText("dungeons", dungeons))
-    local ok, err = ns.engine:join(members, dungeons, joinedAt)
-    ns.engine.unfit = nil
-    if not ok and err == "message too long" and (ns.engine.compose or ns.engine.levels) then
+    local engine = ns.engine
+    engine:setCompose(ns.PartyCompose.wireText())
+    engine:setLevels(ns.PartyLevels.wireText("dungeons", dungeons))
+    engine:setLanguage(ns.MatchLanguages.wireText())
+    local ok, err = engine:join(members, dungeons, joinedAt)
+    engine.unfit = nil
+    if not ok and err == "message too long" and (engine.compose or engine.levels) then
         -- Joining matters more than the wishes: queue without them, and don't
         -- try these again until they change.
-        ns.engine.unfit = { compose = ns.engine.compose, levels = ns.engine.levels }
-        ns.engine:setCompose(nil)
-        ns.engine:setLevels(nil)
-        ok, err = ns.engine:join(members, dungeons, joinedAt)
+        engine.unfit = { compose = engine.compose, levels = engine.levels }
+        engine:setCompose(nil)
+        engine:setLevels(nil)
+        ok, err = engine:join(members, dungeons, joinedAt)
         if ok then
             Log.warn("Your class choices and level limit do not fit in the queue message with this many dungeons; "
                 .. "you queue without them.")
+        end
+    end
+    local language = engine.language
+    if not ok and err == "message too long" and language then
+        engine:setLanguage(nil)
+        ok, err = engine:join(members, dungeons, joinedAt)
+        if ok then
+            engine:reportTooLong("languageDropped", language, LANGUAGE_DROPPED)
+        else
+            engine:setLanguage(language)
         end
     end
     if ok then
@@ -230,7 +253,7 @@ local function syncEntry()
         syncPending = false
         return
     end
-    local before = { compose = engine.compose, levels = engine.levels }
+    local before = { compose = engine.compose, levels = engine.levels, language = engine.language }
     if not loading then
         engine.compose, engine.levels = compose, levels
     end
@@ -248,8 +271,20 @@ local function syncEntry()
             .. "with this many dungeons; you queue without them.")
         ok, err = engine:updateEntry(members, reserved, dungeons)
     end
+    if not ok and err == "message too long" and engine.language then
+        -- Without its language the entry is grouped with everyone; it is
+        -- not set again until the next join.
+        local language = engine.language
+        engine.language = nil
+        ok, err = engine:updateEntry(members, reserved, dungeons)
+        if ok then
+            engine:reportTooLong("languageDropped", language, LANGUAGE_DROPPED)
+        else
+            engine.language = language
+        end
+    end
     if not ok and err ~= "message too long" then
-        engine.compose, engine.levels = before.compose, before.levels
+        engine.compose, engine.levels, engine.language = before.compose, before.levels, before.language
     end
     syncPending = not ok and err == "proposal open"
     if ok then
@@ -328,11 +363,31 @@ local function onEngineEvent(event, data)
     Status.refresh()
 end
 
+-- Out of the queue while the Group Finder filled the last places: it fills
+-- on, and the queue is joined again (at the old place, when not away long)
+-- once a place frees up.
+local function restoreParked(saved, away)
+    local state = Party.state()
+    if state == "member" or state == "raid" or type(saved.dungeons) ~= "table" then
+        return
+    end
+    if Filler.restore(saved.filler, away) then
+        parked = { dungeons = saved.dungeons, joinedAt = away <= Config.ENTRY_TIMEOUT and saved.joinedAt or nil }
+    end
+end
+
 local function restoreQueue()
     local saved = ns.charDb.queue
     ns.charDb.queue = nil
     local away = saved and GetServerTime() - (saved.savedAt or 0)
-    if not saved or not saved.members or not saved.members[1].roles or away > Config.RESTORE_WINDOW then
+    if not saved or away > Config.RESTORE_WINDOW then
+        return
+    end
+    if saved.parked then
+        restoreParked(saved, away)
+        return
+    end
+    if not saved.members or not saved.members[1].roles then
         return
     end
     local keepPlace = away <= Config.ENTRY_TIMEOUT
@@ -351,10 +406,8 @@ local function restoreQueue()
         end
         return
     end
-    for name, role in pairs(saved.invited or {}) do
-        ns.RoleSync.expect(name, role)
-    end
     if ns.join(saved.members, saved.dungeons, saved.joinedAt) then
+        Filler.restore(saved.filler, away)
         Log.info("Back in the queue; your place was kept.")
     end
 end
@@ -374,6 +427,7 @@ local function onReady(selfName)
         playstyle = ns.Playstyle.mine(),
         spec = ns.Spec.code(),
         lead = ns.charDb.wantsLead,
+        language = ns.MatchLanguages.wireText(),
         lastSent = Comm.lastSent,
     })
     ns.engine:start(false)
@@ -437,6 +491,7 @@ local function tick()
         step(syncEntry)
     end
     step(Comm.flush)
+    step(ns.WhisperInvite.tick)
     step(Filler.tick)
     step(ns.Apply.tick)
     step(ns.AutoFill.tick)
@@ -503,7 +558,7 @@ ns.on("ADDON_LOADED", function(name)
         end
     end
     ns.db.queueSort, ns.db.queueSortReverse, ns.db.queueSorts, ns.db.queueTab = nil, nil, nil, nil
-    ns.db.dryRun, ns.db.slots = nil, nil
+    ns.db.dryRun, ns.db.slots, ns.db.ownLanguageOnly = nil, nil, nil
     Comm.init(onReady, onMessage, function(sender, text)
         ns.Presence.seen(sender)
         if not ns.QuestShare.onMessage(sender, text) and not ns.QuestGroup.onMessage(sender, text)

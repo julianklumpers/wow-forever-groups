@@ -122,9 +122,39 @@ function Invites.reset()
     open = {}
 end
 
+-- WoW keeps the invites open over a /reload, so the places they hold are
+-- kept too (with their ages: GetTime is not kept over a relog).
+local function persist()
+    prune()
+    local now, saved = GetTime(), {}
+    for name, invite in pairs(open) do
+        saved[name] = { owner = invite.owner, age = now - invite.at }
+    end
+    ns.charDb.invites = next(saved) and { list = saved, savedAt = GetServerTime() } or nil
+end
+
+local function restore()
+    local saved = ns.charDb.invites
+    ns.charDb.invites = nil
+    if type(saved) ~= "table" or type(saved.list) ~= "table" then
+        return
+    end
+    local away = math.max(0, GetServerTime() - (tonumber(saved.savedAt) or 0))
+    local now = GetTime()
+    for name, invite in pairs(saved.list) do
+        local age = type(invite) == "table" and tonumber(invite.age)
+        if type(name) == "string" and age and age + away < Invites.LIFETIME then
+            count = count + 1
+            open[name] = { at = now - age - away, owner = invite.owner, order = count }
+        end
+    end
+end
+
 function Invites.init()
+    restore()
     ns.on("CHAT_MSG_SYSTEM", onSystem)
     ns.on("GROUP_ROSTER_UPDATE", prune)
+    ns.on("PLAYER_LOGOUT", persist)
 end
 
 ns.Invites = Invites

@@ -235,6 +235,7 @@ function Window.onJoinClicked()
         W.setHint(L["Choose at least one dungeon."])
         return
     end
+    ns.PartyLevels.noteStart("dungeons")
     local ok, joinErr = ns.join(members, ids)
     W.setHint(ok and "" or string.format(L["Could not join: %s"], L[tostring(joinErr)]))
     if ok then
@@ -282,6 +283,9 @@ function Window.startFill()
     if #ids == 0 then
         W.setHint(L["Choose at least one dungeon."])
         return
+    end
+    if not entry then
+        ns.PartyLevels.noteStart("dungeons")
     end
     local names = {}
     for _, member in ipairs(members) do

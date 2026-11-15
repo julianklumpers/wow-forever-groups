@@ -11,6 +11,12 @@ local Log = ns.Log
 -- in the queue so later Forever Groups players can still join it.
 local AutoFill = {}
 
+-- How long a possible Forever Groups partner is waited for: the matchmaker
+-- may still refuse the pair (a leader's class wishes or level limit, two
+-- leaders), so after this the Group Finder fills anyway.
+local PARTNER_GRACE = 20
+local partnerSince
+
 local function sharesDungeon(a, b)
     for _, x in ipairs(a.dungeons) do
         for _, y in ipairs(b.dungeons) do
@@ -29,7 +35,8 @@ local function hasPartner(engine, entry)
     for _, other in ipairs(engine.queue:list()) do
         local recent = now - (other.lastSeen or now) <= engine.config.HEARTBEAT_INTERVAL + 15
         local active = recent and not engine.fakes[other.id]
-        if other.id ~= entry.id and active and not engine:isReserved(other.id) and sharesDungeon(entry, other) then
+        if other.id ~= entry.id and active and not engine:isReserved(other.id) and sharesDungeon(entry, other)
+            and engine:sharesLanguage(other) and ns.Playstyles.compatible(entry.playstyle, other.playstyle) then
             local theirs = Roles.withReserved(other.members, other.reserved)
             if not (#mine > 1 and #theirs > 1) and #mine + #theirs <= 5 then
                 local together = {}
@@ -57,10 +64,19 @@ function AutoFill.tick()
     local entry = engine and engine.myEntry
     if not entry or ns.Filler.isActive() or ns.Queues.anyProposalOpen() or engine.held
         or engine:isReserved(entry.id) then
+        partnerSince = nil
         return
     end
-    if GetServerTime() - engine.startedAt < ns.Config.WARMUP or hasPartner(engine, entry) then
+    if GetServerTime() - engine.startedAt < ns.Config.WARMUP then
         return
+    end
+    if hasPartner(engine, entry) then
+        partnerSince = partnerSince or GetTime()
+        if GetTime() - partnerSince < PARTNER_GRACE then
+            return
+        end
+    else
+        partnerSince = nil
     end
     if not ns.Apply.wantsToBuild() then
         return
@@ -74,7 +90,8 @@ function AutoFill.tick()
         names[i] = member.name
         ns.RoleSync.expect(member.name, assignment[i])
     end
-    Log.debug("no Forever Groups partner in sight; filling from the Group Finder")
+    Log.debug(partnerSince and "no group with the Forever Groups players in the queue; filling from the Group Finder"
+        or "no Forever Groups partner in sight; filling from the Group Finder")
     ns.Filler.start({ dungeons = entry.dungeons, missing = missing, members = names })
 end
 

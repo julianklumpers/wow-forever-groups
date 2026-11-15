@@ -46,6 +46,13 @@ local function result(code)
     return "error"
 end
 
+-- Every client announces its version every few seconds; logged, they pushed
+-- everything else out of the saved log within minutes.
+local function isVersionPing(text)
+    local prefix = ns.Version and ns.Version.PREFIX
+    return prefix ~= nil and string.sub(text, 1, #prefix) == prefix
+end
+
 local function transmit(text)
     if not channelId then
         return "blocked"
@@ -55,7 +62,9 @@ local function transmit(text)
     end
     local ok, code = pcall(C_ChatInfo.SendAddonMessage, Comm.PREFIX, text, "CHANNEL", tostring(channelId))
     local outcome = ok and result(code) or "error"
-    Log.debug("-> %s [%s]", text, outcome)
+    if not isVersionPing(text) then
+        Log.debug("-> %s [%s]", text, outcome)
+    end
     if outcome == "ok" then
         lastSentAt = GetServerTime()
     end
@@ -248,7 +257,9 @@ local function onAddonMessage(prefix, text, chatType, sender, _, _, _, channelNa
     if sender == Comm.selfName or not allowed(sender) then
         return
     end
-    Log.debug("<- %s: %s", sender, text)
+    if not isVersionPing(text) then
+        Log.debug("<- %s: %s", sender, text)
+    end
     callbacks.onMessage(sender, text)
 end
 

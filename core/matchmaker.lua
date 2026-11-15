@@ -7,10 +7,14 @@ local Playstyles = ns.Playstyles or require("core.playstyles")
 local Specs = ns.Specs or require("core.specs")
 local Compose = ns.Compose or require("core.compose")
 local Levels = ns.Levels or require("core.levels")
+local Languages = ns.Languages or require("core.languages")
 
 local Matchmaker = {}
 
 local SEARCH_BUDGET = 20000
+-- One anchor no group can be formed for may search long; it gets at most
+-- this share, so the anchors behind it still get their turn this round.
+local ANCHOR_BUDGET, DUNGEON_MIN_BUDGET = 1000, 100
 -- Leaders with class wishes may turn down many complete groups before one
 -- fits; together they get at most this share of a round's search, so the
 -- other players always keep the rest.
@@ -148,7 +152,8 @@ end
 -- ever has to break up to accept an invite.
 -- taken: names already in the group, so a player listed in two entries
 -- (a stale solo entry and a party's) is never placed twice.
--- style: the group's playstyle so far; a candidate must go with it.
+-- style: the group's playstyle so far; a candidate must go with it, and
+-- with the language of everyone chosen.
 -- accept(chosen): a complete group that fails it (a leader's class wishes)
 -- is passed over and the search goes on. feasible(chosen): checked as each
 -- candidate is added, so a set that can never fit the wishes is dropped at
@@ -169,7 +174,7 @@ local function search(candidates, suffixSupply, start, states, chosen, budget, h
         local candidate = candidates[i]
         local isPremade = #candidate.members > 1
         if not (isPremade and hasPremade) and not overlaps(candidate, taken)
-            and Playstyles.compatible(style, candidate.playstyle) then
+            and Playstyles.compatible(style, candidate.playstyle) and Languages.fitsAll(chosen, candidate) then
             local nextStates = apply(states, candidate.options)
             if #nextStates > 0 then
                 chosen[#chosen + 1] = candidate
@@ -383,15 +388,13 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames)
     local pool = {}
     for _, i in ipairs(candidateIndices(anchor, anchorIndex, #sorted)) do
         local candidate = not overlaps(sorted[i], usedNames) and candidateFor(anchor, sorted[i], slots)
-        if candidate and Playstyles.compatible(anchor.playstyle, candidate.playstyle) then
+        if candidate and Playstyles.compatible(anchor.playstyle, candidate.playstyle)
+            and Languages.compatible(anchor.language, candidate.language) then
             pool[#pool + 1] = candidate
         end
     end
     local shared = budget
-    if rules then
-        budget = { left = math.min(shared.left, shared.wishLeft) }
-    end
-    local start = budget.left
+    local perDungeon = math.max(DUNGEON_MIN_BUDGET, math.floor(ANCHOR_BUDGET / math.max(1, #anchor.dungeons)))
     local picked
     local accept = rules and function(chosen)
         picked = pickFor(chosen, slots, rules)
@@ -430,7 +433,11 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames)
         local chosen = { anchor }
         local taken = {}
         setTaken(anchor, taken, true)
-        if fillable and #states > 0 and search(candidates, buildSuffixSupply(candidates), 1, states, chosen, budget,
+        -- Each dungeon its own share: one that can never fill (players who
+        -- don't take each other's language) must not use up the others'.
+        local share = { left = math.min(shared.left, rules and shared.wishLeft or perDungeon) }
+        local start = share.left
+        if fillable and #states > 0 and search(candidates, buildSuffixSupply(candidates), 1, states, chosen, share,
             #anchor.members > 1, taken, anchor.playstyle, accept, feasible) then
             local ranks = {}
             for i, entry in ipairs(chosen) do
@@ -441,11 +448,11 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames)
                 best = group
             end
         end
-    end
-    if budget ~= shared then
-        local spent = start - budget.left
+        local spent = start - share.left
         shared.left = shared.left - spent
-        shared.wishLeft = shared.wishLeft - spent
+        if rules then
+            shared.wishLeft = shared.wishLeft - spent
+        end
     end
     return best
 end
@@ -605,6 +612,7 @@ local function wrapAll(entries, slots, now)
             class = (Specs.decode(entry.spec)),
             rules = now and Compose.active(entry.compose, now) or nil,
             levels = now and Levels.active(entry.levels, now) or nil,
+            language = Languages.decode(entry.language),
         }
     end
     return wrapped
@@ -693,7 +701,8 @@ function Matchmaker.findPartialGroup(entries, slots, now, waitAfter, minPlayers)
                 local candidate = candidateFor(anchor, wrapped[i], slots)
                 local isPremade = candidate and #candidate.members > 1
                 if candidate and #states > 0 and wantsDungeon(candidate, dungeon) and not (isPremade and hasPremade)
-                    and Playstyles.compatible(style, candidate.playstyle) and not overlaps(candidate, names) then
+                    and Playstyles.compatible(style, candidate.playstyle) and not overlaps(candidate, names)
+                    and Languages.fitsAll(chosen, candidate) then
                     local nextStates = apply(states, candidate.options)
                     chosen[#chosen + 1] = candidate
                     if #nextStates > 0 and (not rules or partialPick(chosen, nextStates, slots, rules)) then

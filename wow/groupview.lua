@@ -292,6 +292,11 @@ function GroupView.check()
     end
 end
 
+-- Whether the group's completion was announced (and "Group complete!" said).
+function GroupView.wasAnnounced()
+    return context ~= nil and context.announced == true
+end
+
 function GroupView.isListed()
     local fn = C_LFGList and C_LFGList.HasActiveEntryInfo
     if type(fn) ~= "function" then

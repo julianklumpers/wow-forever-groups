@@ -106,10 +106,6 @@ function Status.current(scope)
     end
     local fill = ns.Filler.summary()
     local detail = details and fill and string.format(L["Building your own group: %s"], fill) or nil
-    if details and applied and applied.asked then
-        detail = string.format(L["Asking groups to invite you (%d asked)  ·  own group in %s"], applied.asked,
-            Widgets.formatTime(applied.left))
-    end
     if group and group.role == "leader" then
         return lead(string.format(L["Inviting your group: %d of %d joined"], group.joined, group.total), detail,
             { slots = slots, progress = group.total > 0 and group.joined / group.total or nil })
@@ -140,9 +136,6 @@ function Status.current(scope)
         local parts = { ns.QuestQueue.describe(questEntry.dungeons) }
         if details and finder.invited > 0 then
             parts[#parts + 1] = string.format(L["invited %d from the Group Finder"], finder.invited)
-        end
-        if details and finder.asked > 0 then
-            parts[#parts + 1] = ns.Locale.count(finder.asked, "asked %d group", "asked %d groups")
         end
         if details and ns.Listing.isOurs() then
             parts[#parts + 1] = L["listed in the Group Finder"]

@@ -2,7 +2,7 @@ local _, ns = ...
 
 local Log = {}
 
-local MAX_LINES = 500
+local MAX_LINES = 2000
 local PREFIX = "|cff33ccffForever Groups|r "
 
 local function escape(text)

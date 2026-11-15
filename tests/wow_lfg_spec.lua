@@ -35,7 +35,7 @@ describe("asking groups in WoW's Group Finder to invite you", function()
         assert.is_true(solo:logged("Asked Group Lead to invite you"))
         solo:slash("/dq debug on")
         world:advance(1)
-        assert.is_not_nil(solo:findText("Asking groups to invite you %(1 asked%)  ·  own group in 0:2%d$"))
+        assert.is_nil(solo:findText("asked"))
     end)
 
     it("keeps an asked leader's answers out of the chat and answers their question unseen", function()
@@ -307,6 +307,73 @@ describe("asking groups in WoW's Group Finder to invite you", function()
         assert.is_true(solo:logged("building your own group now"))
     end)
 
+    it("builds its own group without the class choices and level limit a player joining never saw", function()
+        local world, solo = setup()
+        world:listGroup("Group Lead", 799, { T = 0, H = 0, D = 1 })
+        world:list("Listed Heal", "H", 799, 20, 300)
+        world.listings[#world.listings].class = "PALADIN"
+        solo.ns.charDb.wantsLead = nil
+        solo.ns.charDb.compose = { masks = { 256, 304, 0, 64, 0 } }
+        solo.ns.charDb.composeOn = true
+        solo.ns.charDb.levelsOn = true
+        solo.ns.charDb.levelLimit = { dungeons = { min = 30, max = 31 } }
+        solo:slash("/dq join dps dm")
+        world:advance(64)
+        assert.are.same({ "Listed Heal" }, solo.invites)
+        solo.party, solo.isLeader = { "Listed Heal" }, true
+        solo:fire("GROUP_ROSTER_UPDATE")
+        world:list("Listed Tank", "T", 799, 20, 300)
+        world.listings[#world.listings].class = "WARRIOR"
+        solo:slash("/dq fill")
+        world:advance(5)
+        assert.are.same({ "Listed Heal", "Listed Tank" }, solo.invites)
+        assert.is_nil(solo.ns.engine.compose)
+        assert.is_nil(solo.ns.engine.levels)
+    end)
+
+    local function hiddenWishes(client)
+        client.ns.charDb.compose = { masks = { 0, 16, 0, 0, 0 } }
+        client.ns.charDb.composeOn = true
+        client.ns.charDb.wantsLead = nil
+        client.ns.charDb.wishesHidden = { dungeons = true }
+    end
+
+    it("keeps the unseen class choices out of a replacement search the addon starts itself", function()
+        local world = World.new()
+        local client = world:addClient("Lead Player", { level = 20, class = "WARRIOR" })
+        world:advance(CONNECT)
+        hiddenWishes(client)
+        client.partyClasses = { ["Other Guy"] = "ROGUE" }
+        client:joins("Other Guy")
+        assert.is_true(client.ns.join({ { name = client.ns.selfName, roles = "T", level = 20 },
+            { name = "Other Guy", roles = "D", level = 20 } }, { "5" }))
+        assert.is_nil(client.ns.engine.compose)
+        assert.are.same({ dungeons = true }, client.ns.charDb.wishesHidden)
+    end)
+
+    it("keeps the unseen class choices out of a queue restored after minutes away", function()
+        local world = World.new()
+        local client = world:addClient("Lead Player", { level = 20, class = "WARRIOR" })
+        world:advance(CONNECT)
+        hiddenWishes(client)
+        local saved = client:logout()
+        world:advance(300)
+        saved.charDb.queue = {
+            members = { { name = "Lead Player", roles = "T", level = 20 },
+                { name = "Other Guy", roles = "D", level = 20 } },
+            dungeons = { "5" }, joinedAt = world:serverTime() - 400, invited = {}, savedAt = world:serverTime() - 300,
+        }
+        local again = world:addClient("Lead Player", { level = 20, class = "WARRIOR", saved = saved,
+            beforeLogin = function(c)
+                c.party, c.isLeader = { "Other Guy" }, true
+                c.partyClasses = { ["Other Guy"] = "ROGUE" }
+            end })
+        world:advance(40)
+        local entry = again.ns.engine.myEntry
+        assert.is_not_nil(entry)
+        assert.is_nil(entry.compose)
+    end)
+
     it("never asks the same leader twice", function()
         local world, solo = setup()
         world:listGroup("Group Lead", 799, { T = 0, H = 0, D = 1 })
@@ -330,16 +397,17 @@ describe("asking groups in WoW's Group Finder to invite you", function()
 end)
 
 describe("Group Finder searches", function()
-    it("include every language unless you choose your own only", function()
+    it("include the own language, and the languages ticked in the settings", function()
         local world, solo = setup()
         solo:slash("/dq join dps dm")
-        assert.are.same({ enUS = true, deDE = true, frFR = true }, solo.searchLanguages)
-        solo.ns.db.ownLanguageOnly = true
+        assert.are.same({ enUS = true }, solo.searchLanguages)
+        solo:slash("/fg settings")
+        solo:click("CheckButton", "German")
         world:advance(12)
         solo:press("W")
         assert.is_true(solo.listed)
         solo:press("W")
-        assert.is_nil(solo.searchLanguages)
+        assert.are.same({ enUS = true, deDE = true }, solo.searchLanguages)
     end)
 end)
 

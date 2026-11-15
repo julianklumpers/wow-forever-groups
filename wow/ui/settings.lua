@@ -49,11 +49,8 @@ local TABS = {
                         tip = "While Forever Groups builds your group or has it listed (dungeons and quests), a "
                             .. "whisper like 'heal?' or 'dps lf group' gets an invite if that role is still open. "
                             .. "A whisper asking to join without a role gets asked which role they play." },
-                    { key = "ownLanguageOnly", inverted = true, parent = "noGroupFinder",
-                        label = "Find players of every language",
-                        tip = "Without this, WoW's Group Finder only shows players listed in your own game "
-                            .. "language." },
                 },
+                languages = true,
             },
             {
                 title = "Joining",
@@ -142,8 +139,11 @@ local TABS = {
     },
 }
 
+local LANGUAGE_COLUMNS, LANGUAGE_WIDTH = 3, 180
+
 local frame
 local checks = {}
+local languageChecks, languageArea = {}, nil
 local styleRows = {}
 local languageBoxes = {}
 local tabs, pages = {}, {}
@@ -180,6 +180,40 @@ local function applied()
     ns.Window.refresh()
 end
 
+-- The languages to be grouped with, as WoW's Group Finder offers them each
+-- time the window shows; the own language is always on.
+local function refreshLanguages()
+    if not languageArea then
+        return
+    end
+    for _, check in pairs(languageChecks) do
+        check:Hide()
+    end
+    local MatchLanguages = ns.MatchLanguages
+    local own, accepted = MatchLanguages.own(), MatchLanguages.accepted()
+    for i, code in ipairs(MatchLanguages.offered()) do
+        local check = languageChecks[code]
+        if not check then
+            check = Widgets.check(languageArea.page, nil, function(self)
+                MatchLanguages.set(code, self:GetChecked())
+                applied()
+            end)
+            languageChecks[code] = check
+        end
+        local name = MatchLanguages.NAMES[code] or code
+        check.label:SetText(code == own and string.format(ns.L["%s (your language)"], ns.L[name]) or ns.L[name])
+        Widgets.fitClickArea(check)
+        Widgets.tooltip(check, name, "You are grouped with players whose game is in a ticked language and who "
+            .. "ticked yours, in the Forever Groups queue and in WoW's Group Finder.")
+        check:ClearAllPoints()
+        check:SetPoint("TOPLEFT", languageArea.x + ((i - 1) % LANGUAGE_COLUMNS) * LANGUAGE_WIDTH,
+            languageArea.y - math.floor((i - 1) / LANGUAGE_COLUMNS) * 26)
+        check:SetChecked(accepted[code] == true)
+        Widgets.setEnabled(check, code ~= own)
+        check:Show()
+    end
+end
+
 local function currentTab()
     local key = ns.db.settingsTab
     for _, tab in ipairs(TABS) do
@@ -208,6 +242,7 @@ local function refresh()
             chosen and { 1, 0.82, 0, 1 } or { 1, 1, 1, 0.3 })
         box.label:SetTextColor(chosen and 1 or 0.8, chosen and 0.82 or 0.8, chosen and 0 or 0.8)
     end
+    refreshLanguages()
 end
 
 local RELOAD_POPUP = "FOREVERGROUPS_LANGUAGE_RELOAD"
@@ -339,6 +374,13 @@ local function buildSections(page, sections)
             end
             checks[#checks + 1] = check
             y = y - 26
+        end
+        if section.languages then
+            local label = Widgets.text(page, "GameFontHighlightSmall")
+            label:SetPoint("TOPLEFT", 26, y - 4)
+            label:SetText(ns.L["Languages you are matched with"])
+            languageArea = { page = page, x = 44, y = y - 22 }
+            y = y - 22 - math.ceil(ns.MatchLanguages.mostOffered() / LANGUAGE_COLUMNS) * 26
         end
         y = y - 8
     end

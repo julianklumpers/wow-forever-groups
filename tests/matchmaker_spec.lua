@@ -164,6 +164,53 @@ describe("Matchmaker", function()
         assert.are.equal("Tank", group.entries[1].id)
     end)
 
+    it("still forms a group further down the queue when the players before it can form none", function()
+        local dungeons = { "d1", "d2", "d3" }
+        local function styled(id, joinedAt, role, list, playstyle, language)
+            local e = entry(id, joinedAt, role, list)
+            e.playstyle, e.language = playstyle, language
+            return e
+        end
+        local entries = { styled("Anchor", 1, "D", dungeons, 0, "enUS:1") }
+        for i = 1, 20 do
+            entries[#entries + 1] = styled("Dps" .. i, 1 + i, "D", dungeons, 0, "enUS:1")
+        end
+        entries[#entries + 1] = styled("Tank", 30, "T", dungeons, 1, "enUS:1")
+        entries[#entries + 1] = styled("Heal1", 31, "H", dungeons, 3, "enUS:1")
+        entries[#entries + 1] = styled("Heal2", 32, "H", dungeons, 3, "enUS:1")
+        entries[#entries + 1] = styled("GTank", 40, "T", { "d1" }, 0, "deDE:2")
+        entries[#entries + 1] = styled("GHeal", 41, "H", { "d1" }, 0, "deDE:2")
+        for i = 1, 3 do
+            entries[#entries + 1] = styled("GDps" .. i, 41 + i, "D", { "d1" }, 0, "deDE:2")
+        end
+        local groups = Matchmaker.findGroups(entries, nil, 1000)
+        assert.are.equal(1, #groups)
+        assert.are.same({ "GDps1", "GDps2", "GDps3", "GHeal", "GTank" }, ids(groups[1]))
+    end)
+
+    it("tries a player's other dungeons when the first one can never fill", function()
+        local function lang(id, joinedAt, role, list, language)
+            local e = entry(id, joinedAt, role, list)
+            e.language = language
+            return e
+        end
+        local entries = {
+            lang("Anchor", 1, "D", { "a", "b" }, "deDE:3"),
+            lang("ATank", 2, "T", { "a" }, "deDE:2"), lang("AHeal", 40, "H", { "a" }, "enUS:3"),
+        }
+        for i = 1, 30 do
+            entries[#entries + 1] = lang("ADps" .. i, 3 + i, "D", { "a" }, "deDE:3")
+        end
+        entries[#entries + 1] = lang("BTank", 50, "T", { "b" }, "deDE:2")
+        entries[#entries + 1] = lang("BHeal", 51, "H", { "b" }, "deDE:2")
+        entries[#entries + 1] = lang("BDps1", 52, "D", { "b" }, "deDE:2")
+        entries[#entries + 1] = lang("BDps2", 53, "D", { "b" }, "deDE:2")
+        local groups = Matchmaker.findGroups(entries, nil, 1000)
+        assert.is_true(#groups >= 1)
+        assert.are.equal("b", groups[1].dungeon)
+        assert.are.same({ "Anchor", "BDps1", "BDps2", "BHeal", "BTank" }, ids(groups[1]))
+    end)
+
     it("stays fast when a role is missing from a large queue", function()
         local entries = {}
         for i = 1, 300 do

@@ -555,19 +555,18 @@ local function roleFilter(activities)
     return filter
 end
 
--- Without a language filter the server only returns listings in the
--- player's own language; more players means groups form sooner.
+-- The languages the player is grouped with (wow/matchlanguages.lua) that
+-- the Group Finder offers. Without a filter it returns only the player's
+-- own language.
 local function languageFilter()
-    if ns.db.ownLanguageOnly then
-        return nil
-    end
     local offered = call("GetAvailableLanguageSearchFilter")
     if type(offered) ~= "table" or #offered == 0 then
         return nil
     end
-    local filter = {}
+    local accepted = ns.MatchLanguages.accepted()
+    local filter = { [ns.MatchLanguages.own()] = true }
     for _, code in ipairs(offered) do
-        if type(code) == "string" then
+        if accepted[code] then
             filter[code] = true
         end
     end

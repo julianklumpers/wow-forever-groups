@@ -2,13 +2,54 @@
 
 ## Unreleased
 
-- `/fg demo` walks through every screen of Forever Groups with example data: a bar at the top of the screen,
-  marked "Example", explains each screen and steps through them. Nothing is sent while it shows, and it ends by
-  itself in combat or on a loading screen. Settings → Display → "Show the demo" starts it too.
+- Questing groups no longer put two parties together: the second party could not accept the invite while still in
+  its own party.
+- A questing group now also forms when it takes passing over a player who shares more quests, such as one of
+  another language or a party that leaves no room; before, nobody was grouped.
+- A battleground group no longer gets stuck when a party member still has a queue entry of their own: that player
+  was put in the group twice, so the group could not be sent and kept your party waiting.
+- One player no dungeon group can be formed for no longer keeps Forever Groups from finding the complete groups
+  further down the queue, and one of a player's dungeons or quests that can never fill no longer keeps their
+  others from being tried.
+- A questing queue entry with many quests now still queues, without your level limit and languages, instead of not
+  queueing at all.
+- Find group no longer waits forever for a Forever Groups player it can't be grouped with (another playstyle, two
+  leaders with class choices or a level limit): after 20 s it fills your group from WoW's Group Finder.
+- A /reload while the last places are being filled no longer stops the filling: a player who then declines is still
+  replaced, and players whose invite is still open are not whispered and invited a second time.
+- A player who whispers you while every place is held by an open invite is no longer told "Inviting you" and then
+  refused with "Your party is full": they are invited as soon as a place frees up.
+- With class choices, a player who whispers you now gets the place kept for their class (a Druid for a Druid tank
+  place, say), read from their Group Finder listing or the whisper; before, they only got a place open to any class.
+- When the queue message is too long (many dungeons ticked), you now still queue without your languages instead of
+  not queueing at all; you are then grouped with players of any language.
+- You are grouped by the language of your game, like in WoW's Group Finder: only with players whose game is in
+  your language, unless you tick more languages in Settings → Groups → "Languages you are matched with". Two players
+  are only grouped when each takes the other's language. This holds for dungeons, group quests and battlegrounds,
+  and WoW's Group Finder searches the same languages. Players on an older version of Forever Groups are still
+  grouped with every language.
+- The setting "Find players of every language" is gone. Everyone starts with their own language only, also if you
+  had it switched on: tick the languages you want in the settings.
+- Who is looking and the "looking" and "waiting" counts leave out Forever Groups players whose language you can't be
+  grouped with.
+- `/fg demo` walks through every screen of Forever Groups with example data. A bar on top of the window, marked
+  "Example", first welcomes you, then explains each screen step by step: the part it explains gets a gold outline
+  and the rest is darkened. Next and Previous step through it, Done or Skip ends it. Nothing is sent while it
+  shows, and it ends by itself in combat or on a loading screen. Settings → Display → "Show the demo" starts it too.
 - New players get this demo instead of the old tour, once, the first time the window opens (if something is going
   on then, such as a queue or a group, the next time). `/fg tour` and "Show the tour again" are gone.
 - The test commands `/fg preview`, `/fg fake`, `/fg guides`, `/fg slots` and `/fg dryrun` are gone.
 - The "Dry run" setting is gone: Forever Groups always whispers and invites the players it picks.
+- Class choices and a level limit you set up earlier no longer count when you press Find group with "Join a group":
+  when Forever Groups then builds a group for you, it used to apply them unseen (only a Druid could tank, say), so
+  players of the role were never invited.
+- How many groups were asked to invite you is no longer shown anywhere (status bar, questing card), and how many
+  players were invited from the Group Finder shows on the questing card only with `/fg debug on`: Forever Groups
+  does this out of sight.
+- The saved log keeps more (2000 lines, without the version pings that filled it within minutes), and says why
+  players listed for a role that stays open were not invited (outside the levels, another playstyle, …).
+- The party chat asking for dungeon quests waits until the group is complete, after "Group complete!", instead of
+  coming while invites were still out (so players who joined later missed it).
 - With more than one battleground ticked, the Find group button says "2 battlegrounds" instead of their names, which
   ran into the button's own text.
 - The icon in the game (minimap button, AddOns list) is now the Forever Groups logo itself.

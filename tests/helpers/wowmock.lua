@@ -434,14 +434,18 @@ function Client:leaves(name)
 end
 
 -- Whether chat filters keep it out of the chat is in client.incoming.
-function Client:whisperFrom(name, text)
+-- class (optional): the whisperer's class token, which the whisper's GUID
+-- tells through GetPlayerInfoByGUID.
+function Client:whisperFrom(name, text, class)
     local hidden = false
     for _, filter in ipairs(self.chatFilters.CHAT_MSG_WHISPER or {}) do
         hidden = hidden or filter(self.env.ChatFrame1, "CHAT_MSG_WHISPER", text, name) == true
     end
     self.incoming = self.incoming or {}
     self.incoming[#self.incoming + 1] = { name = name, text = text, hidden = hidden }
-    self:fire("CHAT_MSG_WHISPER", text, name)
+    local guid = "Player-1-" .. name
+    self.guids[guid] = class
+    self:fire("CHAT_MSG_WHISPER", text, name, "Common", "", name, "", 0, 0, "", 7, #self.incoming, guid)
 end
 
 function Client:invitedBy(leader)
@@ -570,6 +574,12 @@ local function buildEnv(world, client)
             return token:sub(1, 1) .. token:sub(2):lower(), token
         end
         return nil, nil
+    end
+    env.GetPlayerInfoByGUID = function(guid)
+        local token = client.guids[guid]
+        if token then
+            return token:sub(1, 1) .. token:sub(2):lower(), token, "Human", "Human", 2, nil, nil
+        end
     end
     env.UnitExists = function(unit)
         return unitName(unit) ~= nil
@@ -1451,7 +1461,7 @@ function World:addClient(name, opts)
     local client = setmetatable({
         name = name, level = opts.level or 18, inGroup = false, online = true,
         frames = {}, chat = {}, sent = {}, whispers = {}, invites = {}, channels = {}, sendResults = {},
-        heldInvites = {}, answeredInvites = {}, refusedInvites = {},
+        heldInvites = {}, answeredInvites = {}, refusedInvites = {}, guids = {},
         widgets = {}, party = {}, partyClasses = {}, isLeader = false, class = opts.class,
         searches = 0, blockedSearches = 0, roles = {}, roleSets = {}, notices = {},
         applicants = {}, applicantInvites = {},

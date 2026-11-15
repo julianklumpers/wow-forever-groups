@@ -89,6 +89,7 @@ function BgQueue.start(selfName)
         random = math.random,
         spec = ns.Spec.code(),
         lead = ns.charDb.wantsLeadBattlegrounds,
+        language = ns.MatchLanguages.wireText(),
         lastSent = ns.Comm.lastSent,
         space = ns.Protocol.BATTLEGROUNDS,
         matchmaker = ns.BgMatch,
@@ -205,7 +206,7 @@ function BgQueue.waitingFor(key)
     local bg = engine()
     local count = 0
     for _, entry in ipairs(bg and bg.queue:list() or {}) do
-        if entry.id ~= ns.selfName then
+        if entry.id ~= ns.selfName and bg:sharesLanguage(entry) then
             for _, wanted in ipairs(entry.dungeons) do
                 if wanted == key then
                     count = count + #entry.members
@@ -232,7 +233,8 @@ function BgQueue.soloWaiting()
         for _, key in ipairs(entry.dungeons) do
             shares = shares or wanted[key] == true
         end
-        if entry.id ~= ns.selfName and shares and #entry.members == 1 and (entry.reserved or "") == "" then
+        if entry.id ~= ns.selfName and shares and #entry.members == 1 and (entry.reserved or "") == ""
+            and engine():sharesLanguage(entry) then
             count = count + 1
         end
     end

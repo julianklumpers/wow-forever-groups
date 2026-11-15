@@ -7,6 +7,15 @@ local Log = ns.Log
 -- goes along with the other queues is in wow/queues.lua.
 local QuestQueue = {}
 
+local LEVELS_DROPPED = "Your level limit does not fit in the queue message with this many quests; you queue "
+    .. "without it."
+local LANGUAGE_DROPPED = "Your languages do not fit in the queue message with this many quests; you queue "
+    .. "without them and are grouped with players of any language."
+local DROPS = {
+    { field = "levels", set = "setLevels", message = LEVELS_DROPPED },
+    { field = "language", set = "setLanguage", message = LANGUAGE_DROPPED },
+}
+
 local function engine()
     return ns.questEngine
 end
@@ -84,6 +93,7 @@ function QuestQueue.start(selfName)
         random = math.random,
         spec = ns.Spec.code(),
         lead = ns.charDb.wantsLeadQuests,
+        language = ns.MatchLanguages.wireText(),
         lastSent = ns.Comm.lastSent,
         space = ns.Protocol.QUESTS,
         matchmaker = ns.QuestMatch,
@@ -146,7 +156,26 @@ function QuestQueue.join(keys, members, joinedAt)
         return false, "your party is already big enough for these quests"
     end
     quests:setLevels(ns.PartyLevels.wireText("quests"))
+    quests:setLanguage(ns.MatchLanguages.wireText())
     local ok, err = quests:join(members, keys, joinedAt)
+    -- Queueing matters more than the level limit and the languages: without
+    -- them the entry still fits, and is grouped with anyone.
+    local dropped = {}
+    for _, drop in ipairs(DROPS) do
+        local value = quests[drop.field]
+        if not ok and err == "message too long" and value then
+            dropped[#dropped + 1] = { drop = drop, value = value }
+            quests[drop.set](quests, nil)
+            ok, err = quests:join(members, keys, joinedAt)
+        end
+    end
+    for _, item in ipairs(dropped) do
+        if ok then
+            quests:reportTooLong(item.drop.field .. "Dropped", item.value, item.drop.message)
+        else
+            quests[item.drop.set](quests, item.value)
+        end
+    end
     if ok and not joinedAt then
         Log.info("Looking for a questing group for: %s.", QuestQueue.describe(keys))
         ns.Spec.checkRoles(members[1].roles)
@@ -276,7 +305,7 @@ function QuestQueue.waitingFor(key)
     local quests = engine()
     local count = 0
     for _, entry in ipairs(quests and quests.queue:list() or {}) do
-        if entry.id ~= ns.selfName then
+        if entry.id ~= ns.selfName and quests:sharesLanguage(entry) then
             for _, wanted in ipairs(entry.dungeons) do
                 if wanted == key then
                     count = count + #entry.members

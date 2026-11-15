@@ -3,6 +3,7 @@ ns = ns or {}
 
 local Roles = ns.Roles or require("core.roles")
 local Matchmaker = ns.Matchmaker or require("core.matchmaker")
+local Languages = ns.Languages or require("core.languages")
 
 -- Battleground groups: players waiting for the same battleground in the same
 -- level bracket. Queue entries list battleground keys ("wsg-10") where
@@ -10,11 +11,12 @@ local Matchmaker = ns.Matchmaker or require("core.matchmaker")
 -- for one of its keys; the others are taken by how many keys they share,
 -- then by waiting time, up to a party of five. Two players are enough: the
 -- leader fills the rest from WoW's Group Finder, and a battleground takes
--- any group. Parties never merge with each other, so at most one entry in a
--- group has more than one player; places a party keeps for players it
--- invited from the Group Finder count as players. Roles barely matter in a battleground:
--- each group gets a healer when one of them heals, everyone else plays DPS
--- when they can.
+-- any group. Only players who take each other's language are grouped
+-- (core/languages.lua). Parties never merge with each other, so at most one
+-- entry in a group has more than one player; places a party keeps for
+-- players it invited from the Group Finder count as players. Roles barely
+-- matter in a battleground: each group gets a healer when one of them heals,
+-- everyone else plays DPS when they can.
 local BgMatch = {}
 
 local MAX_PLAYERS = 5
@@ -27,7 +29,7 @@ local function groupFor(anchor, list, from, key, taken)
     local candidates = {}
     for i = from, #list do
         local entry = list[i]
-        if has(entry, key) and not shares(entry, taken) then
+        if has(entry, key) and not shares(entry, taken) and Languages.compatible(anchor.language, entry.language) then
             candidates[#candidates + 1] = { entry = entry, overlap = overlap(anchor, entry) }
         end
     end
@@ -39,11 +41,15 @@ local function groupFor(anchor, list, from, key, taken)
     end)
     local chosen, players, party = { anchor }, #anchor.members, #anchor.members > 1
     local total = 0
+    local placed = {}
+    names(anchor, placed)
     for _, candidate in ipairs(candidates) do
         local entry = candidate.entry
         local big = #entry.members > 1
-        if players + #entry.members <= MAX_PLAYERS and not (big and party) then
+        if players + #entry.members <= MAX_PLAYERS and not (big and party) and not shares(entry, placed)
+            and Languages.fitsAll(chosen, entry) then
             chosen[#chosen + 1] = entry
+            names(entry, placed)
             players = players + #entry.members
             party = party or big
             total = total + candidate.overlap
@@ -101,7 +107,7 @@ function BgMatch.findGroups(entries)
     local sorted = {}
     for i, entry in ipairs(Matchmaker.sortByPriority(entries)) do
         sorted[i] = { id = entry.id, dungeons = entry.dungeons, members = Roles.withReserved(entry.members,
-            entry.reserved), rank = i, source = entry }
+            entry.reserved), rank = i, source = entry, language = Languages.decode(entry.language) }
     end
     local groups, used, taken = {}, {}, {}
     local progress = true

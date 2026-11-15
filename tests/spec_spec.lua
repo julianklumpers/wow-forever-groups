@@ -242,9 +242,7 @@ describe("the demo's group card", function()
         local client = world:addClient("Roos Bief", { level = 20, class = "SHAMAN", talents = ENHANCEMENT })
         world:advance(12)
         client:slash("/fg demo")
-        for _ = 1, 4 do
-            client:click("Button", "Next screen")
-        end
+        client.ns.Demo.show(5)
         local slots = client.ns.WindowParts.slots
         assert.are.equal("Aldric Dawnmere", slots[1].name.text)
         assert.are.equal("Protection", slots[1].specName.text)

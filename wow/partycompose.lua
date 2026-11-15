@@ -150,7 +150,7 @@ end
 -- cards). nil when the player does not build the group; nil, true while a
 -- party member's name is still loading (keep what was sent).
 local function layout()
-    if not PartyCompose.isBuilder() then
+    if not ns.PartyLevels.wishesCount("dungeons") then
         return nil
     end
     local members = ns.Party.members()

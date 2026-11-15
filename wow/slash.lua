@@ -91,6 +91,7 @@ local function cmdJoin(rest)
         Log.warn(err)
         return
     end
+    ns.PartyLevels.noteStart("dungeons")
     local ok, joinErr = ns.join({ { name = ns.selfName, roles = roles, level = UnitLevel("player") } }, ids)
     if not ok then
         Log.warn("Could not join: %s", tostring(joinErr))

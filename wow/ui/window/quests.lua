@@ -168,6 +168,7 @@ function W.onQuestJoinClicked()
         W.setHint(string.format(L["Could not join: %s"], L[membersErr]))
         return
     end
+    ns.PartyLevels.noteStart("quests")
     local ok, err = ns.QuestQueue.join(W.tickedQuestKeys(), members)
     W.setHint(ok and "" or string.format(L["Could not join: %s"], L[tostring(err)]))
     if ok then

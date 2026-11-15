@@ -7,8 +7,9 @@ local Widgets = ns.Widgets
 
 -- /fg demo: every screen of the addon in turn, filled with example data, for
 -- screenshots and as the introduction a new player gets the first time the
--- window opens. The player is a fixed character; a bar at the top of the
--- screen explains each screen and steps through them. While it runs nothing goes out: events
+-- window opens. The player is a fixed character; a bar on top of the window
+-- welcomes them, then explains each screen step by step, outlining the part
+-- it explains and darkening the rest. While it runs nothing goes out: events
 -- and the addon's every-second work are held (wow/events.lua, wow/main.lua),
 -- sending and searching do nothing, and the data the screens read comes from
 -- here. Saved settings are never written: the demo works on copies.
@@ -27,41 +28,219 @@ local TITLES = ns.Locale.mark({
     "Group quests", "Questing group", "Battlegrounds",
 })
 
--- Per screen, the texts under its title in the bar.
-local TEXTS = ns.Locale.mark({
+local function shown(frame)
+    return frame ~= nil and frame:IsVisible() and frame or nil
+end
+
+-- The first and the last of the frames on screen: the part a step outlines.
+local function span(list)
+    local first, last
+    for _, frame in ipairs(list) do
+        if shown(frame) then
+            first = first or frame
+            last = frame
+        end
+    end
+    return first, last
+end
+
+local function hasText(frame)
+    local text = frame and frame:GetText()
+    return type(text) == "string" and #text > 0
+end
+
+local function parts()
+    return ns.WindowParts, ns.WindowParts.ui
+end
+
+local function drawer()
+    local frame = ns.QueueWindow.frame()
+    return shown(frame), frame
+end
+
+local function joinButton()
+    local _, ui = parts()
+    return shown(ui.join), ui.join
+end
+
+local function cardSlots()
+    return span(ns.WindowParts.slots)
+end
+
+-- Per screen, its steps: what the bar says and the part of the screen it
+-- outlines. A step whose part is not on screen is left out.
+local STEPS = ns.Locale.mark({
     {
-        "Tick every role you can play. Forever Groups gives you the one a group needs most.",
-        "These numbers count the tanks, healers and DPS looking for the dungeons you ticked, "
-            .. "in Forever Groups and in WoW's Group Finder, and how many listed groups have a place for you.",
+        {
+            text = "Tick every role you can play. Forever Groups gives you the one a group needs most.",
+            target = function()
+                local toggles = ns.WindowParts.roleToggles
+                return span({ toggles.T, toggles.H, toggles.D })
+            end,
+        },
+        {
+            text = "Join a group, or lead one and the group forms around you. A playstyle groups you with "
+                .. "like-minded players only; Any groups you with everyone.",
+            target = function()
+                local _, ui = parts()
+                return span({ ui.joinChoice, ui.leadChoice, ui.playstyleButton })
+            end,
+        },
+        {
+            text = "These numbers count the tanks, healers and DPS looking for the dungeons you ticked, "
+                .. "in Forever Groups and in WoW's Group Finder, and how many listed groups have a place for you.",
+            target = function()
+                local _, ui = parts()
+                local groups = ui.headerLookingGroups
+                return span({ ui.headerLooking, hasText(groups) and groups or nil })
+            end,
+        },
+        {
+            text = "Tick the dungeons you would like to run. Those for your level are ticked already; "
+                .. "Other dungeons has the rest.",
+            target = function()
+                local W, ui = parts()
+                local list = { ui.dungeonHeader }
+                for _, cell in ipairs(W.dungeonCells) do
+                    list[#list + 1] = cell
+                end
+                return span(list)
+            end,
+        },
+        {
+            text = "Each row shows the dungeon's level range, your quests there, the listed groups with room for "
+                .. "you, and how many players look per role. Hover a row to see those groups.",
+            target = function()
+                local cell = span(ns.WindowParts.dungeonCells)
+                return cell, cell
+            end,
+        },
+        {
+            text = "Who is looking: the tab with the eye opens a list beside this window of everyone looking for "
+                .. "your dungeons or group quests right now, from Forever Groups and WoW's Group Finder. "
+                .. "Right-click a player to whisper or invite, a group to ask to join.",
+            target = drawer,
+        },
+        {
+            text = "Find group puts you in the queue, and Forever Groups does the rest by itself: it "
+                .. "matches you with other players who have the addon and fills open places from WoW's Group Finder. "
+                .. "When your group is ready, accept the popup and the invites arrive on their own.",
+            target = joinButton,
+        },
     },
     {
-        "Leading a party, you can choose the classes for its open places and limit the players' levels. "
-            .. "Forever Groups then only brings in players who fit.",
+        {
+            text = "Leading, you can choose the classes for your party's open places, such as a Mage for water. "
+                .. "Only those classes join you.",
+            target = function()
+                local W, ui = parts()
+                local list = { ui.composeToggle }
+                for _, card in ipairs(W.composeCards) do
+                    list[#list + 1] = card
+                end
+                return span(list)
+            end,
+        },
+        {
+            text = "Limit levels: only players between these levels join you.",
+            target = function()
+                local _, ui = parts()
+                return span({ ui.levelsToggle, ui.levelsMax })
+            end,
+        },
     },
     {
-        "Find group puts you in the queue, and Forever Groups does the rest by itself: it "
-            .. "matches you with other players who have the addon and fills open places from WoW's Group Finder. "
-            .. "When your group is ready, accept the popup and the invites arrive on their own.",
+        {
+            text = "You are in the queue. The open places fill as players are found; you don't need to do anything.",
+            target = cardSlots,
+        },
+        {
+            text = "While you wait, just keep playing: your key presses and clicks refresh WoW's Group Finder. /fg "
+                .. "or the minimap button opens this window again.",
+            target = joinButton,
+        },
     },
     {
-        "A group was found: accept before the time runs out. Once everyone has accepted, the invites arrive "
-            .. "on their own.",
+        {
+            text = "Who was found: everyone's role and spec, and who has accepted already.",
+            target = function()
+                local _, rows = ns.Popup.parts()
+                return span(rows or {})
+            end,
+        },
+        {
+            text = "A group was found: accept before the time runs out. Once everyone has accepted, the invites "
+                .. "arrive on their own.",
+            target = function()
+                local _, _, ui = ns.Popup.parts()
+                return span({ ui.count, ui.accept, ui.decline })
+            end,
+        },
     },
     {
-        "In the group, the card shows how far everyone is from the entrance and how many quests they have for "
-            .. "the dungeon. Set a waypoint, share your quests or follow everyone's quest progress.",
+        {
+            text = "The card shows everyone's role and spec, how far they are from the entrance and how many quests "
+                .. "they have for the dungeon.",
+            target = cardSlots,
+        },
+        {
+            text = "Set a waypoint to the entrance, share your quests with whoever lacks them, or follow everyone's "
+                .. "quest progress.",
+            target = function()
+                local card = ns.WindowParts.ui.card
+                return span(card and card.actions or {})
+            end,
+        },
     },
     {
-        "The group and elite quests in your quest log show here. Tick the ones you want help with, and Forever "
-            .. "Groups finds players for them.",
+        {
+            text = "The group and elite quests in your quest log show here. Tick the ones you want help with, and "
+                .. "Forever Groups finds players for them.",
+            target = function()
+                return span(ns.WindowParts.questRows)
+            end,
+        },
+        {
+            text = "Who is looking shows the players and groups in the zones of the quests you ticked.",
+            target = drawer,
+        },
+        {
+            text = "Find questing group first asks the groups already listed for your quests, and starts a group of "
+                .. "its own when there is none.",
+            target = joinButton,
+        },
     },
     {
-        "Everyone's progress on the group's quests folds out under the status bar. Once they are turned in, "
-            .. "Forever Groups asks whether you want to leave the group.",
+        {
+            text = "Everyone's progress on the group's quests folds out under the status bar. Once they are turned "
+                .. "in, Forever Groups asks whether you want to leave the group.",
+            target = function()
+                return span({ ns.Status.frame(), ns.ProgressWindow.panel() })
+            end,
+        },
     },
     {
-        "Questing and battleground groups have their own tabs. You can wait for all of them at once.",
-        "A battleground group is signed up by its leader at a battlemaster.",
+        {
+            text = "Questing and battleground groups have their own tabs. You can wait for all of them at once.",
+            target = function()
+                local tabs = ns.WindowParts.ui.tabs or {}
+                return span({ tabs.dungeons, tabs.quests, tabs.battlegrounds })
+            end,
+        },
+        {
+            text = { "Choose a party of five or a premade of ten.",
+                "A battleground group is signed up by its leader at a battlemaster." },
+            target = function()
+                local _, ui = parts()
+                local sizes = ui.battlegroundSizes or {}
+                return span({ ui.battlegroundSizeLabel, sizes[5], sizes[10] })
+            end,
+        },
+        {
+            text = "That's all: close this demo, tick your roles and press Find group. /fg or the minimap button "
+                .. "opens this window.",
+            target = joinButton,
+        },
     },
 })
 
@@ -530,22 +709,202 @@ local function patchAll()
     end)
 end
 
-local BAR_WIDTH, BAR_TOP = 600, 38
+local BAR_TOP = 38
+local BUTTON_ROW = 30
+local STRATA = "FULLSCREEN_DIALOG"
+local GOLD = { 1, 0.82, 0, 1 }
+local DIM = { 0, 0, 0, 0.6 }
+local WELCOME = ns.Locale.mark("Pick your roles, press Find group, and your group forms itself, for dungeons, group "
+    .. "quests and battlegrounds. This short demo shows how, with example players; nothing is sent.")
 
-local function paintBar()
-    bar.label:SetText(string.format("%d/%d  ·  %s", current, #SCENES, L[TITLES[current]]))
-    local parts = {}
-    for i, text in ipairs(TEXTS[current]) do
-        parts[i] = L[text]
-    end
-    bar.text:SetText(table.concat(parts, " "))
-    local height = bar.text:GetStringHeight()
-    bar:SetHeight(BAR_TOP + math.ceil(type(height) == "number" and height or 28) + 10)
-    Widgets.setEnabled(bar.prev, current > 1)
-    Widgets.setEnabled(bar.next, current < #SCENES)
+-- The steps of the screen shown that have their part on screen, and the
+-- one shown; before the first screen's steps comes the welcome.
+local steps = {}
+local stepIndex = 1
+local welcoming = false
+local highlight
+local dims = {}
+
+local function scaleOf(frame)
+    local scale = frame and frame:GetEffectiveScale()
+    return type(scale) == "number" and scale > 0 and scale or 1
 end
 
-local function showScene(index)
+-- A frame's edges in screen pixels, or nil while it has no place yet.
+local function rect(frame)
+    local left, right, top, bottom = frame:GetLeft(), frame:GetRight(), frame:GetTop(), frame:GetBottom()
+    if type(left) ~= "number" or type(right) ~= "number" or type(top) ~= "number" or type(bottom) ~= "number" then
+        return nil
+    end
+    local scale = scaleOf(frame)
+    return { left = left * scale, right = right * scale, top = top * scale, bottom = bottom * scale }
+end
+
+local function newDim()
+    local dim = CreateFrame("Frame", nil, UIParent)
+    dim:SetAllPoints(UIParent)
+    dim:SetFrameStrata(STRATA)
+    dim:SetFrameLevel(1)
+    dim.bands = {}
+    for i = 1, 4 do
+        local band = dim:CreateTexture(nil, "BACKGROUND")
+        band:SetColorTexture(DIM[1], DIM[2], DIM[3], DIM[4])
+        dim.bands[i] = band
+    end
+    return dim
+end
+
+-- A window darkened all over, or around the outlined part where it lies on
+-- the window: four bands above, below, left and right of it.
+local function placeDim(dim, host, spot)
+    local area = rect(host)
+    local bands = dim.bands
+    for _, band in ipairs(bands) do
+        band:ClearAllPoints()
+        band:Hide()
+    end
+    if not area then
+        return
+    end
+    local top, bottom, left, right = bands[1], bands[2], bands[3], bands[4]
+    local inside = spot and {
+        left = math.max(spot.left, area.left), right = math.min(spot.right, area.right),
+        top = math.min(spot.top, area.top), bottom = math.max(spot.bottom, area.bottom),
+    }
+    if not inside or inside.left >= inside.right or inside.bottom >= inside.top then
+        top:SetAllPoints(host)
+        top:Show()
+        return
+    end
+    local unit = scaleOf(UIParent)
+    local upper, lower = (inside.top - area.top) / unit, (inside.bottom - area.top) / unit
+    top:SetPoint("TOPLEFT", host, "TOPLEFT")
+    top:SetPoint("BOTTOMRIGHT", host, "TOPRIGHT", 0, upper)
+    bottom:SetPoint("TOPLEFT", host, "TOPLEFT", 0, lower)
+    bottom:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT")
+    left:SetPoint("TOPLEFT", host, "TOPLEFT", 0, upper)
+    left:SetPoint("BOTTOMRIGHT", host, "TOPLEFT", (inside.left - area.left) / unit, lower)
+    right:SetPoint("TOPLEFT", host, "TOPLEFT", (inside.right - area.left) / unit, upper)
+    right:SetPoint("BOTTOMRIGHT", host, "TOPRIGHT", 0, lower)
+    for _, band in ipairs(bands) do
+        band:Show()
+    end
+end
+
+-- The main window, Who is looking and the group popup: all darkened during
+-- the welcome, and around the outlined part during a step.
+local function placeOverlay()
+    local outlined = highlight ~= nil and highlight:IsShown()
+    local spot = outlined and rect(highlight) or nil
+    local popup = ns.Popup.parts()
+    local hosts = { ns.WindowParts.frame, ns.QueueWindow.frame(), popup }
+    for i = 1, 3 do
+        dims[i] = dims[i] or newDim()
+        local host = hosts[i]
+        if host and host:IsVisible() and (welcoming or outlined) then
+            dims[i]:Show()
+            placeDim(dims[i], host, not welcoming and spot or nil)
+        else
+            dims[i]:Hide()
+        end
+    end
+end
+
+-- On top of the main window (or the group popup while the window steps
+-- aside), moving with it; under it when the window is too close to the top
+-- of the screen.
+local function placeBar()
+    local window = ns.WindowParts.frame
+    local popup = ns.Popup.parts()
+    local host = (window and window:IsVisible() and window) or (popup and popup:IsVisible() and popup) or nil
+    bar:ClearAllPoints()
+    if not host then
+        bar:SetScale(1)
+        bar:SetPoint("TOP", UIParent, "TOP", 0, -12)
+        return
+    end
+    bar:SetScale(scaleOf(host) / scaleOf(UIParent))
+    local area, screen = rect(host), rect(UIParent)
+    local height = (bar:GetHeight() or 0) * scaleOf(bar)
+    if area and screen and screen.top - area.top < height + 4 then
+        bar:SetPoint("TOP", host, "BOTTOM", 0, -2)
+    else
+        bar:SetPoint("BOTTOM", host, "TOP", 0, 2)
+    end
+end
+
+local function textOf(step)
+    if type(step.text) == "table" then
+        local list = {}
+        for i, text in ipairs(step.text) do
+            list[i] = L[text]
+        end
+        return table.concat(list, " ")
+    end
+    return L[step.text]
+end
+
+local function atEnd()
+    return current == #SCENES and stepIndex == #steps
+end
+
+local function paintBar()
+    local step = steps[stepIndex]
+    if welcoming then
+        bar.label:SetText(L["Welcome to Forever Groups"])
+        bar.text:SetText(L[WELCOME])
+        bar.count:SetText("")
+    else
+        bar.label:SetText(string.format("%d/%d  ·  %s", current, #SCENES, L[TITLES[current]]))
+        bar.text:SetText(step and textOf(step) or "")
+        bar.count:SetText(#steps > 1 and string.format(L["Step %d of %d"], stepIndex, #steps) or "")
+    end
+    local last = not welcoming and atEnd()
+    bar.prev:SetShown(not welcoming)
+    bar.next:SetShown(not welcoming)
+    Widgets.setEnabled(bar.next, not last)
+    bar.start:SetShown(welcoming)
+    bar.skip:SetShown(welcoming)
+    bar.done:SetShown(last)
+    local height = bar.text:GetStringHeight()
+    bar:SetHeight(BAR_TOP + math.ceil(type(height) == "number" and height or 28) + 10
+        + ((welcoming or last) and BUTTON_ROW or 0))
+end
+
+local function showStep()
+    local step = not welcoming and steps[stepIndex]
+    local first, last
+    if step and step.target then
+        first, last = step.target()
+    end
+    if first then
+        highlight:ClearAllPoints()
+        highlight:SetPoint("TOPLEFT", first, "TOPLEFT", -5, 5)
+        highlight:SetPoint("BOTTOMRIGHT", last or first, "BOTTOMRIGHT", 5, -5)
+        highlight:Show()
+    else
+        highlight:Hide()
+    end
+    paintBar()
+    placeBar()
+    placeOverlay()
+end
+
+local function visibleSteps(index)
+    local list = {}
+    for _, step in ipairs(STEPS[index]) do
+        if step.target() then
+            list[#list + 1] = step
+        end
+    end
+    if #list == 0 then
+        list[1] = { text = STEPS[index][1].text }
+    end
+    return list
+end
+
+-- at: "last" to land on the screen's last step (going back).
+local function showScene(index, at)
     current = index
     ns.Popup.hide()
     builds = builds + 1
@@ -566,23 +925,61 @@ local function showScene(index)
     if world.proposal then
         ns.Popup.show(world.proposal, world.engine)
     end
-    paintBar()
+    steps = visibleSteps(index)
+    stepIndex = at == "last" and #steps or 1
+    showStep()
 end
 
-function Demo.show(index)
-    if not on then
+-- Next and Previous go through the steps of a screen, then on to the next
+-- screen or back to the last step of the one before; back from the first
+-- step is the welcome, on from the last ends the demo.
+local function move(delta)
+    if welcoming then
+        if delta > 0 then
+            welcoming = false
+            showStep()
+        end
         return
     end
-    index = math.max(1, math.min(#SCENES, index))
-    local ok, err = pcall(showScene, index)
+    local index = stepIndex + delta
+    if index < 1 then
+        if current == 1 then
+            welcoming = true
+            showStep()
+        else
+            showScene(current - 1, "last")
+        end
+    elseif index > #steps then
+        if current < #SCENES then
+            showScene(current + 1)
+        else
+            Demo.stop()
+        end
+    else
+        stepIndex = index
+        showStep()
+    end
+end
+
+local function guarded(fn, ...)
+    local ok, err = pcall(fn, ...)
     if not ok then
         Demo.stop()
         Log.warn("The demo stopped after an error: %s", tostring(err))
     end
 end
 
+function Demo.show(index)
+    if on then
+        welcoming = false
+        guarded(showScene, math.max(1, math.min(#SCENES, index)))
+    end
+end
+
 function Demo.step(delta)
-    Demo.show(current + delta)
+    if on then
+        guarded(move, delta)
+    end
 end
 
 local function arrow(direction, label, delta)
@@ -601,15 +998,29 @@ local function arrow(direction, label, delta)
     return button
 end
 
+local function buildHighlight()
+    highlight = Widgets.backdropFrame("Frame", UIParent)
+    highlight:SetFrameStrata(STRATA)
+    highlight:SetFrameLevel(20)
+    Widgets.addOutline(highlight)
+    Widgets.paintOutline(highlight, { 1, 0.82, 0, 0.05 }, GOLD)
+    highlight:SetScript("OnUpdate", function(self)
+        self:SetAlpha(0.55 + 0.45 * math.abs(math.sin(GetTime() * 3)))
+    end)
+    highlight:Hide()
+end
+
 local function buildBar()
+    local width = ns.WindowParts.WIDTH
     bar = Widgets.backdropFrame("Frame", UIParent)
-    bar:SetSize(BAR_WIDTH, 80)
+    bar:SetSize(width, 80)
     bar:SetPoint("TOP", UIParent, "TOP", 0, -12)
-    bar:SetFrameStrata("FULLSCREEN_DIALOG")
+    bar:SetFrameStrata(STRATA)
+    bar:SetFrameLevel(30)
     bar:SetClampedToScreen(true)
     bar:EnableMouse(true)
     Widgets.addOutline(bar)
-    Widgets.paintOutline(bar, { 0.06, 0.06, 0.07, 0.95 }, { 1, 0.82, 0, 0.6 })
+    Widgets.paintOutline(bar, { 0.06, 0.06, 0.07, 0.97 }, { 1, 0.82, 0, 0.6 })
     local logo = Widgets.roundIcon(bar, Widgets.ICON, 18)
     logo:SetPoint("TOPLEFT", 10, -10)
     -- So a new player never takes a screen of the demo for a real group.
@@ -623,7 +1034,7 @@ local function buildBar()
     tag:SetSize(math.max(60, math.ceil(tag.label:GetStringWidth() or 50) + 16), 18)
     tag:SetPoint("LEFT", logo, "RIGHT", 8, 0)
     bar.tag = tag
-    bar.prev = arrow("Prev", ns.Locale.mark("Previous screen"), -1)
+    bar.prev = arrow("Prev", ns.Locale.mark("Previous"), -1)
     bar.prev:SetPoint("LEFT", tag, "RIGHT", 6, 0)
     bar.close = CreateFrame("Button", nil, bar, "UIPanelCloseButton")
     bar.close:SetPoint("TOPRIGHT", -4, -4)
@@ -632,16 +1043,45 @@ local function buildBar()
     end)
     Widgets.tooltip(bar.close, "End the demo")
     bar.close.iconLabel = "End the demo"
-    bar.next = arrow("Next", ns.Locale.mark("Next screen"), 1)
+    bar.next = arrow("Next", ns.Locale.mark("Next"), 1)
     bar.next:SetPoint("RIGHT", bar.close, "LEFT", -6, 0)
+    bar.count = Widgets.text(bar, "GameFontDisableSmall", "RIGHT")
+    bar.count:SetPoint("RIGHT", bar.next, "LEFT", -6, 0)
     bar.label = Widgets.text(bar, "GameFontNormal", "CENTER")
     bar.label:SetPoint("LEFT", bar.prev, "RIGHT", 6, 0)
-    bar.label:SetPoint("RIGHT", bar.next, "LEFT", -6, 0)
+    bar.label:SetPoint("RIGHT", bar.count, "LEFT", -6, 0)
     bar.label:SetWordWrap(false)
     bar.text = Widgets.text(bar, "GameFontHighlightSmall")
     bar.text:SetPoint("TOPLEFT", 14, -BAR_TOP)
-    bar.text:SetWidth(BAR_WIDTH - 28)
+    bar.text:SetWidth(width - 28)
     bar.text:SetJustifyH("LEFT")
+    bar.skip = Widgets.button(bar, "Skip", 100)
+    bar.skip:SetPoint("BOTTOMRIGHT", -14, 10)
+    bar.skip:SetScript("OnClick", function()
+        Demo.stop()
+    end)
+    bar.start = Widgets.button(bar, "Show me around", 150)
+    bar.start:SetPoint("RIGHT", bar.skip, "LEFT", -8, 0)
+    bar.start:SetScript("OnClick", function()
+        Demo.step(1)
+    end)
+    bar.done = Widgets.button(bar, "Done", 100)
+    bar.done:SetPoint("BOTTOMRIGHT", -14, 10)
+    bar.done:SetScript("OnClick", function()
+        Demo.stop()
+    end)
+    -- The window may move, grow or step aside for the popup: the bar and the
+    -- darkening follow it a few times a second.
+    local elapsed = 0
+    bar:SetScript("OnUpdate", function(_, delta)
+        elapsed = elapsed + (delta or 0)
+        if elapsed >= 0.2 and on then
+            elapsed = 0
+            placeBar()
+            placeOverlay()
+        end
+    end)
+    buildHighlight()
 end
 
 local function isIdle()
@@ -693,7 +1133,8 @@ function Demo.start(auto)
     bar:Show()
     Log.info("Demo: every screen with example data; nothing is sent. Step through with the bar at the top; "
         .. "/fg demo again ends it.")
-    Demo.show(1)
+    welcoming = true
+    guarded(showScene, 1)
     return true
 end
 
@@ -728,8 +1169,13 @@ function Demo.stop()
     W.showOthers, W.browsingOther, W.lastQueueTab = saved.showOthers, saved.browsingOther, saved.lastQueueTab
     world, saved, specs = nil, nil, {}
     on = false
+    welcoming = false
     if bar then
         bar:Hide()
+        highlight:Hide()
+    end
+    for _, dim in ipairs(dims) do
+        dim:Hide()
     end
     try(ns.Window.refresh)
     try(ns.Status.refresh)

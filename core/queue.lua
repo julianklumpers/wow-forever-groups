@@ -25,6 +25,7 @@ function Queue:upsert(entry, now)
         lead = entry.lead,
         compose = entry.compose,
         levels = entry.levels,
+        language = entry.language,
         lastSeen = now,
         updatedAt = now,
     }

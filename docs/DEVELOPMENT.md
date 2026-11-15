@@ -65,13 +65,19 @@ How the addon works inside, for anyone reading or changing the code. The player-
   named in chat once (the party there when the limit began counts as fixed). The block (`wow/ui/window/levels.lua`):
   "Limit levels" with "from [ ] to [ ]" (numeric boxes, saved on leaving the box when changed; a default in grey, a
   typed level in white)
+- Matching by game language (see Game language below): `core/languages.lua` goes with every queue entry of all three
+  queues as its 13th field (`<code>:<mask>`, e.g. `deDE:3`)
 - Choosing the classes in the party: a leader's class wishes per place of a dungeon group (`core/compose.lua`: places T, H, D, D,
   D; per place a mask of the nine classes, 0 for any; `untilAt` server time after which anyone may join, always 0
   from the window: the wishes hold for as long as the queue entry, without a time after which anyone may join). They go
   with the dungeon queue entry as its 11th field (`v2|Q|...|<lead>|<until>:<m>.<m>.<m>.<m>.<m>`; older clients
   ignore it) while the player builds the group (party leader, or alone with "Lead a group") and has switched it on
   ("Choose the classes in my party", `charDb.composeOn`; switched off, the choices stay in `charDb.compose`;
-  `wow/partycompose.lua`, set on join and on every change). The player's own place and the party
+  `wow/partycompose.lua`, set on join and on every change). Only when the player saw them when the search began:
+  each search the player starts (Find group in the window or `/fg join`, Find questing group, Fill from Group
+  Finder; not a replacement search or a restored queue) notes per tab whether the player built the group then (`PartyLevels.noteStart`, `charDb.wishesHidden`); a player who pressed Find group with "Join a group"
+  and is made leader of the group Forever Groups builds for them keeps neither class choices nor level limit
+  (`PartyLevels.wishesCount`). The player's own place and the party
   members' are fixed (no wish), each in the first place of their role. Matchmaking (`Matchmaker.findGroups`/
   `findPartialGroup`, given `now`): an entry with wishes in force only anchors its own group, takes only solo
   players (their class from their spec), narrows each candidate's roles to those with a place for their class
@@ -100,8 +106,9 @@ How the addon works inside, for anyone reading or changing the code. The player-
   nothing, and all leaders with wishes together get at most `WISH_BUDGET` of a round's search (`wishLeft`). A leader with
   wishes or a level limit also checks a proposal itself and turns it down when a player does not fit
   (`Engine:proposalKeepsMyWishes`, as a matchmaker of an older version doesn't know them; classes as
-  `restrictFor` counts them). `Engine:changeEntry` keeps a field that does not fit the queue message out. An applicant's class comes from `GetApplicantMemberInfo`; a player who whispers (class not
-  known) only gets a place open to any class. Who is looking fades solo players who don't fit the places left. The
+  `restrictFor` counts them). `Engine:changeEntry` keeps a field that does not fit the queue message out. An applicant's class comes from `GetApplicantMemberInfo`; a player who whispers has it from their
+  Group Finder listing (`classToken`), else from the whisper's GUID (`GetPlayerInfoByGUID`, `CHAT_MSG_WHISPER`'s
+  12th argument), and only gets a place open to any class when neither tells. Who is looking fades solo players who don't fit the places left. The
   block
   sits under the join/lead buttons on the Dungeons tab: the switch, and while it is on the five places side by side
   as cards in the window's quiet style: the role small in the top left corner, the wished classes as their round
@@ -116,9 +123,14 @@ How the addon works inside, for anyone reading or changing the code. The player-
 - the test mock makes clients that used the addon before unless `fresh = true` (see Demo for a new player's
   first opening)
 - matchmaking (`core/matchmaker.lua`): `findGroups` goes over the queue once, each entry in turn anchoring a group
-  with the earliest feasible set behind it (an exhaustive search within `SEARCH_BUDGET` steps; an anchor that found
-  nothing never finds a group later in the same run, as groups only take players away). The questing and battleground
-  matchers share its helpers (`wantsKey`, `sharedKeys`, `sharesPlayer`, `addNames`, `orderByLeader`). The queue's
+  with the earliest feasible set behind it (an exhaustive search within `SEARCH_BUDGET` steps a round, each anchor at
+  most `ANCHOR_BUDGET` of them, split over its dungeons with at least `DUNGEON_MIN_BUDGET` each, so one anchor no
+  group can be formed for never keeps the anchors behind it from their turn, nor one dungeon that can never fill
+  (players who don't take each other's language) the anchor's other dungeons; an anchor that found nothing never finds a group later in the same run, as groups only take players away).
+  The questing matcher searches the same way, with its own budgets. The questing and battleground
+  matchers share its helpers (`wantsKey`, `sharedKeys`, `sharesPlayer`, `addNames`, `orderByLeader`). All three keep
+  every pair in a group to players who take each other's language (`Languages.compatible` against the anchor,
+  `Languages.fitsAll` against everyone chosen so far, also for partial groups). The queue's
   sorted list (`Queue:list`) and the election's candidates are worked out once per change to the queue
 - `media/` – `icon.tga` (64×64, 32-bit uncompressed, top-left origin; the only image in the package: the minimap
   button, the AddOns list and Who is looking) and the logo for README and download sites (`logo-1024.png`,
@@ -251,6 +263,34 @@ the "looking" counts only count those, and Forever Groups's own listing gets the
 has one; WoW requires one). Adding the playstyle changed the protocol to `v2`, so clients up to 0.7.0 no longer
 take part and are told to update.
 
+### Game language
+
+Players are grouped by the language of their WoW client, as in WoW's Group Finder (`core/languages.lua`,
+`wow/matchlanguages.lua`). The own language is `GetLocale()` as the Group Finder names it (enGB → enUS, esMX →
+esES, ptPT → ptBR); the player is grouped only with players of their own language unless they tick others in
+Settings → Groups, "Languages you are matched with" (`db.languages`, a set of the extra codes; the old
+`db.ownLanguageOnly` is cleared on load). The boxes are the codes `C_LFGList.GetAvailableLanguageSearchFilter()`
+offers when the window shows (else enUS, deDE, esES, frFR, ruRU, ptBR), the own one ticked, greyed out and marked
+"(your language)"; names are translated texts, not native ones (Western fonts have no Cyrillic).
+
+Every queue entry (dungeons, quests, battlegrounds) carries the owner's language and the languages the owner takes
+as the 13th field of `Q`: `<code>:<mask>`, the mask a bit per code of `Languages.CODES` in that order (enUS 1,
+deDE 2, esES 4, frFR 8, ruRU 16, ptBR 32; the own bit always set), so `deDE:3` is a German client that also takes
+English players. New codes go at the end of the list. A field that does not decode (an unknown code, no own bit) or
+is missing (older versions, a client language outside the list) means unknown, and an unknown entry goes with
+everyone. Two players may be in one group only when each takes the other's language; a party counts as its owner.
+The matchers check every pair, and `Engine:proposalFitsMyEntry` turns down a proposal with a queued player who does
+not fit (as for a playstyle). Ticking a box changes the entries of all three queues at once (`Engine:setLanguage`).
+WoW's Group Finder searches with the same languages (`languageFilter` in `wow/lfglist.lua`: the own one and the
+ticked ones it offers). The "looking" counts, the waiting counts of the Quests and Battlegrounds tabs, Who is looking
+and the filler's and auto-fill's look at queued partners leave out players of a language that does not fit
+(`Engine:sharesLanguage`). When the queue message is too long, `ns.join` and `syncEntry` drop the class wishes and
+level limit first and then the language (reported once, `reportTooLong`): the entry then goes with everyone, and the
+language comes back with the next join; `QuestQueue.join` does the same with the questing level limit and the
+language. When an update does not fit even without them, the engine keeps the language its published entry still
+has. The settings list only the codes of `Languages.CODES` (and the player's own) and keep room for all of them
+(`MatchLanguages.mostOffered`).
+
 ### Spec
 
 Forever has one specialization per class, with the three Classic talent trees side by side in one retail-style
@@ -318,7 +358,8 @@ protocol under the prefix `b1|` (`Protocol.BATTLEGROUNDS`, any roles up to five)
 with the bracket (`wsg-20`: Warsong Gulch at 20-29, `Battlegrounds.key`). `core/bgmatch.lua` anchors a group on the
 longest waiting player and one of its keys and adds the others who wait for it (more shared keys first, then by
 waiting time) up to a party of five; two players are enough. Parties never merge (at most one entry with more than
-one player, which leads); otherwise the wish to lead decides. One healer when someone heals, the rest DPS where they
+one player, which leads), and a player listed twice (a stale solo entry next to the party's) is placed once;
+otherwise the wish to lead decides. One healer when someone heals, the rest DPS where they
 can. A party leader waits with the party, and the Group Finder invites on their way keep places (`reserved`, the
 proposal's `missing`); a raid or a party of five leaves the queue, as does joining someone else's group. While solo
 Forever Groups players wait for the same battleground, the Group Finder leaves places open for them
@@ -358,8 +399,11 @@ prefix `q1|` (`Protocol.QUESTS`), where a group takes any mix of roles (the play
 only preferred when there are any). A queue entry
 lists quest keys (`176-3`: quest 176 for a group of 3, the size WoW suggests or 3) where a dungeon entry lists
 dungeons. `core/questmatch.lua` anchors a group on the longest waiting player and one of its quests, takes players
-who share more of its quests first, then healers, then by waiting time, and keeps the playstyle camps apart; the
-group is complete at the quest's size.
+who share more of its quests first, then healers, then by waiting time, and passes over players only when the group
+cannot be filled with them (a depth-first search in that order, within `SEARCH_BUDGET` steps a round and
+`ANCHOR_BUDGET` per anchor, split over its quests with at least `KEY_MIN_BUDGET` each); at most one party per
+group, as a player still in another party cannot accept the
+invite. Playstyles do not apply; the group is complete at the quest's size.
 
 Once a group forms, the status bar's quest icon folds out a progress panel right under the bar
 (`wow/ui/progresswindow.lua`; `/fg progress` does the same) that shows how far everyone is: for a questing group its quest(s), for a dungeon group the player's quests for that dungeon. Members
@@ -399,7 +443,9 @@ addon see what their leader's queue does ("Your party is queued by X", proposals
 
 One button. The click queues you for Forever Groups players and searches WoW's Group Finder at the same time; both
 sources fill the group, whichever is first. Queued Forever Groups players who could share a group are merged at once (a
-partial group); a player with no partner in sight fills from the Group Finder right away while staying in the queue.
+partial group); a player with no partner in sight fills from the Group Finder right away while staying in the queue. A possible
+partner (same dungeon, language and playstyle camp, roles that fit; `hasPartner` in `wow/autofill.lua`) is waited for
+at most 20 s (`PARTNER_GRACE`): the matchmaker may still refuse the pair (class wishes, a level limit, two leaders).
 An incomplete group stays in the queue (same place) so later Forever Groups players can still join it. Group Finder
 searches need player input: the Find group click, Accept, and, while roles are still open, the player's own key
 presses and clicks in the game world (a keyboard frame that passes every key through, and a hook on the world
@@ -413,8 +459,9 @@ who delist drop out of them as WoW reports it) before it waits for input.
 One setting, "Use WoW's Group Finder", turns all of the below on or off (`wow/features.lua`). Off, Forever Groups
 only works with other Forever Groups players: it does not search, ask, invite from or list in the Group Finder, and
 the "looking" counts show Forever Groups players only. On, each part has its own setting under it (refresh on key
-presses, ask groups, invite listed players, list the group, invite players who whisper, every language);
-those are greyed out while the main setting is off.
+presses, ask groups, invite listed players, list the group, invite players who whisper); those are greyed out while
+the main setting is off. The languages to be grouped with sit below them and also count while it is off (see Game
+language).
 
 When queued players cannot make a full group, the matchmaker proposes a partial group right away (`PARTIAL_AFTER = 0`; at least 2
 players); the roles left open are filled from WoW's own Group Finder: the leader's Accept click also runs a Group
@@ -425,7 +472,12 @@ after 1.5 s, so an away player's automatic reply (`CHAT_MSG_AFK`/`CHAT_MSG_DND`)
 uninvited. Every open invite takes a place in the party, also one given up on: WoW keeps an unanswered invite open
 for exactly 60 s. Every invite the addon sends goes through `wow/invites.lua` (the filler, the battleground and quest
 finders, a formed queue group, whisper invites and the player menu), which counts the places open invites hold until
-they are answered, joined or 60 s old. The filler, the battleground finder and the quest finder invite no more than
+they are answered, joined or 60 s old. A /reload keeps them (`charDb.invites`, with their ages). The queue entry
+saved for a /reload (`charDb.queue`) carries the filler (`Filler.saved`, `Filler.restore`: the roles sought, the
+invites still out, who not to invite again), so it fills on without whispering and inviting the same players twice.
+When members and invites take all five places the party leaves the queue for the moment (`parked` in
+`wow/main.lua`) and joins again at its old place once a place frees; that too is saved, and after a /reload the
+filler goes on and replaces whoever declines. The filler, the battleground finder and the quest finder invite no more than
 the party has room for after those. WoW's `ERR_GROUP_FULL` ("Your party is full") names nobody and belongs to the
 invite sent last (`Invites.onRefused` tells its sender, which may pick that player again); the filler then invites
 nobody for 10 s. A pending invite
@@ -435,7 +487,11 @@ of the 30, or "frees in" and the seconds until WoW drops a given-up invite. A ro
 waiting in the queue for the dungeon can play is left to the matchmaker first (`addonRoles` in `wow/filler.lua`);
 only the other roles go to the Group Finder, and that role too if the matchmaker has not grouped them within 20 s. "Fill from Group Finder" in the window (or `/fg fill`) does the same for your own party;
 Filling has no window of its own: what it waits for goes to the saved log
-(`Log.detail`, chat with `/fg debug on`) and the status bar shows who is invited.
+(`Log.detail`, chat with `/fg debug on`) and the status bar shows who is invited. When a role stays open while
+players are listed for it, the line says why they were passed over (`Fill.skipped`: already invited/asked/declined,
+outside the dungeon's levels, outside the level limit, a class the class choices leave out, another playstyle,
+picked for another role). The saved log keeps 2000 lines (`wow/log.lua`); the version pings (`DQV|`) are not
+logged, they used to push everything else out within minutes.
 
 Roles in the group (`wow/rolesync.lua`): each player's Forever Groups role is set in WoW's party frames once. A
 party member who then gets another role keeps it when they offered it (the roles of their Group Finder listing or
@@ -497,8 +553,9 @@ side in `wow/questfinder.lua`) and builds the group right away. The wish travels
 entry (`v2|Q|…|<lead>`, "1"; older clients ignore it), and `Matchmaker.chooseLeaderEntry` picks the leader in this
 order: a party (it never breaks up), a solo player who would like to lead, the tank, the earliest entry. While a group is
 being filled it is also listed in the Group Finder (`wow/lfglisting.lua`; listing is protected, so it waits in
-`wow/input.lua` for the next key press or click). Searches include every language unless "Find players of every
-language" is off; without a language filter the server only returns the player's own language.
+`wow/input.lua` for the next key press or click). Searches pass the player's own language and the ones ticked in the
+settings as the language filter (see Game language); without a filter the server only returns the own language, and
+a result does not say its language.
 
 WoW returns at most 100 results per search, and its "found" count is just the number returned (no paging; five
 low-level dungeons together already give 100, one alone 40-70 at a busy time; `/fgp lfgapi`). So a search covers
@@ -535,8 +592,10 @@ Forever's `C_LFGListRoles.SetRoles`; only from that click, off for the session a
 Players who see the listing whisper the leader (there are no applications). While a group is being built,
 `wow/whisperinvite.lua` invites a whisperer who names a role that is still open ("heal?", "dps lf group"), asks once
 which role they play when they only ask to join ("inv pls"), and says which roles are needed when theirs is taken.
-The status shows the phase: "Asking groups to invite you (2 asked) · own group in 0:18", then "Building your own
-group: inviting …".
+When open invites hold every party place (`Filler.room`), a whisperer gets no answer yet and is invited (with the
+usual answer) as soon as a place frees, within an invite's 60 s (`WhisperInvite.tick`).
+Asking groups happens out of sight: no status, window or chat line says how many were asked (only the saved log
+does). With `/fg debug on` the status shows "Building your own group: inviting …" once the filler runs.
 
 ### Who is looking
 
@@ -638,7 +697,9 @@ not on the Quests tab.
   WoW skips members already on the quest: "X is already on that quest."). Sharing from a timer is allowed
   (`/fgp sharequest later`, 2026-11-14). With members without Forever Groups in the party (no list, not seen by
   `Presence`), each Forever Groups player asks the party once on coming into the group to share theirs
-  (`QuestShare.askParty`, the `partyAskQuests` message; not with `db.noPartyAnnounce`): also a player who joins a run
+  (`QuestShare.askParty`, the `partyAskQuests` message; not with `db.noPartyAnnounce`). Only once the group is
+  complete and announced (`GroupView.wasAnnounced`, so after "Group complete!") or inside the dungeon, so nobody
+  invited later misses it: also a player who joins a run
   under way, but not one who saw a boss die in this run (`Run.current().kills`; a /reload in the dungeon with a
   level-up's roster update once asked mid-run). The one asking sends `v1|QA|dungeon` on the PARTY addon channel, and
   who hears it does not ask; at a new group the players ask in order of name, 3 s apart, so only the first does. A
@@ -710,9 +771,16 @@ the tabs Groups, Messages and Display.
 `/fg demo` (`wow/demo.lua`) walks through every screen with fixed example data, for screenshots: choosing alone with
 Who is looking open, leading a party with class wishes and a level limit, waiting in the queue, the group-found
 popup, in the group (card, distances, dungeon quests, status bar), the Quests tab, a questing group with its
-progress, and the Battlegrounds tab. A bar at the top of the screen (`FULLSCREEN_DIALOG`) carries an "Example"
-tag, the screen's number and title and a short explanation under it (`TEXTS`, wrapped; the bar grows with it), steps
-back and forth and ends it; `/fg demo` again or Settings → Display → "Show the demo" end or start it too. The player
+progress, and the Battlegrounds tab. A bar (`FULLSCREEN_DIALOG`) sits on top of the main window, or of the
+group popup while the window steps aside, at the window's scale; under it when the window is too close to the top of
+the screen, and at the top of the screen when neither shows. It carries an "Example" tag, the screen's number and
+title, "Step n of m" and the step's explanation (wrapped; the bar grows with it). It opens with a welcome ("Show me
+around" / "Skip", every window darkened). Each screen has `STEPS`: a text and a `target()` that returns the first
+and last frame of the part it explains; steps whose part is not on screen are left out. The part gets a pulsing gold
+outline and the main window, Who is looking and the popup are darkened around it (four bands per window, placed
+from screen-pixel edges). Next/Previous go through the steps, then to the next screen or back to the last step of
+the one before; back from the first step is the welcome, Done on the last ends it. Bar and darkening follow the
+window five times a second. `/fg demo` again or Settings → Display → "Show the demo" end or start it too. The player
 is always "Aldric Dawnmere", a level 20 Protection Paladin; the others have made-up names.
 
 - **A new player's introduction** (it replaced the old tour of the window): `ns.db.tourSeen` is false on a fresh

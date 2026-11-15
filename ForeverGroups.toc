@@ -27,6 +27,7 @@ core\specs.lua
 core\classes.lua
 core\compose.lua
 core\levels.lua
+core\languages.lua
 core\protocol.lua
 core\matchmaker.lua
 core\questmatch.lua
@@ -55,6 +56,7 @@ wow\presence.lua
 wow\diagnostics.lua
 wow\party.lua
 wow\playstyle.lua
+wow\matchlanguages.lua
 wow\spec.lua
 wow\messages.lua
 wow\inspectspec.lua

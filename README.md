@@ -29,6 +29,8 @@ in the group, with roles set for you.
 - **Playstyle** — "Any" by default, so you're grouped with everyone; pick Learning, Relaxed,
   Competitive or Carry Offered in the dropdown under the role tiles to be grouped with
   like-minded players only.
+- **Your language** — like WoW's Group Finder, you're grouped with players whose game is in your
+  language; tick more languages in Settings → Groups to be grouped with those players too.
 - **Uses WoW's Group Finder too** — invites solo players listed for your dungeon, asks listed
   groups to invite you (and joins when they do, as the role they still need), lists your own
   group, and invites players who whisper a needed role.
@@ -73,7 +75,7 @@ servers or websites involved; everything happens in game.
 ## Getting started
 
 1. Install the addon (CurseForge, Wago or WoWInterface) and log in. The first time, the window opens by itself
-   and shows every screen once with example data, explained in a bar at the top.
+   with a welcome, and shows every screen once with example data, explained step by step.
 2. Later, type `/fg`, click the minimap button, or the Forever Groups tab on WoW's Group Finder.
 3. Tick your roles and dungeons (or open the **Quests** tab) and press **Find group**.
 

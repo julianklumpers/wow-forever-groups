@@ -431,3 +431,86 @@ describe("composing the party", function()
         assert.are.equal(W.PAD, tank.point[4])
     end)
 end)
+
+describe("a queue message too long for the language", function()
+    local function tooLongWith(client, test)
+        local Protocol = client.ns.Protocol
+        local encode = Protocol.encode
+        Protocol.encode = function(msg, space)
+            if msg.kind == "queue" and msg.language and test(msg) then
+                return nil, "message too long"
+            end
+            return encode(msg, space)
+        end
+        return function()
+            Protocol.encode = encode
+        end
+    end
+
+    local function queueMessages(client)
+        local count = 0
+        for _, text in ipairs(client.sent) do
+            count = count + (text:find("^v2|Q|") and 1 or 0)
+        end
+        return count
+    end
+
+    it("still queues, without the language, and does not send it again and again", function()
+        local world = World.new()
+        local client = leader(world)
+        local restore = tooLongWith(client, function()
+            return true
+        end)
+        client:slash("/dq join tank dm")
+        local entry = client.ns.engine.myEntry
+        assert.is_not_nil(entry)
+        assert.is_nil(entry.language)
+        assert.is_true(client:logged("grouped with players of any language"))
+        local before = queueMessages(client)
+        world:advance(60)
+        restore()
+        assert.is_true(queueMessages(client) - before <= 1)
+    end)
+
+    it("keeps the party in step without the language when it no longer fits", function()
+        local world = World.new()
+        local client = leader(world)
+        client:slash("/dq join tank dm")
+        assert.is_not_nil(client.ns.engine.myEntry.language)
+        local restore = tooLongWith(client, function(msg)
+            return #msg.members > 1
+        end)
+        client.ns.RoleSync.expect("Friend One", "D")
+        client:joins("Friend One")
+        world:advance(1)
+        local entry = client.ns.engine.myEntry
+        assert.are.equal(2, #entry.members)
+        assert.is_nil(entry.language)
+        local before = queueMessages(client)
+        world:advance(60)
+        restore()
+        assert.is_true(queueMessages(client) - before <= 1)
+    end)
+
+    it("keeps its own language when the update does not fit even without it", function()
+        local world = World.new()
+        local client = leader(world)
+        client:slash("/dq join tank dm")
+        local language = client.ns.engine.myEntry.language
+        assert.is_not_nil(language)
+        local Protocol = client.ns.Protocol
+        local encode = Protocol.encode
+        Protocol.encode = function(msg, space)
+            if msg.kind == "queue" and #msg.members > 1 then
+                return nil, "message too long"
+            end
+            return encode(msg, space)
+        end
+        client.ns.RoleSync.expect("Friend One", "D")
+        client:joins("Friend One")
+        world:advance(1)
+        Protocol.encode = encode
+        assert.are.equal(language, client.ns.engine.myEntry.language)
+        assert.are.equal(language, client.ns.engine.language)
+    end)
+end)

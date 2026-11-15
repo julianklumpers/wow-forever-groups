@@ -4,18 +4,23 @@ ns = ns or {}
 local Roles = ns.Roles or require("core.roles")
 local Matchmaker = ns.Matchmaker or require("core.matchmaker")
 local Levels = ns.Levels or require("core.levels")
+local Languages = ns.Languages or require("core.languages")
 
 -- Questing groups: players who share at least one group or elite quest.
--- Playstyles do not apply to quests.
+-- Playstyles do not apply to quests; languages do, as for dungeons.
 -- Queue entries list quest keys ("176-3": quest 176, for a group of 3) where
 -- dungeon entries list dungeons. The longest waiting player anchors a group
 -- for one of its quests; the others are taken by how many of the anchor's
--- quests they share, then healers first, then by waiting time. Any mix of
+-- quests they share, then healers first, then by waiting time, passing
+-- over players only when the group cannot be filled with them. Any mix of
 -- roles may group (the players decide); a group is complete at the quest's
--- group size.
+-- group size. At most one party per group, as for dungeons.
 local QuestMatch = {}
 
 local MIN_SIZE, MAX_SIZE = 2, 5
+-- Search steps per round, and at most this share for one anchor, as in
+-- core/matchmaker.lua.
+local SEARCH_BUDGET, ANCHOR_BUDGET, KEY_MIN_BUDGET = 20000, 1000, 100
 
 function QuestMatch.key(questId, size)
     return questId .. "-" .. size
@@ -69,19 +74,33 @@ local function bestAssignment(chosen, size)
     return best
 end
 
+local function removeNames(entry, names)
+    for _, member in ipairs(entry.members) do
+        if member.name then
+            names[member.name] = nil
+        end
+    end
+end
+
 -- nil when no group of this size can be formed around the anchor; a party
 -- that is already big enough for the quest needs nobody.
 -- The candidates are the entries after the anchor: list[from] onwards; for a
 -- leader with a level limit every entry, since those before cannot take that
 -- leader in (Matchmaker.candidateFor leaves the leader itself out).
-local function groupFor(anchor, list, from, key, size, taken)
+-- Depth-first, include-first over the candidates in that order, so the
+-- first set that fills the quest's size wins. At most one party per group:
+-- a player still in another party cannot accept the invite.
+-- budget.left: search steps this anchor may still take.
+local function groupFor(anchor, list, from, key, size, taken, budget)
+    local anchorParty = #anchor.members > 1
     if #anchor.members >= size or not bestAssignment({ anchor }, size) then
         return nil
     end
     local candidates = {}
     for i = (anchor.levels or anchor.rules) and 1 or from, #list do
         local entry = Matchmaker.candidateFor(anchor, list[i])
-        if entry and has(entry, key) and not shares(entry, taken) then
+        if entry and has(entry, key) and not shares(entry, taken) and not (anchorParty and #entry.members > 1)
+            and Languages.compatible(anchor.language, entry.language) then
             candidates[#candidates + 1] = { entry = entry, overlap = overlap(anchor, entry), heals = canHeal(entry) }
         end
     end
@@ -94,25 +113,36 @@ local function groupFor(anchor, list, from, key, size, taken)
         end
         return a.entry.rank < b.entry.rank
     end)
-    local chosen, players = { anchor }, #anchor.members
+    local chosen = { anchor }
     local names = {}
     addNames(anchor, names)
-    for _, candidate in ipairs(candidates) do
-        local entry = candidate.entry
+    local function search(start, players, party)
         if players == size then
-            break
+            return true
         end
-        if players + #entry.members <= size and not shares(entry, names) then
-            chosen[#chosen + 1] = entry
-            if bestAssignment(chosen, size) then
-                players = players + #entry.members
-                addNames(entry, names)
-            else
+        for i = start, #candidates do
+            budget.left = budget.left - 1
+            if budget.left <= 0 then
+                return false
+            end
+            local entry = candidates[i].entry
+            local big = #entry.members > 1
+            if players + #entry.members <= size and not (big and party) and not shares(entry, names)
+                and Languages.fitsAll(chosen, entry) then
+                chosen[#chosen + 1] = entry
+                if bestAssignment(chosen, size) then
+                    addNames(entry, names)
+                    if search(i + 1, players + #entry.members, party or big) then
+                        return true
+                    end
+                    removeNames(entry, names)
+                end
                 chosen[#chosen] = nil
             end
         end
+        return false
     end
-    if players < size then
+    if not search(1, #anchor.members, anchorParty) then
         return nil
     end
     local total = 0
@@ -162,44 +192,42 @@ function QuestMatch.findGroups(entries, _, now)
         sorted[i] = {
             id = entry.id, dungeons = entry.dungeons, members = members, rank = i,
             players = #members, source = entry, levels = now and Levels.active(entry.levels, now) or nil,
+            language = Languages.decode(entry.language),
         }
     end
-    local groups, used, taken = {}, {}, {}
-    local progress = true
-    while progress do
-        progress = false
-        local remaining = {}
-        for _, entry in ipairs(sorted) do
-            if not used[entry.id] then
-                remaining[#remaining + 1] = entry
+    local groups, taken = {}, {}
+    local budget = { left = SEARCH_BUDGET }
+    -- One pass is enough: the search is exhaustive and a group only takes
+    -- players away, so an anchor that found nothing never finds a group later.
+    for index, anchor in ipairs(sorted) do
+        if budget.left <= 0 then
+            break
+        end
+        local best
+        if not shares(anchor, taken) then
+            local keys = {}
+            for i, key in ipairs(anchor.dungeons) do
+                keys[i] = key
+            end
+            table.sort(keys)
+            local perKey = math.max(KEY_MIN_BUDGET, math.floor(ANCHOR_BUDGET / math.max(1, #keys)))
+            for _, key in ipairs(keys) do
+                local _, size = QuestMatch.parse(key)
+                local share = { left = math.min(budget.left, perKey) }
+                local start = share.left
+                local group = size and start > 0 and groupFor(anchor, sorted, index + 1, key, size, taken, share)
+                budget.left = budget.left - (start - share.left)
+                if group and (not best or group.overlap > best.overlap) then
+                    best = group
+                end
             end
         end
-        for index, anchor in ipairs(remaining) do
-            local best
-            if not shares(anchor, taken) then
-                local keys = {}
-                for i, key in ipairs(anchor.dungeons) do
-                    keys[i] = key
-                end
-                table.sort(keys)
-                for _, key in ipairs(keys) do
-                    local _, size = QuestMatch.parse(key)
-                    local group = size and groupFor(anchor, remaining, index + 1, key, size, taken)
-                    if group and (not best or group.overlap > best.overlap) then
-                        best = group
-                    end
-                end
+        if best then
+            for _, entry in ipairs(best.entries) do
+                addNames(entry, taken)
             end
-            if best then
-                for _, entry in ipairs(best.entries) do
-                    used[entry.id] = true
-                    addNames(entry, taken)
-                end
-                local _, size = QuestMatch.parse(best.key)
-                groups[#groups + 1] = finish(best, size)
-                progress = true
-                break
-            end
+            local _, size = QuestMatch.parse(best.key)
+            groups[#groups + 1] = finish(best, size)
         end
     end
     return groups

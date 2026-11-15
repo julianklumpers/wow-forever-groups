@@ -39,6 +39,7 @@
 
 - Playstyles: Learning, Relaxed, Competitive or Carry Offered.
 - English, German, Spanish and Russian.
+- Grouped with players of your own language, or any others you tick.
 - Every message it sends can be rewritten in your own words.
 
 **Open it with `/fg`**, the minimap button or the Forever Groups tab on WoW's Group Finder.

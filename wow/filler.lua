@@ -62,6 +62,48 @@ local function rangeOf(id)
     return dungeon and dungeon.min and { min = dungeon.min, max = dungeon.max } or nil
 end
 
+-- For the log: why each open role still has nobody although players are
+-- listed for it ("Tank: 3 listed (2 outside the dungeon's levels, 1 of another
+-- playstyle)"); empty when nobody is listed at all.
+local function whyNobody(open, all, listings)
+    local dungeons = state.dungeon and { state.dungeon } or state.dungeons
+    if open == "" or not dungeons or #dungeons == 0 then
+        return ""
+    end
+    local ranges = {}
+    for _, id in ipairs(dungeons) do
+        ranges[id] = rangeOf(id)
+    end
+    local opts = { dungeons = dungeons, ranges = ranges, exclude = state.exclude, places = Filler.freePlaces(),
+        levels = ns.PartyLevels.rules("dungeons") }
+    local lines, seen = {}, {}
+    for letter in string.gmatch(open, ".") do
+        if not seen[letter] then
+            seen[letter] = true
+            local why = Fill.skipped(listings, opts, letter)
+            local style = Fill.skipped(all, { dungeons = dungeons }, letter).listed - why.listed
+            local total = why.listed + style
+            if total > 0 then
+                local reasons = {}
+                local function add(count, text)
+                    if count > 0 then
+                        reasons[#reasons + 1] = count .. " " .. text
+                    end
+                end
+                add(why.excluded, "already invited, asked or declined")
+                add(why.level, "outside the dungeon's levels")
+                add(why.limit, "outside your level limit")
+                add(why.class, "of a class your class choices leave out")
+                add(style, "of another playstyle")
+                add(why.listed - why.excluded - why.level - why.limit - why.class, "picked for another role")
+                lines[#lines + 1] = string.format("%s: %d listed (%s)", Widgets.ROLE_NAMES[letter], total,
+                    table.concat(reasons, ", "))
+            end
+        end
+    end
+    return #lines > 0 and (" " .. table.concat(lines, "; ") .. ".") or ""
+end
+
 local function stillNeeded()
     local needed = state.open
     for _, pending in pairs(state.pending) do
@@ -171,7 +213,7 @@ local function addonRoles(needed)
         if other.id ~= engine.name and recent and not engine.fakes[other.id] and not engine:isReserved(other.id)
             and #other.members == 1 and (other.reserved or "") == "" and not state.exclude[other.id]
             and wantsDungeon(other, dungeons)
-            and ns.Playstyles.compatible(style, other.playstyle) then
+            and ns.Playstyles.compatible(style, other.playstyle) and engine:sharesLanguage(other) then
             for _, role in ipairs({ "T", "H", "D" }) do
                 if string.find(other.members[1].roles, role, 1, true) and string.find(left, role, 1, true) then
                     left = removeLetter(left, role)
@@ -227,8 +269,8 @@ function Filler.step()
         setMessage("Waiting for the players invited for your questing group.")
         return
     end
-    local listings, updatedAt = LfgList.listings()
-    listings = ns.Playstyle.filter(listings, ns.Playstyle.forGroup())
+    local all, updatedAt = LfgList.listings()
+    local listings = ns.Playstyle.filter(all, ns.Playstyle.forGroup())
     if not updatedAt or GetTime() - updatedAt > STALE_RESULTS then
         setMessage(ns.KeySearch.isReady() and "Refreshing the Group Finder while you play..."
             or "Group Finder results are too old. Click the Forever Groups bar to search again.")
@@ -263,7 +305,7 @@ function Filler.step()
         setMessage("Waiting for a place: earlier invites are still open in WoW.")
         return
     end
-    state.waitingForPlace = nil
+    state.waitingForPlace = #picks > room or nil
     local offered = {}
     for _, listing in ipairs(listings) do
         offered[listing.name] = listing.roles
@@ -277,8 +319,8 @@ function Filler.step()
     if #picks > 0 then
         changed()
     end
-    setMessage(open ~= "" and ("Nobody listed for: " .. describeLetters(open) .. ". Searching again soon.")
-        or leaving)
+    setMessage(open ~= "" and ("Nobody listed for: " .. describeLetters(open) .. ". Searching again soon."
+        .. whyNobody(open, all or {}, listings)) or leaving)
     state.needSearch = open ~= ""
     if state.open == "" and next(state.pending) == nil then
         Filler.step()
@@ -324,6 +366,11 @@ end
 
 function Filler.isActive()
     return state ~= nil
+end
+
+-- Party places free for one more invite right now; 0 when not filling.
+function Filler.room()
+    return state and freePlaces() or 0
 end
 
 -- The invites for the group card's open places: { name, role, held, left }
@@ -487,13 +534,62 @@ function Filler.pendingPlaces()
     return list
 end
 
--- Invites still out, { name = role }, so they survive a /reload.
-function Filler.pendingInvites()
-    local invites = {}
-    for name, pending in pairs(state and state.pending or {}) do
-        invites[name] = pending.role
+-- What a /reload must not lose, or nil when not filling: the roles sought
+-- and the invites still out, with their ages (GetTime is not kept over a
+-- relog). An invite about to go out is left out: its timer is gone.
+function Filler.saved()
+    if not state then
+        return nil
     end
-    return invites
+    local now, pending, exclude = GetTime(), {}, {}
+    for name, out in pairs(state.pending) do
+        if out.sentAt then
+            pending[name] = { role = out.role, class = out.class, age = now - out.at, sent = now - out.sentAt }
+        end
+    end
+    for name in pairs(state.exclude) do
+        exclude[#exclude + 1] = name
+    end
+    return { open = state.open, dungeon = state.dungeon, dungeons = state.dungeons, pending = pending,
+        exclude = exclude, invited = state.invited }
+end
+
+-- Fills on after a /reload from Filler.saved(), `away` seconds later; the
+-- invites WoW no longer holds are dropped. Returns whether it did.
+function Filler.restore(saved, away)
+    if state or type(saved) ~= "table" or type(saved.open) ~= "string" or type(saved.dungeons) ~= "table" then
+        return false
+    end
+    local now, pending, invited, exclude = GetTime(), {}, {}, { [ns.selfName] = true }
+    for name, role in pairs(type(saved.invited) == "table" and saved.invited or {}) do
+        if Widgets.ROLE_NAMES[role] then
+            invited[name] = role
+        end
+    end
+    for _, name in ipairs(type(saved.exclude) == "table" and saved.exclude or {}) do
+        exclude[name] = true
+    end
+    for name, out in pairs(type(saved.pending) == "table" and saved.pending or {}) do
+        local sent = (tonumber(out.sent) or INVITE_LIFETIME) + away
+        if Widgets.ROLE_NAMES[out.role] and sent < INVITE_LIFETIME then
+            pending[name] = { role = out.role, class = out.class, sentAt = now - sent,
+                at = now - math.max(sent, (tonumber(out.age) or 0) + away) }
+            invited[name], exclude[name] = out.role, true
+            ns.RoleSync.expect(name, out.role)
+        end
+    end
+    state = {
+        open = saved.open, dungeon = saved.dungeon, dungeons = saved.dungeons,
+        pending = pending, late = {}, exclude = exclude, invited = invited,
+    }
+    if state.dungeon then
+        ns.GroupView.track(state.dungeon)
+    end
+    Log.detail("Filling from the Group Finder again after the reload; still looking for: %s.",
+        describeLetters(state.open))
+    changed()
+    Filler.step()
+    return true
 end
 
 -- The role a player was invited for from the Group Finder, if any.

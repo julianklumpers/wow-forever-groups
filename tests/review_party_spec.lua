@@ -37,6 +37,64 @@ describe("party changes while filling", function()
         assert.is_true(tank:said("back in the queue at your old place"))
     end)
 
+    local function reload(world, client)
+        local held, party = client.heldInvites, client.party
+        local saved = client:logout()
+        return world:addClient(client.name, { level = 20, saved = saved, beforeLogin = function(again)
+            again.heldInvites, again.party, again.isLeader = held, party, #party > 0
+        end })
+    end
+
+    it("keeps filling the last spots after a /reload, replacing a player who declines", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        world:list("Heal A", "H", 799, 20, 900)
+        world:list("Heal B", "H", 799, 20, 800)
+        for i = 1, 6 do
+            world:list("Dps " .. i, "D", 799, 20, 900 - i)
+        end
+        world:advance(30)
+        tank.ns.charDb.wantsLead = true
+        tank:slash("/dq join tank dm")
+        world:advance(3)
+        tank:joins("Heal A")
+        world:advance(10)
+        assert.is_nil(tank.ns.engine.myEntry)
+        local again = reload(world, tank)
+        world:advance(12)
+        assert.is_true(again.ns.Filler.isActive())
+        assert.are.equal(3, again.ns.Invites.held())
+        again:system("Dps 1 declines your group invitation.")
+        for _ = 1, 60 do
+            world:advance(1)
+            again:press("W")
+        end
+        assert.is_true(#again.invites > 0)
+    end)
+
+    it("does not invite the players whose invites are still open again after a /reload", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        world:list("Heal A", "H", 799, 20, 900)
+        world:list("Dps 1", "D", 799, 20, 800)
+        world:advance(30)
+        tank.ns.charDb.wantsLead = true
+        tank:slash("/dq join tank dm")
+        world:advance(5)
+        assert.are.equal(2, #tank.invites)
+        local again = reload(world, tank)
+        for second = 1, 30 do
+            world:advance(1)
+            again:press("W")
+            if second == 10 then
+                assert.are.equal("HD", again.ns.engine.myEntry.reserved)
+                assert.are.equal(2, again.ns.Invites.held())
+            end
+        end
+        assert.are.same({}, again.invites)
+        assert.are.same({}, again.whispers)
+    end)
+
     it("leaves the queue when the player is no longer the party leader", function()
         local world = World.new()
         local leader = world:addClient("Tanky Mctank", { level = 20 })

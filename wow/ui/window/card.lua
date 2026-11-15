@@ -110,11 +110,8 @@ function W.questCardContent(state)
     if entry then
         local finder = ns.QuestFinder.summary()
         local parts = { ns.QuestQueue.describe(entry.dungeons) }
-        if finder.invited > 0 then
+        if ns.db.debug and finder.invited > 0 then
             parts[#parts + 1] = string.format(L["invited %d from the Group Finder"], finder.invited)
-        end
-        if finder.asked > 0 then
-            parts[#parts + 1] = ns.Locale.count(finder.asked, "asked %d group", "asked %d groups")
         end
         if ns.Listing.isOurs() then
             parts[#parts + 1] = L["listed in the Group Finder"]

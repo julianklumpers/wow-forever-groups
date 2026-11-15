@@ -80,6 +80,46 @@ describe("Find group uses every source at once", function()
     end)
 end)
 
+describe("Waiting for a Forever Groups partner", function()
+    local function twoSolos(seconds, setup)
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        local dps = world:addClient("Solo Dps", { level = 20 })
+        world:list("Listed Heal", "H", 799, 20, 300)
+        world:list("Listed Dps", "D", 799, 20, 200)
+        world:list("Listed Dps2", "D", 799, 20, 200)
+        world:advance(30)
+        setup(tank, dps)
+        tank:slash("/dq join tank dm")
+        dps:slash("/dq join dps dm")
+        for _ = 1, seconds / 5 do
+            world:advance(5)
+            tank:press("W")
+            dps:press("W")
+        end
+        return tank, dps
+    end
+
+    it("fills from the Group Finder after a while when the matchmaker does not group them", function()
+        local tank = twoSolos(60, function(tank, dps)
+            for _, client in ipairs({ tank, dps }) do
+                client.ns.charDb.wantsLead = true
+                client.ns.charDb.levelsOn = true
+            end
+        end)
+        assert.is_false(tank:proposalShown())
+        assert.is_true(invitedNames(tank)["Listed Heal"])
+    end)
+
+    it("does not wait for a player of the other playstyle camp", function()
+        local tank = twoSolos(5, function(tank, dps)
+            tank:slash("/dq style relaxed")
+            dps:slash("/dq style expert")
+        end)
+        assert.is_true(invitedNames(tank)["Listed Heal"])
+    end)
+end)
+
 describe("Refreshing the Group Finder while playing", function()
     it("searches on the player's key presses, at most every 10 s, only while roles are open", function()
         local world = World.new()

@@ -76,6 +76,15 @@ describe("battleground groups", function()
         assert.are.equal("B", groups[1].leader)
     end)
 
+    it("never place a player twice when a party member still has a solo entry", function()
+        local groups = BgMatch.findGroups({
+            entry("P", 1, "D", { "wsg-20" }, { "X" }), entry("X", 2, "D", { "wsg-20" }),
+            entry("Y", 3, "D", { "wsg-20" }),
+        })
+        assert.are.equal(1, #groups)
+        assert.are.same({ "P:D", "X:D", "Y:D" }, names(groups[1]))
+    end)
+
     it("are led by the player who would like to lead", function()
         local wants = entry("B", 2, "D", { "wsg-20" })
         wants.lead = true

@@ -305,10 +305,11 @@ local countCache, countToken = {}, nil
 function cachedResult(kind, wanted, compute)
     local engine = ns.engine
     local _, zonesAt = ns.LfgList.zoneListings()
-    local token = string.format("%d:%d:%d:%d:%d:%s:%s:%d", ns.LfgList.version(),
+    local token = string.format("%d:%d:%d:%d:%d:%s:%s:%d:%s", ns.LfgList.version(),
         engine and engine.queue.version or -1, ns.questEngine and ns.questEngine.queue.version or -1,
         ns.bgEngine and ns.bgEngine.queue.version or -1, ns.Playstyle.mine(),
-        tostring(ns.Features.groupFinder()), tostring(zonesAt), ns.Party.playerLevel() or 0)
+        tostring(ns.Features.groupFinder()), tostring(zonesAt), ns.Party.playerLevel() or 0,
+        tostring(ns.MatchLanguages.wireText()))
     if token ~= countToken then
         countCache, countToken = {}, token
     end
@@ -343,7 +344,8 @@ local function countLooking(wanted, subject)
             end
         end
         for _, entry in ipairs(ns.bgEngine and ns.bgEngine.queue:list() or {}) do
-            if entry.id ~= ns.selfName and sharesDungeon(entry.dungeons, keys) then
+            if entry.id ~= ns.selfName and sharesDungeon(entry.dungeons, keys)
+                and ns.bgEngine:sharesLanguage(entry) then
                 for _, member in ipairs(entry.members) do
                     add(member.roles)
                 end
@@ -362,7 +364,7 @@ local function countLooking(wanted, subject)
         for _, entry in ipairs(engine.queue:list()) do
             local mine = engine.myEntry and entry.id == engine.myEntry.id
             if not mine and sharesDungeon(entry.dungeons, wanted)
-                and Playstyles.compatible(entry.playstyle, style) then
+                and Playstyles.compatible(entry.playstyle, style) and engine:sharesLanguage(entry) then
                 for _, member in ipairs(entry.members) do
                     add(member.roles)
                 end
@@ -1086,7 +1088,13 @@ local function queueItems(rules)
     end
     local snap = engine:snapshot()
     local now = GetServerTime()
+    local shown = {}
     for _, entry in ipairs(snap.entries) do
+        if entry.id == ns.selfName or engine:sharesLanguage(entry) then
+            shown[#shown + 1] = entry
+        end
+    end
+    for _, entry in ipairs(shown) do
         local roles
         for _, member in ipairs(entry.members) do
             for letter in string.gmatch(member.roles, ".") do
@@ -1783,6 +1791,10 @@ end
 
 function QueueWindow.isShown()
     return frame ~= nil and frame:IsShown()
+end
+
+function QueueWindow.frame()
+    return frame
 end
 
 ns.QueueWindow = QueueWindow

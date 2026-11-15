@@ -325,6 +325,48 @@ describe("Filling from WoW's Group Finder", function()
         assert.is_true(client:logged("Nobody listed for: DPS, DPS"))
     end)
 
+    it("invites the pick that had no place as soon as a held place frees", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        world:list("Tank A", "T", 799, 20, 900)
+        world:list("Tank B", "T", 799, 20, 800)
+        world:list("Heal A", "H", 799, 20, 900)
+        world:list("Heal B", "H", 799, 20, 800)
+        world:list("Heal C", "H", 799, 20, 700)
+        for i = 1, 6 do
+            world:list("Dps " .. i, "D", 799, 20, 900 - i)
+        end
+        world:advance(30)
+        tank.ns.charDb.wantsLead = true
+        tank:slash("/dq join dps dm")
+        world:advance(3)
+        tank:system("Heal A declines your group invitation.")
+        world:advance(4)
+        local at = {}
+        for t = 1, 100 do
+            world:advance(1)
+            for _, name in ipairs(tank.invites) do
+                at[name] = at[name] or t
+            end
+        end
+        assert.is_not_nil(at["Tank B"])
+        assert.is_true(at["Dps 4"] - at["Tank B"] <= 3)
+    end)
+
+    it("says in the log why the players listed for an open role were not invited", function()
+        local world = World.new()
+        local client = world:addClient("Tanky Mctank", { level = 20 })
+        world:list("High Heal", "H", 799, 40)
+        world:list("Heal Too", "H", 799, 41)
+        world:advance(CONNECT)
+        client:slash("/dq")
+        client:click("CheckButton", "Tank")
+        client:slash("/dq fill")
+        world:advance(2)
+        assert.are.same({}, client.invites)
+        assert.is_true(client:logged("Healer: 2 listed %(2 outside the dungeon's levels%)"))
+    end)
+
     it("asks for another search when nobody fits, and searches only on clicks", function()
         local world = World.new()
         local client = world:addClient("Tanky Mctank", { level = 20 })

@@ -308,6 +308,12 @@ function QuestShare.askParty(dungeon, party, known)
     if saved.askedParty or saved.heardAsk or ns.db.noPartyAnnounce or sawBossDie() then
         return false
     end
+    -- Asked once, so not while invites are still out: who joins later would
+    -- miss it. The last join's roster change asks, after "Group complete!".
+    local status = ns.GroupView.status()
+    if not status or not ((status.complete and ns.GroupView.wasAnnounced()) or status.inside) then
+        return false
+    end
     local withoutAddon, rank = false, 0
     for _, member in ipairs(party) do
         local hasAddon = known[member.name] ~= nil or ns.Presence.isOnline(member.name)
