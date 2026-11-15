@@ -4,10 +4,11 @@ local Log = ns.Log
 
 -- WoW's Group Finder for the questing queue, next to the Forever Groups
 -- players: the "Quests & Zones" category lists players and groups per zone.
--- A listed player in the zone of one of the queued quests is invited with a
--- whisper that says what for; the leader of a listed group there is asked to
--- invite the player; and the group is listed in its zone while it needs
--- players. Someone listed for a zone may be doing any quest there, so the
+-- Joining and still alone, the player first asks the leader of a listed
+-- group in the zone of one of the queued quests to invite them; with no group
+-- left to ask, or when leading, a listed player there is invited with a
+-- whisper that says what for; and the group is listed in its zone while it
+-- needs players. Someone listed for a zone may be doing any quest there, so the
 -- whisper names the quest and offers to share it.
 local QuestFinder = {}
 
@@ -76,16 +77,19 @@ local function hasZone(listing, zone)
     return false
 end
 
--- The role a listed player gets: tank or healer while that place is free,
--- else DPS; nil when nothing fits.
+-- The role a listed player gets: tank or healer while the group has none,
+-- else DPS when they play it, else their own tank or healer role (questing
+-- groups take any mix).
 local function roleFor(roles, taken)
     for _, role in ipairs({ "T", "H" }) do
         if string.find(roles, role, 1, true) and taken[role] == 0 then
             return role
         end
     end
-    if string.find(roles, "D", 1, true) then
-        return "D"
+    for _, role in ipairs({ "D", "T", "H" }) do
+        if string.find(roles, role, 1, true) then
+            return role
+        end
     end
 end
 
@@ -210,6 +214,42 @@ function QuestFinder.onResults()
     end)
     listings = byAge
     local keys = focus and { focus } or current.dungeons
+    -- Joining (not leading) and still alone: first ask the leader of a group
+    -- listed for one of the quests, one at a time; only when there is no
+    -- group left to ask does the player start a group of their own.
+    local joining = ns.Features.apply() and not ns.charDb.wantsLeadQuests and #current.members == 1
+        and next(invited) == nil
+    if joining then
+        if askCount() >= MAX_ASKS then
+            return
+        end
+        for _, key in ipairs(keys) do
+            local quest = questFor(key)
+            local _, size = ns.QuestMatch.parse(key)
+            local groups = {}
+            for _, listing in ipairs(quest and listings or {}) do
+                if not listing.solo and hasZone(listing, quest.zone) and not asks:find(listing.leader)
+                    and not ns.Apply.recentlyAsked(listing.leader) and (listing.members or 1) < size then
+                    groups[#groups + 1] = listing
+                end
+            end
+            -- Recent listings first, then the fullest, then the newest.
+            table.sort(groups, function(a, b)
+                local oldA, oldB = ns.LfgPick.isOld(a), ns.LfgPick.isOld(b)
+                if oldA ~= oldB then
+                    return oldB
+                end
+                if (a.members or 1) ~= (b.members or 1) then
+                    return (a.members or 1) > (b.members or 1)
+                end
+                return (a.age or 0) < (b.age or 0)
+            end)
+            if groups[1] then
+                askLeader(groups[1], quest)
+                return
+            end
+        end
+    end
     for _, key in ipairs(keys) do
         local quest = questFor(key)
         local _, size = ns.QuestMatch.parse(key)
@@ -236,31 +276,6 @@ function QuestFinder.onResults()
             if picked > 0 then
                 updateEntry(key)
                 return
-            end
-            if ns.Features.apply() and not ns.charDb.wantsLeadQuests and #current.members == 1 and next(invited) == nil
-                and askCount() < MAX_ASKS then
-                local groups = {}
-                for _, listing in ipairs(listings) do
-                    if not listing.solo and hasZone(listing, quest.zone) and not asks:find(listing.leader)
-                        and not ns.Apply.recentlyAsked(listing.leader) and (listing.members or 1) < size then
-                        groups[#groups + 1] = listing
-                    end
-                end
-                -- Recent listings first, then the fullest, then the newest.
-                table.sort(groups, function(a, b)
-                    local oldA, oldB = ns.LfgPick.isOld(a), ns.LfgPick.isOld(b)
-                    if oldA ~= oldB then
-                        return oldB
-                    end
-                    if (a.members or 1) ~= (b.members or 1) then
-                        return (a.members or 1) > (b.members or 1)
-                    end
-                    return (a.age or 0) < (b.age or 0)
-                end)
-                if groups[1] then
-                    askLeader(groups[1], quest)
-                    return
-                end
             end
         end
     end

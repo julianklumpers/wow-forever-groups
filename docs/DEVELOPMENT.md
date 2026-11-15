@@ -20,7 +20,7 @@ How the addon works inside, for anyone reading or changing the code. The player-
   ("Your party: n/5" and its places) there, under the choices where the party is set up, its places hidden while
   the class cards show them (`W.cardWithoutPlaces`); hovering a member's place tells the roles they are queued for
   and where those come from (`PartyRoles.sourceOf`); on the Dungeons tab while choosing, "Looking now"
-  sits on the dungeons' header line instead ("Dungeons for level 20   Looking now: ...", `W.layoutHeaderLooking`,
+  sits on the dungeons' header line instead ("Dungeons for level 20 · 🛡 3 ✚ 4 ⚔ 71 · 6 groups need you", without the "Looking now:" label, `W.layoutHeaderLooking`,
   `W.lookingInHeader`), and alone the card is not shown at all
 - a line the addon says in party chat goes through `Whispers.sayParty`, which logs whether it went out (WoW is silent
   when it does not); the group-complete message also logs why it was not said
@@ -131,11 +131,15 @@ How the addon works inside, for anyone reading or changing the code. The player-
   nothing never finds a group later in the same run, as groups only take players away). The questing and battleground
   matchers share its helpers (`wantsKey`, `sharedKeys`, `sharesPlayer`, `addNames`, `orderByLeader`). The queue's
   sorted list (`Queue:list`) and the election's candidates are worked out once per change to the queue
-- `media/` – `icon.tga` (64×64, 32-bit uncompressed, top-left origin; the only image in the package) and the logo
-  for README and download sites (`logo-1024.png`, `logo-400.png`); their SVG sources are in `media/source/`
-  (`logo.svg`, `icon.svg`; the ribbon's font is Cinzel from Google Fonts). Render them with headless Chrome
-  (`--screenshot --default-background-color=00000000`), scale down with `sips -z`, and write the icon as an
-  uncompressed TGA: `sips -s format tga` gives RLE
+- `media/` – `icon.tga` (64×64, 32-bit uncompressed, top-left origin; the only image in the package: the minimap
+  button, the AddOns list and Who is looking) and the logo for README and download sites (`logo-1024.png`,
+  `logo-400.png`); all three are the one logo, its SVG source `media/source/logo.svg` (the ribbon's font is Cinzel
+  from Google Fonts). Render it with headless Chrome (`--screenshot --default-background-color=00000000`), scale
+  down with `sips -z`, and write the icon as an uncompressed TGA (`sips -s format tga` gives RLE): a short Python
+  script that decodes the PNG with zlib and writes the pixels as BGRA does it. `banner.png` (1600×1000, for the
+  download sites, not packaged) comes from `media/source/banner/banner.html` with its three screenshots:
+  `"Google Chrome" --headless=new --hide-scrollbars --window-size=1600,1000 --virtual-time-budget=5000
+  --screenshot=banner.png file://…/banner.html`; swap a screenshot by replacing its PNG there and rendering again
 - `probe/ForeverGroupsProbe/` – API probe addon for in-game checks (`/fgp help`)
 - `tests/` – busted specs; `tests/helpers/sim.lua` simulates engines on a shared channel, and can lose, hold back
   and reorder messages (`Sim:drop`, `Sim:lossy` with a seed, `Sim:releaseHeld`); `tests/helpers/wowmock.lua` loads
@@ -226,6 +230,12 @@ to copy.
 ## In game
 
 `/fg` (or the AddOns menu at the minimap) opens the window: role, dungeons, Join/Leave.
+
+The minimap button (`wow/ui/minimap.lua`) is made with LibDBIcon-1.0 and a LibDataBroker launcher (bundled in
+`libs/`, loaded first in the TOC; `libs/` is left out of luacheck), so minimap tools such as Leatrix Plus handle it
+like any other addon's. It always shows the logo (`Widgets.ICON`); the status, the channel and what the clicks do
+are in its tooltip. Left-click opens the window, right-click the settings, drag moves it (`db.minimapIcon`, which
+takes over the old `db.minimapAngle`); `db.minimapHidden` hides it. The logo pulses while a group proposal waits.
 
 `/fg join <tank|healer|dps> [auto | dungeon, ...]`, `/fg leave`, `/fg status`, `/fg dungeons`,
 `/fg accept`, `/fg decline`, `/fg invite`, `/fg debug`, `/fg log [n]`,
@@ -359,7 +369,8 @@ A `/reload` keeps the place in the questing queue (`charDb.questQueue`). For bot
 again at the end; later, not at all.
 
 The questing queue is a second engine (`wow/questqueue.lua`) with its own messages: the dungeon protocol under the
-prefix `q1|` (`Protocol.QUESTS`), where a group has at most one tank and one healer and the rest DPS. A queue entry
+prefix `q1|` (`Protocol.QUESTS`), where a group takes any mix of roles (the players decide; a tank and a healer are
+only preferred when there are any). A queue entry
 lists quest keys (`176-3`: quest 176 for a group of 3, the size WoW suggests or 3) where a dungeon entry lists
 dungeons. `core/questmatch.lua` anchors a group on the longest waiting player and one of its quests, takes players
 who share more of its quests first, then healers, then by waiting time, and keeps the playstyle camps apart; the
@@ -373,11 +384,16 @@ questing group's quests, a popup asks whether to leave the group.
 
 While queued, the questing queue also uses WoW's Group Finder (`wow/questfinder.lua`): it searches the "Quests &
 Zones" category (one activity per zone, matched by name to the quest log's zone headers) for the zones of the queued
-quests, on the click that queues and then on key presses like the dungeon side. Players listed alone in a quest's
-zone are invited at once with a whisper that names the quest and offers to share it ("Inviting you for Hogger
-(Elwynn Forest, group of 3). I can share the quest."); the entry then narrows to that quest with the invited roles
-reserved, invitees who join become members, and the group is complete at the quest's size. A solo player with
-nobody to invite asks the leader of a listed group in the zone that still has room. The group is listed in its
+quests, on the click that queues and then on key presses like the dungeon side. A player who joins (not "Lead a
+group") and is still alone first asks the leader of a listed group in the zone that still has room, one at a time
+(the next after 20 s without an invite); only when there is no group left to ask, or when leading, are players
+listed alone in a quest's zone invited, with a whisper that names the quest and offers to share it ("Inviting you
+for Hogger (Elwynn Forest, group of 3). I can share the quest."); the entry then narrows to that quest with the
+invited roles reserved, invitees who join become members, and the group is complete at the quest's size. Opening
+the window searches for what its open tab shows (`QueueWindow.searchIfStale(30, tab)`: the quests' zones on the
+Quests tab, the battlegrounds on the Battlegrounds tab), and every tab switch searches for the new tab
+(`searchIfStale(0, tab)`, so only the burst limit holds it back). Who is looking's "searched … ago" note uses the
+open tab's own search time. The group is listed in its
 zone while it needs players, unless a dungeon group needs the (single) listing. Zone results are kept apart from the
 dungeon results, so a zone search never empties the dungeon side.
 
@@ -584,9 +600,10 @@ it is the `questAsk` message naming a wanted quest in the group's zone (`QuestFi
 tab the window shows group quests instead (`QueueWindow.subject()`, which follows the main window's page, also when
 that page changes by itself), without the playstyle filter and without a Needs column for questing parties (quest
 groups have their own sizes and no fixed roles): the questing queue, and the Group Finder's "Quests & Zones"
-listings (`LfgList.zoneListings`) in the zones of the wanted quests (the questing entry's, else the ticked ones) and in
-every zone whose suggested levels (the zone activity's `minLevelSuggestion`/`maxLevelSuggestion`, verified for all 41
-zones) include the player's level (`LfgList.zonesForLevel`), with a
+listings (`LfgList.zoneListings`) in the zones of the wanted quests (the questing entry's, else the ticked ones); with
+no such quest, in every zone whose suggested levels (the zone activity's `minLevelSuggestion`/`maxLevelSuggestion`,
+verified for all 41 zones) include the player's level (`LfgList.zonesForLevel`). The Group Finder cannot tell who
+does which quest (no quest activities on Forever), so a ticked quest narrows the list to its zone. With a
 Quests/Zone column; it searches those zones on input. An open window switches along with the main window's tab (`QueueWindow.follow`). The Quests tab shows
 the same counts per quest (`lookingCounts(wanted, "quests")`, `groupsNeedingMe(wanted, "quests")`). The main window
 counts, per dungeon and in "Looking now", the listed groups that need one of the player's ticked roles

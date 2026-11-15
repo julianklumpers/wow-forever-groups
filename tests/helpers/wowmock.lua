@@ -496,6 +496,17 @@ local function buildEnv(world, client)
         return type(value)
     end
     env._G = env
+    -- WoW's short names for the string and table functions (the bundled
+    -- libraries use them).
+    env.strmatch, env.strfind, env.strsub, env.strlen = string.match, string.find, string.sub, string.len
+    env.strlower, env.strupper, env.format, env.strrep = string.lower, string.upper, string.format, string.rep
+    env.tinsert, env.tremove, env.tconcat = table.insert, table.remove, table.concat
+    env.wipe = function(t)
+        for key in pairs(t) do
+            t[key] = nil
+        end
+        return t
+    end
     -- WoW has no require: every module must come after the ones it uses in
     -- the TOC.
     env.require = function(module)
@@ -970,6 +981,14 @@ local function buildEnv(world, client)
     function methods.CreateTexture(widget)
         return newWidget("Texture", nil, widget)
     end
+    -- Animations (LibDBIcon fades its button): groups and animations that
+    -- take every setting.
+    function methods.CreateAnimationGroup(widget)
+        return newWidget("AnimationGroup", nil, widget)
+    end
+    function methods.CreateAnimation(widget)
+        return newWidget("Animation", nil, widget)
+    end
     function methods.StartSearchingAnimation(widget)
         widget.animating = true
     end
@@ -1028,6 +1047,9 @@ local function buildEnv(world, client)
     env.WorldFrame = newWidget("Frame")
     env.Minimap = newWidget("Frame")
     env.Minimap.GetWidth = function()
+        return 140
+    end
+    env.Minimap.GetHeight = function()
         return 140
     end
     env.Minimap.GetCenter = function()

@@ -10,8 +10,9 @@ local Levels = ns.Levels or require("core.levels")
 -- Queue entries list quest keys ("176-3": quest 176, for a group of 3) where
 -- dungeon entries list dungeons. The longest waiting player anchors a group
 -- for one of its quests; the others are taken by how many of the anchor's
--- quests they share, then healers first, then by waiting time. A group has at
--- most one tank and one healer and is complete at the quest's group size.
+-- quests they share, then healers first, then by waiting time. Any mix of
+-- roles may group (the players decide); a group is complete at the quest's
+-- group size.
 local QuestMatch = {}
 
 local MIN_SIZE, MAX_SIZE = 2, 5
@@ -52,11 +53,16 @@ local function allMembers(chosen)
     return all
 end
 
--- The assignment that fills the tank and healer places when it can.
+-- One role per player, with a tank and a healer when the players allow it
+-- (no role is required or limited).
+local function score(counts)
+    return (counts.T > 0 and 1 or 0) + (counts.H > 0 and 1 or 0)
+end
+
 local function bestAssignment(chosen, size)
     local best
-    for _, option in ipairs(Roles.options(allMembers(chosen), { T = 1, H = 1, D = size })) do
-        if not best or option.counts.T + option.counts.H > best.counts.T + best.counts.H then
+    for _, option in ipairs(Roles.options(allMembers(chosen), { T = size, H = size, D = size })) do
+        if not best or score(option.counts) > score(best.counts) then
             best = option
         end
     end

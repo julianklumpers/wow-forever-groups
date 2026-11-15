@@ -154,7 +154,7 @@ function W.buildTabs()
             ns.charDb.tab = key
             W.setHint("")
             if not ns.Input.run() then
-                ns.QueueWindow.searchIfStale(10, key)
+                ns.QueueWindow.searchIfStale(0, key)
             end
             ns.Window.refresh()
         end)
@@ -166,7 +166,7 @@ function W.buildTabs()
             ns.charDb.tab = self.target
             W.setHint("")
             if not ns.Input.run() then
-                ns.QueueWindow.searchIfStale(10, self.target)
+                ns.QueueWindow.searchIfStale(0, self.target)
             end
             ns.Window.refresh()
         end)

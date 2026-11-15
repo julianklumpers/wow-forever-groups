@@ -86,7 +86,7 @@ describe("quest matchmaking edge cases", function()
             names[#names + 1] = m.name
         end
         table.sort(names)
-        assert.are.same({ "Aa", "Cc", "Pp" }, names)
+        assert.are.same({ "Aa", "Bb", "Pp" }, names)
     end)
 
     it("leaves a party alone that is already big enough, without an error", function()

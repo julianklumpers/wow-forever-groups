@@ -2,210 +2,120 @@ local _, ns = ...
 
 local L = ns.L
 
-local Widgets = ns.Widgets
-
--- A round button on the edge of the minimap: left-click opens the window,
--- right-click the settings, drag moves it around the minimap. While searching
--- it shows WoW's animated Looking For Group eye and a small role icon, and it
--- pulses while a group proposal waits for an answer.
+-- The minimap button, made with LibDBIcon-1.0 (bundled in libs/) as most
+-- addons do, so minimap tools such as Leatrix Plus handle it like any other.
+-- It always shows the Forever Groups logo, also while searching; what
+-- Forever Groups is doing is in its tooltip. Left-click opens the window,
+-- right-click the settings, drag moves it. It pulses while a group proposal
+-- waits for an answer.
 local MinimapButton = {}
 
-local ICON = ns.Widgets.ICON
+local NAME = "ForeverGroups"
 local DEFAULT_ANGLE = 200
-local EYE_SHEET = "Interface\\LFGFrame\\LFG-Eye"
-local EYE_FRAMES, EYE_COLUMNS, EYE_ROWS = 29, 8, 4
-local EYE_FRAME_TIME = 0.08
+-- The logo cut to its gold ring, so the ring follows the button's round
+-- edge: the ring runs from 66 to 333 of the logo's 400 pixels around (200,
+-- 195), and LibDBIcon trims another 5% off each side.
+local RING_COORDS = { 0.125, 0.875, 0.1125, 0.8625 }
 
-local button
+local registered = false
 local pulsing = false
-local eye
-local searching = false
+local pulser
 
-local function position()
-    local angle = math.rad(ns.db.minimapAngle or DEFAULT_ANGLE)
-    local radius = (Minimap:GetWidth() or 140) / 2 + 6
-    button:ClearAllPoints()
-    button:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+local function library()
+    return LibStub and LibStub("LibDBIcon-1.0", true), LibStub and LibStub("LibDataBroker-1.1", true)
 end
 
-local function followCursor()
-    local centerX, centerY = Minimap:GetCenter()
-    local cursorX, cursorY = GetCursorPosition()
-    local scale = Minimap:GetEffectiveScale()
-    if not centerX or not cursorX or not scale then
-        return
+-- Where LibDBIcon keeps the button (ns.db.minimapIcon); the angle saved
+-- before it carries over.
+local function settings()
+    local saved = ns.db.minimapIcon
+    if type(saved) ~= "table" then
+        saved = { minimapPos = ns.db.minimapAngle or DEFAULT_ANGLE }
+        ns.db.minimapIcon = saved
     end
-    local angle = math.deg(math.atan2(cursorY / scale - centerY, cursorX / scale - centerX))
-    ns.db.minimapAngle = math.floor(angle + 0.5) % 360
-    position()
+    saved.hide = ns.db.minimapHidden == true
+    return saved
 end
 
-local function showTooltip(self)
-    if not GameTooltip then
-        return
-    end
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-    GameTooltip:SetText("Forever Groups")
+-- A line of what a click does, as minimap buttons usually show it.
+local function hint(tooltip, action, result)
+    tooltip:AddLine("|cffffffff" .. L[action] .. "|r |cffffd100" .. L[result] .. "|r")
+end
+
+local function fillTooltip(tooltip)
+    tooltip:AddLine("Forever Groups")
     local status = ns.Status.current()
     if status then
-        GameTooltip:AddLine(L[status.text], 1, 1, 1, true)
+        tooltip:AddLine(L[status.text], 1, 1, 1, true)
         if status.detail then
-            GameTooltip:AddLine(L[status.detail], 0.8, 0.8, 0.8, true)
+            tooltip:AddLine(L[status.detail], 0.8, 0.8, 0.8, true)
         end
     else
-        GameTooltip:AddLine(L["Not in the queue."], 1, 1, 1)
+        tooltip:AddLine(L["Not in the queue."], 1, 1, 1)
     end
     local connection = ns.Comm.connection()
-    GameTooltip:AddLine(string.format(L["Channel: %s"], L[connection.text]), 0.6, 0.8, 1)
-    GameTooltip:AddLine(L["Left-click: open. Right-click: settings. Drag: move."], 0.5, 0.5, 0.5)
-    GameTooltip:Show()
+    tooltip:AddLine(string.format(L["Channel: %s"], L[connection.text]), 0.6, 0.8, 1)
+    hint(tooltip, "left click:", "open the window")
+    hint(tooltip, "right click:", "settings")
+    hint(tooltip, "drag:", "move the button")
 end
 
-local function showSheetFrame(texture, index)
-    local column, row = index % EYE_COLUMNS, math.floor(index / EYE_COLUMNS)
-    texture:SetTexCoord(column / EYE_COLUMNS, (column + 1) / EYE_COLUMNS, row / EYE_ROWS, (row + 1) / EYE_ROWS)
-end
-
--- WoW's own animated eye (the one on the queue button) when this client has
--- its template; otherwise the eye picture sheet, animated here.
-local function buildEye()
-    local ok, frame = pcall(CreateFrame, "Frame", nil, button, "EyeTemplate")
-    if ok and frame and type(frame.StartSearchingAnimation) == "function" then
-        frame:SetSize(26, 26)
-        frame:SetPoint("CENTER", button.icon, "CENTER")
-        frame:Hide()
-        ns.Log.debug("minimap eye: EyeTemplate")
-        return { frame = frame, template = true }
+local function onClick(_, mouseButton)
+    if not ns.Input.run() then
+        ns.Filler.searchIfUseful(30)
     end
-    if ok and frame then
-        frame:Hide()
-    end
-    local texture = button:CreateTexture(nil, "ARTWORK", nil, 1)
-    texture:SetTexture(EYE_SHEET)
-    texture:SetSize(26, 26)
-    texture:SetPoint("CENTER", button.icon, "CENTER")
-    showSheetFrame(texture, 0)
-    texture:Hide()
-    ns.Log.debug("minimap eye: picture sheet")
-    return { frame = texture, index = 0, elapsed = 0 }
-end
-
-local function setSearching(on)
-    if on == searching then
-        return
-    end
-    searching = on
-    eye = eye or buildEye()
-    eye.frame:SetShown(on)
-    button.icon:SetShown(not on)
-    if eye.template then
-        if on then
-            eye.frame:StartSearchingAnimation()
-        elseif eye.frame.StopAnimating then
-            eye.frame:StopAnimating()
-        end
+    if mouseButton == "RightButton" then
+        ns.Settings.toggle()
+    else
+        ns.Window.toggle()
     end
 end
 
-local function onUpdate(self, elapsed)
-    local shown = searching and eye and eye.frame or self.icon
-    if pulsing then
-        shown:SetAlpha(0.55 + 0.45 * math.abs(math.sin(GetTime() * 3)))
+local function register()
+    local icon, broker = library()
+    if not icon or not broker then
+        return false
     end
-    if searching and eye and not eye.template then
-        eye.elapsed = eye.elapsed + (elapsed or 0)
-        if eye.elapsed >= EYE_FRAME_TIME then
-            eye.elapsed = 0
-            eye.index = (eye.index + 1) % EYE_FRAMES
-            showSheetFrame(eye.frame, eye.index)
-        end
-    end
-end
-
-local function build()
-    button = CreateFrame("Button", "ForeverGroupsMinimapButton", Minimap)
-    button:SetSize(31, 31)
-    button:SetFrameStrata("MEDIUM")
-    button:SetFrameLevel(8)
-    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    button:RegisterForDrag("LeftButton")
-    local background = button:CreateTexture(nil, "BACKGROUND")
-    background:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
-    background:SetSize(20, 20)
-    background:SetPoint("TOPLEFT", 7, -5)
-    button.icon = button:CreateTexture(nil, "ARTWORK")
-    button.icon:SetTexture(ICON)
-    button.icon:SetSize(20, 20)
-    button.icon:SetPoint("TOPLEFT", 7, -6)
-    button.icon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
-    local border = button:CreateTexture(nil, "OVERLAY")
-    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    border:SetSize(53, 53)
-    border:SetPoint("TOPLEFT")
-    button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
-    button.badge = Widgets.roleIcon(button, "D", 13)
-    button.badge:SetDrawLayer("OVERLAY", 2)
-    button.badge:SetPoint("BOTTOMRIGHT", -2, 2)
-    button.badge:Hide()
-    button:SetScript("OnClick", function(_, mouseButton)
-        if not ns.Input.run() then
-            ns.Filler.searchIfUseful(30)
-        end
-        if mouseButton == "RightButton" then
-            ns.Settings.toggle()
-        else
-            ns.Window.toggle()
+    local object = broker:NewDataObject(NAME, {
+        type = "launcher", label = "Forever Groups", icon = ns.Widgets.ICON, iconCoords = RING_COORDS,
+        OnClick = onClick, OnTooltipShow = fillTooltip,
+    })
+    icon:Register(NAME, object, settings())
+    -- The pulse while a proposal waits: the logo fades in and out.
+    pulser = CreateFrame("Frame")
+    pulser:SetScript("OnUpdate", function()
+        local button = icon:GetMinimapButton(NAME)
+        if pulsing and button and button.icon then
+            button.icon:SetAlpha(0.55 + 0.45 * math.abs(math.sin(GetTime() * 3)))
         end
     end)
-    button:SetScript("OnDragStart", function(self)
-        self:SetScript("OnUpdate", followCursor)
-    end)
-    button:SetScript("OnDragStop", function(self)
-        self:SetScript("OnUpdate", onUpdate)
-    end)
-    button:SetScript("OnEnter", showTooltip)
-    button:SetScript("OnLeave", function()
-        if GameTooltip then
-            GameTooltip:Hide()
-        end
-    end)
-    button:SetScript("OnUpdate", onUpdate)
-    position()
+    return true
 end
 
 function MinimapButton.refresh()
     if not Minimap or not ns.db then
         return
     end
-    if not button then
-        build()
-    end
-    if ns.db.minimapHidden then
-        button:Hide()
-        return
-    end
-    button:Show()
-    local status = ns.Status.current()
-    local role = status and status.roles and string.sub(status.roles, 1, 1)
-    if role and role ~= "" then
-        Widgets.setRoleIcon(button.badge, role)
-        button.badge:Show()
-    else
-        button.badge:Hide()
-    end
-    local engine = ns.engine
-    setSearching((engine ~= nil and engine.myEntry ~= nil) or ns.Filler.isActive())
-    pulsing = status ~= nil and status.alert == true
-    if not pulsing then
-        button.icon:SetAlpha(1)
-        if eye then
-            eye.frame:SetAlpha(1)
+    if not registered then
+        registered = register()
+        if not registered then
+            return
         end
     end
-end
-
-function MinimapButton.isSearching()
-    return searching
+    local icon = library()
+    settings()
+    if ns.db.minimapHidden then
+        icon:Hide(NAME)
+        return
+    end
+    icon:Show(NAME)
+    local status = ns.Status.current()
+    local wasPulsing = pulsing
+    pulsing = status ~= nil and status.alert == true
+    local button = icon:GetMinimapButton(NAME)
+    if wasPulsing and not pulsing and button and button.icon then
+        button.icon:SetAlpha(1)
+    end
 end
 
 function MinimapButton.toggle()

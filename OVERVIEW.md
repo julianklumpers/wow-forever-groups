@@ -2,7 +2,7 @@
 
 **Pick a role, get a group.** Dungeons, group quests and battlegrounds on WoW Forever, without the waiting and the chat spam.
 
-![Pick your roles and dungeons, then Find group](https://raw.githubusercontent.com/julianklumpers/wow-forever-groups/main/media/screenshots/main-window.png)
+![Forever Groups: pick your role, click Find group, and your group forms itself](https://raw.githubusercontent.com/julianklumpers/wow-forever-groups/main/media/banner.png)
 
 ## Find a group in one click
 

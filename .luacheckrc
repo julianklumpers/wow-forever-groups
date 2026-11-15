@@ -1,7 +1,7 @@
 std = "lua51"
 max_line_length = 120
 codes = true
-exclude_files = { ".lua51/", "dist/", ".lua/", ".luarocks/", ".install/" }
+exclude_files = { ".lua51/", "dist/", ".lua/", ".luarocks/", ".install/", "libs/" }
 
 local wow_read_globals = {
     "HideUIPanel",
@@ -41,6 +41,7 @@ local wow_read_globals = {
     "Enum",
     "FlashClientIcon",
     "GameTooltip",
+    "LibStub",
     "GameTooltipText",
     "GameTooltipTextSmall",
     "GetGeneralPlaystyleString",

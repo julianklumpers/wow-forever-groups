@@ -119,6 +119,9 @@ Dungeon entrance positions are based on the ForeverDungeonJournal addon by Exehn
 directions are our own. Boss counts per dungeon (rare spawns left out) are based on its boss
 lists.
 
+The minimap button uses LibDBIcon-1.0, LibDataBroker-1.1, CallbackHandler-1.0 and LibStub,
+bundled in `libs/` (authors and licenses in `libs/README.md`).
+
 For developers: how it works inside, tests and releases are in
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 

@@ -41,12 +41,16 @@ describe("questing groups", function()
         assert.are.same({ "A:D", "C:H", "D:D" }, names(groups[1]))
     end)
 
-    it("has at most one tank and one healer, and fills those places when it can", function()
+    it("takes any mix of roles, with a tank and a healer when the players allow it", function()
         local groups = QuestMatch.findGroups({
             entry("A", 1, "H", { HOGGER }), entry("B", 2, "H", { HOGGER }), entry("C", 3, "TD", { HOGGER }),
             entry("D", 4, "T", { HOGGER }), entry("E", 5, "D", { HOGGER }),
         })
-        assert.are.same({ "A:H", "C:D", "D:T" }, names(groups[1]))
+        assert.are.same({ "A:H", "B:H", "C:T" }, names(groups[1]))
+        local tanks = QuestMatch.findGroups({
+            entry("A", 1, "T", { HOGGER }), entry("B", 2, "T", { HOGGER }), entry("C", 3, "T", { HOGGER }),
+        })
+        assert.are.same({ "A:T", "B:T", "C:T" }, names(tanks[1]))
     end)
 
     it("reads quest keys", function()

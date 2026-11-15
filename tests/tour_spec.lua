@@ -2,7 +2,7 @@ local World = require("tests.helpers.wowmock")
 
 local CONNECT = 30
 
-local STEPS = { "^Tick every role", "^Looking now counts", "^Who is looking: the tab", "^Tick the dungeons",
+local STEPS = { "^Tick every role", "^These numbers count", "^Who is looking: the tab", "^Tick the dungeons",
     "^Each row shows",
     "^Questing and battleground", "^Find group puts you", "^While you wait" }
 

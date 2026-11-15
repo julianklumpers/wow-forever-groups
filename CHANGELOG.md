@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- The icon in the game (minimap button, AddOns list) is now the Forever Groups logo itself.
+- The minimap button is a standard LibDBIcon button now, so minimap tools such as Leatrix Plus
+  collect and show it properly. It always shows the Forever Groups logo (no more changing eye);
+  what Forever Groups is doing, and what the clicks do, is in its tooltip.
+- Find questing group with "Join a group" first asks the groups already listed for your quest,
+  and only starts a group of its own when there is none to ask.
+- The window searches WoW's Group Finder for the tab it opens on: on the Quests tab right away,
+  instead of showing "not searched yet" until Refresh. Switching tabs always searches again for
+  the new tab.
+- The dungeons' header line drops the "Looking now:" label: the counts follow "Dungeons for level …"
+  directly.
+- Who is looking shows at most 10 groups and 10 players; scroll for the rest.
+- Who is looking on the Battlegrounds tab says when the battlegrounds were searched, instead of
+  "not searched yet"; scrolling its lists refreshes the battleground results.
+- Who is looking on the Quests tab shows only the players and groups in the zones of the quests
+  you ticked; the zones for your level only when you have no group quest ticked.
+- Questing groups take any mix of roles: two tanks, two healers or only DPS is up to the players
+  (dungeon groups stay one tank, one healer and three DPS). A tank and a healer are still
+  preferred when they're there.
 - Choosing classes or limiting levels as leader works much more reliably: your own class no
   longer uses up one of your wished places, the Group Finder invites, the queue and your own check
   of a proposed group now all count the places the same way (so groups no longer fail to form or

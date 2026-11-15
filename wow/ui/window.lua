@@ -358,14 +358,15 @@ function W.build()
 end
 
 -- Called from clicks and typed commands, so opening may search the Group
--- Finder for the ticked dungeons.
+-- Finder for what the open tab shows: the ticked dungeons, the zones of the
+-- quests or the battlegrounds.
 function Window.toggle()
     if not W.frame then
         W.build()
     end
     W.frame:SetShown(not W.frame:IsShown())
     if W.frame:IsShown() then
-        ns.LfgList.searchIfStale(30)
+        ns.QueueWindow.searchIfStale(30, W.currentTab())
         ns.Tour.maybeStart()
     end
 end

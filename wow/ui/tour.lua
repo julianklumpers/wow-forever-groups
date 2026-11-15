@@ -31,14 +31,14 @@ local STEPS = {
         end,
     },
     {
-        text = ns.Locale.mark("Looking now counts the tanks, healers and DPS looking for the dungeons you ticked, " ..
+        text = ns.Locale.mark("These numbers count the tanks, healers and DPS looking for the dungeons you ticked, " ..
             "in Forever Groups and in WoW's Group Finder, and how many listed groups have a place for you."),
         place = "below",
         target = function()
             local ui = W.ui
-            if shown(ui.headerLookingLabel) then
+            if shown(ui.headerLooking) then
                 local groups = ui.headerLookingGroups
-                return ui.headerLookingLabel, shown(groups) and (groups:GetText() or "") ~= "" and groups
+                return ui.headerLooking, shown(groups) and (groups:GetText() or "") ~= "" and groups
                     or ui.headerLooking
             end
             local card = ui.card

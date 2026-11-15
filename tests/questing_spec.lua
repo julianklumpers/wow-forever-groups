@@ -563,7 +563,7 @@ describe("the window's status card", function()
             return client:find("CheckButton", "Tank").point[5] > W.ui.card.point[5]
         end
         assert.is_nil(client:findText("^Not in the queue$"))
-        assert.is_not_nil(client:findText("^Looking now:"))
+        assert.is_true(W.ui.headerLooking.shown)
         assert.is_false(W.ui.card.shown)
         client:click("Button", "Quests")
         assert.is_nil(client:findText("^Not looking for a questing group$"))
@@ -579,7 +579,7 @@ describe("the window's status card", function()
         assert.are.equal("queued", client:find("Button", "Quests", client:frame("ForeverGroupsFrame")).statusKind)
         assert.is_not_nil(client:findText("^1:05$"))
         assert.is_nil(client:find("Button", "Dungeons", client:frame("ForeverGroupsFrame")).statusKind)
-        assert.is_not_nil(client:findText("^Looking now:"))
+        assert.is_true(W.ui.headerLooking.shown)
         assert.is_false(W.ui.card.shown)
         assert.is_nil(client:findText("^Looking for a questing group 0:00 as DPS$"))
         assert.are.equal("connected", client.ns.WindowParts.ui.card.connectionInfo.state)
@@ -661,6 +661,33 @@ describe("Who is looking for group quests", function()
         assert.are.same({ "Westfall" }, client.ns.LfgList.zonesForLevel(20))
     end)
 
+    it("shows only the zone of a ticked quest, not every zone of your level", function()
+        local world = World.new()
+        world:list("Zone Dps", "D", ELWYNN, 20, 300)
+        world:list("Westfall Dps", "D", 9002, 20, 300)
+        local client = world:addClient("Solo Player", { level = 20, questLog = questLog() })
+        world:advance(12)
+        client.ns.db.queueFold = { players = false }
+        client:slash("/dq")
+        client:click("Button", "Quests")
+        client:click("CheckButton", "The Big Four")
+        world:advance(1)
+        assert.is_not_nil(client:findText("^Zone Dps$"))
+        assert.is_nil(client:findText("^Westfall Dps$"))
+    end)
+
+    it("searches the zones of your quests when the window opens on the Quests tab", function()
+        local world = World.new()
+        world:list("Zone Dps", "D", ELWYNN, 20, 300)
+        local client = world:addClient("Solo Player", { level = 20, questLog = questLog() })
+        client.ns.charDb.tab = "quests"
+        world:advance(12)
+        client:slash("/fg")
+        world:advance(1)
+        assert.is_not_nil(select(2, client.ns.LfgList.zoneListings()))
+        assert.is_nil(client:findText("^not searched yet$"))
+    end)
+
     it("counts per quest who is looking in its zone and the groups there that need you", function()
         local world = World.new()
         world:list("Zone Dps", "D", ELWYNN, 20, 300)
@@ -700,6 +727,32 @@ describe("Who is looking for group quests", function()
             end
         end
         assert.is_truthy(asked and asked:find("could you invite me for Hogger", 1, true))
+    end)
+
+    it("joining, asks a listed group first and only then invites players itself", function()
+        local world = World.new()
+        world:list("Zone Dps", "D", ELWYNN, 20, 300)
+        world:listGroup("Zone Group", ELWYNN, { T = 1, H = 1, D = 1 }, 120)
+        local client = world:addClient("Solo Player", { level = 20, questLog = questLog() })
+        world:advance(12)
+        client:slash("/dq")
+        client:click("CheckButton", "DPS")
+        client:click("Button", "Quests")
+        client:click("CheckButton", "The Big Four")
+        client:click("Button", "Find questing group")
+        world:advance(3)
+        local asked = false
+        for _, w in ipairs(client.whispers) do
+            asked = asked or w.target == "Zone Group"
+        end
+        assert.is_true(asked)
+        assert.are.same({}, client.invites)
+        world:advance(30)
+        for _ = 1, 2 do
+            client:press("A")
+            world:advance(11)
+        end
+        assert.are.same({ "Zone Dps" }, client.invites)
     end)
 
     it("switches along when the main window's page changes by itself", function()

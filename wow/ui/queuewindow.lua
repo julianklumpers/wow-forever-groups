@@ -33,9 +33,10 @@ function QueueWindow.wantedQuests()
     return wanted
 end
 
--- The zones of those quests (zone name => true) and as a list; with
--- forLevel also every zone the Group Finder suggests for the player's level,
--- so the window shows questing there without group quests of your own.
+-- The zones of those quests (zone name => true) and as a list. With
+-- forLevel and no such quest, every zone the Group Finder suggests for the
+-- player's level instead, so the window shows questing there; with a quest
+-- ticked only its zone, as the Group Finder cannot tell who does which quest.
 local function zonesOf(wanted, forLevel)
     local set, list = {}, {}
     local function add(zone)
@@ -49,7 +50,7 @@ local function zonesOf(wanted, forLevel)
             add(quest.zone)
         end
     end
-    if forLevel then
+    if forLevel and #list == 0 then
         for _, zone in ipairs(ns.LfgList.zonesForLevel(UnitLevel("player") or 1)) do
             add(zone)
         end
@@ -539,7 +540,7 @@ local function buildSection(title, rows, key, kind)
         section.offset = math.min(most, math.max(0, section.offset - delta * 3))
         if not wheelBlocked then
             wheelSearching = true
-            ns.LfgList.searchIfStale(10)
+            QueueWindow.searchIfStale(10)
             wheelSearching = false
         end
         QueueWindow.refresh()
@@ -1525,8 +1526,10 @@ function QueueWindow.refresh()
         local _, updatedAt = ns.LfgList.listings()
         if quests then
             updatedAt = select(2, ns.LfgList.zoneListings())
+        elseif mode == "battlegrounds" then
+            updatedAt = select(2, ns.LfgList.battlegroundListings())
         end
-        if not quests and ns.LfgList.isSearching() then
+        if mode == "dungeons" and ns.LfgList.isSearching() then
             sections.note:SetText(L["searching..."])
         elseif updatedAt then
             sections.note:SetText(string.format(L["searched %s ago"], Widgets.formatTime(GetTime() - updatedAt)))
@@ -1604,8 +1607,8 @@ local function build()
     -- When WoW's Group Finder was last searched, left of Refresh.
     sections.note = Widgets.text(frame, "GameFontDisableSmall", "RIGHT")
     sections.note:SetPoint("RIGHT", sections.refresh, "LEFT", -8, 0)
-    sections.groups = buildSection("Groups", 8, "groups", "groups")
-    sections.players = buildSection("Players", 12, "players", "players")
+    sections.groups = buildSection("Groups", 10, "groups", "groups")
+    sections.players = buildSection("Players", 10, "players", "players")
 end
 
 -- Who is looking is a drawer of the main window: a tab on the main window's

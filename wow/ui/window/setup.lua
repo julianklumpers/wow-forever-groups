@@ -233,7 +233,6 @@ function W.setSetupShown(shown)
         W.hideCompose()
         W.hideLevels()
         ui.headerLookingDot:Hide()
-        ui.headerLookingLabel:Hide()
         ui.headerLooking:Hide()
         ui.headerLookingGroups:Hide()
     end
@@ -343,13 +342,7 @@ function W.layoutChoices(y, withPlaystyle)
     end
     W.placeBattlegroundSize(W.RIGHT, y)
     y = y - BOX_HEIGHT - 10
-    local hint = W.currentTab() == "quests" and L["Questing groups: at most one tank and one healer."] or nil
-    ui.roleHint:SetShown(hint ~= nil)
-    if hint then
-        ui.roleHint:SetText(hint)
-        W.place(ui.roleHint, PAD, y + 2)
-        y = y - 20
-    end
+    ui.roleHint:Hide()
     return y
 end
 
@@ -424,16 +417,13 @@ function W.layoutSetup(y, levelCount, otherCount)
     return W.layoutCells(y, levelCount + 1, otherCount) - 8
 end
 
--- "Looking now: 🛡 n ✚ n ⚔ n · 2 groups need you" after the header's text.
+-- "· 🛡 n ✚ n ⚔ n · 2 groups need you" after the header's text.
 function W.layoutHeaderLooking()
-    local dot, label, counts, groups = ui.headerLookingDot, ui.headerLookingLabel, ui.headerLooking,
-        ui.headerLookingGroups
+    local dot, counts, groups = ui.headerLookingDot, ui.headerLooking, ui.headerLookingGroups
     dot:ClearAllPoints()
     dot:SetPoint("LEFT", ui.dungeonHeader, "RIGHT", 8, 0)
-    label:ClearAllPoints()
-    label:SetPoint("LEFT", dot, "RIGHT", 8, 0)
     counts:ClearAllPoints()
-    counts:SetPoint("LEFT", label, "RIGHT", 8, 0)
+    counts:SetPoint("LEFT", dot, "RIGHT", 8, 0)
     local wanted = ns.QueueWindow.wantedDungeons()
     Widgets.setRoleCounts(counts, ns.Features.countsKnown() and ns.QueueWindow.lookingCounts(wanted, "dungeons"))
     local needing = #ns.QueueWindow.groupsNeedingMe(wanted, "dungeons")
@@ -441,7 +431,7 @@ function W.layoutHeaderLooking()
     groups:SetPoint("LEFT", counts, "RIGHT", 6, 0)
     groups:SetText(needing > 0 and ("·  " .. ns.Locale.count(needing, "%d group needs you", "%d groups need you"))
         or "")
-    for _, widget in ipairs({ dot, label, counts, groups }) do
+    for _, widget in ipairs({ dot, counts, groups }) do
         widget:Show()
     end
 end
@@ -611,11 +601,9 @@ end
 
 function W.buildDungeons()
     ui.dungeonHeader = Widgets.header(W.frame, "Dungeons", PAD, W.HEADER_GAP)
-    -- "Looking now" on the header line, while choosing.
+    -- The counts of who is looking on the header line, while choosing.
     ui.headerLookingDot = Widgets.text(W.frame, "GameFontNormal")
     ui.headerLookingDot:SetText("·")
-    ui.headerLookingLabel = Widgets.text(W.frame, "GameFontNormalSmall")
-    ui.headerLookingLabel:SetText(L["Looking now:"])
     ui.headerLooking = Widgets.roleCounts(W.frame, 14)
     ui.headerLooking:EnableMouse(true)
     Widgets.tooltip(ui.headerLooking, "Looking now", "Tanks, healers and DPS looking for your dungeons: other "
