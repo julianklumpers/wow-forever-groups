@@ -2077,8 +2077,38 @@ function QueueWindow.handle()
     return handle
 end
 
+-- The main window and this drawer move as one, so they come to the front as
+-- one too: WoW raises only the window clicked.
+local mapLogged = false
+
+local function raiseTogether()
+    -- WoW loads its map when first opened: its strata, logged once it is.
+    local map = WorldMapFrame
+    if not mapLogged and type(map) == "table" and map.IsShown and map:IsShown() then
+        mapLogged = true
+        ns.Log.debug("world map strata: %s, toplevel: %s", tostring(map:GetFrameStrata()),
+            tostring(map.IsToplevel and map:IsToplevel()))
+    end
+    local main = ns.WindowParts.frame
+    if not main or not main:IsShown() then
+        return
+    end
+    local drawer = frame and frame:IsShown() and frame or nil
+    if not (main:IsMouseOver() or (drawer and drawer:IsMouseOver())) then
+        return
+    end
+    main:Raise()
+    if drawer then
+        drawer:Raise()
+    end
+end
+
 -- The tab on the main window's edge, made with the main window.
 function QueueWindow.attach(main)
+    local watcher = CreateFrame("Frame")
+    if pcall(watcher.RegisterEvent, watcher, "GLOBAL_MOUSE_DOWN") then
+        watcher:SetScript("OnEvent", raiseTogether)
+    end
     handle = Widgets.backdropFrame("Button", main)
     handle:SetSize(HANDLE_WIDTH, HANDLE_HEIGHT)
     handle:SetFrameLevel((main:GetFrameLevel() or 0) + 5)

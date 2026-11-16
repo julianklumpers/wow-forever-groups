@@ -692,6 +692,14 @@ does). With `/fg debug on` the status shows "Building your own group: inviting �
 
 ### Who is looking
 
+The addon's windows (`Widgets.window`) sit in the `MEDIUM` strata, WoW's own panels' and map's on Forever (the
+map's is `MEDIUM`, toplevel, seen in game 2026-11-16; one strata higher it stayed behind), and are toplevel:
+a click on WoW's map brings the map to the front, a click on the addon brings the addon back; only the group
+proposal popup stays in `DIALOG`, above everything, as it waits for an answer. The main window and Who is looking
+come to the front together (`GLOBAL_MOUSE_DOWN` over either raises both, the one clicked last; WoW raises only the
+window clicked). The debug log names the map's strata once, at the first click while the map is open (WoW loads the map when it
+is first opened): `world map strata: …, toplevel: …`.
+
 `wow/ui/queuewindow.lua` is a drawer of the main window: a separate window docked to the right of the main window
 (left when there is no room on the screen), with a tab between them (`QueueWindow.attach`, made with the main window:
 the Group Finder eye and an arrow that points the way the drawer moves) that opens and closes it. It opens with the

@@ -284,6 +284,8 @@ end
 
 local function build()
     frame = Widgets.window("ForeverGroupsProposalFrame", "Group found!", WIDTH, 300, false)
+    -- Above everything: it waits for an answer.
+    frame:SetFrameStrata("DIALOG")
     if type(frame.CloseButton) == "table" then
         frame.CloseButton:Hide()
     end

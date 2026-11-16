@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The windows no longer always cover WoW's own: click the map and it comes to the front, click Forever Groups and
+  it comes back (the main window and Who is looking together). A group proposal still shows above everything.
 - The Battlegrounds tab is marked Beta: it is new and not fully tested in the game yet.
 - Quests tab: hover a quest to see its objectives, right-click it to open it in your quest log.
 - Fixed: filling a quest for five from WoW's Group Finder left the questing queue ("Your party changed") and the

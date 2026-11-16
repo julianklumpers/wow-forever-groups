@@ -220,7 +220,10 @@ function Widgets.window(name, title, width, height, escapable, plain, icon)
     end
     frame:SetSize(width, height)
     frame:SetPoint("TOP", UIParent, "TOP", 0, -120)
-    frame:SetFrameStrata("DIALOG")
+    -- The strata of WoW's map and panels on Forever (MEDIUM, seen in game): a
+    -- click on either window brings it to the front (toplevel), instead of the
+    -- addon always covering them.
+    frame:SetFrameStrata("MEDIUM")
     frame:SetToplevel(true)
     frame:SetClampedToScreen(true)
     frame:EnableMouse(true)

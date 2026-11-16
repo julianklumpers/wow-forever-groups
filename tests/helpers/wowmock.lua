@@ -1051,6 +1051,18 @@ local function buildEnv(world, client)
     function methods.SetAlpha(widget, value)
         widget.alpha = value
     end
+    function methods.SetFrameStrata(widget, strata)
+        widget.strata = strata
+    end
+    -- Raise() counts, in order over all widgets, so a test can tell which
+    -- came to the front last.
+    function methods.Raise(widget)
+        client.raises = (client.raises or 0) + 1
+        widget.raisedAt = client.raises
+    end
+    function methods.IsMouseOver(widget)
+        return widget.mouseOver == true
+    end
     function methods.SetColorTexture(widget, r, g, b, a)
         widget.color = { r, g, b, a }
     end
