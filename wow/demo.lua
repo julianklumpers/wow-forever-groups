@@ -306,7 +306,7 @@ local function demoDb(real)
     for key, value in pairs(DB_DEFAULTS) do
         db[key] = value
     end
-    db.queueRoles, db.newestVersion = nil, nil
+    db.queueRoles, db.whoFilter, db.newestVersion = nil, { players = {}, groups = {} }, nil
     return db
 end
 

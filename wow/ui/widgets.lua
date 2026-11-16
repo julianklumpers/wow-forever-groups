@@ -115,6 +115,20 @@ function Widgets.setRoleStyle(key)
     end
 end
 
+-- The role icon in the current style as text markup, for menus.
+function Widgets.roleMarkup(role, size)
+    local style = currentStyle()
+    if style.atlas then
+        return string.format("|A:%s:%d:%d|a", style.atlas[role], size, size)
+    end
+    local c = ROLE_COORDS[role]
+    if GetTexCoordsForRole then
+        c = { GetTexCoordsForRole(WOW_ROLES[role]) }
+    end
+    return string.format("|T%s:%d:%d:0:0:256:256:%d:%d:%d:%d|t", ROLE_TEXTURE, size, size, math.floor(c[1] * 256),
+        math.floor(c[2] * 256), math.floor(c[3] * 256), math.floor(c[4] * 256))
+end
+
 function Widgets.roleIcon(parent, role, size)
     local icon = parent:CreateTexture(nil, "ARTWORK")
     icon:SetSize(size, size)

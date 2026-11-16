@@ -110,6 +110,23 @@ describe("Outbox", function()
         assert.are.same({ "low:queue full", "keep1:error" }, dropped)
         assert.are.same({ "keep2" }, sent)
     end)
+
+    it("retries a message after an unknown failure, and drops it after three", function()
+        local outbox = newOutbox()
+        results = { "retry", "retry", "retry", "retry" }
+        outbox:push("m1")
+        outbox:push("m2")
+        outbox:flush()
+        now = 2
+        outbox:flush()
+        assert.are.same({}, dropped)
+        now = 4
+        outbox:flush()
+        assert.are.same({ "m1:error" }, dropped)
+        now = 6
+        outbox:flush()
+        assert.are.same({ "m2" }, sent)
+    end)
 end)
 
 describe("Dungeons", function()

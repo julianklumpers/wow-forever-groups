@@ -6,6 +6,7 @@ ns = ns or {}
 --   "ok"        sent
 --   "throttled" server refused because of rate limits; retry later
 --   "blocked"   messaging is locked down (instance/combat); retry later
+--   "retry"     failed for an unknown reason; retried a few times, then dropped
 --   "error"     message can never be sent; dropped
 local Outbox = {}
 Outbox.__index = Outbox
@@ -17,6 +18,8 @@ local DEFAULTS = {
     refillPerSecond = 1,
     throttleBackoff = 2,
     blockedBackoff = 5,
+    failureBackoff = 2,
+    maxFailures = 3,
     maxQueued = 60,
 }
 
@@ -117,9 +120,12 @@ function Outbox:flush()
             self.pausedUntil = self.clock() + self.throttleBackoff
         elseif result == "blocked" then
             self.pausedUntil = self.clock() + self.blockedBackoff
+        elseif result == "retry" and (item.failures or 0) + 1 < self.maxFailures then
+            item.failures = (item.failures or 0) + 1
+            self.pausedUntil = self.clock() + self.failureBackoff
         else
             table.remove(self.queue, 1)
-            self.onDrop(item.text, tostring(result))
+            self.onDrop(item.text, result == "retry" and "error" or tostring(result))
         end
     end
     return sent

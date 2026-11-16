@@ -3,6 +3,14 @@ local _, ns = ...
 local Log = {}
 
 local MAX_LINES = 2000
+
+local dev = {}
+--@do-not-package@
+-- Developer copy only, the packager strips it from releases.
+function dev.maxLines(db)
+    return db.debug and 10000 or MAX_LINES
+end
+--@end-do-not-package@
 local PREFIX = "|cff33ccffForever Groups|r "
 
 local function escape(text)
@@ -40,8 +48,15 @@ local function store(tag, msg)
     end
     db.log = db.log or {}
     db.log[#db.log + 1] = date("%Y-%m-%d %H:%M:%S") .. " [" .. tag .. "] " .. msg
-    while #db.log > MAX_LINES do
+    local extra = #db.log - (dev.maxLines and dev.maxLines(db) or MAX_LINES)
+    if extra == 1 then
         table.remove(db.log, 1)
+    elseif extra > 1 then
+        local kept = {}
+        for i = extra + 1, #db.log do
+            kept[#kept + 1] = db.log[i]
+        end
+        db.log = kept
     end
 end
 

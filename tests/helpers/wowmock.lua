@@ -294,39 +294,93 @@ function Client:click(kind, text, root)
     self.inClick = false
 end
 
--- The radios and checks of a WoW dropdown menu (SetupMenu), as WoW builds
--- them on opening: { text, selected, pick(), tooltip lines }; a check's
--- text without its colour code.
+-- The text of a menu entry without colour codes and icon markup.
+local function plainText(text)
+    text = string.gsub(text, "|c%x%x%x%x%x%x%x%x", "")
+    text = string.gsub(text, "|r", "")
+    text = string.gsub(text, "|A.-|a", "")
+    text = string.gsub(text, "|T.-|t", "")
+    return (string.gsub(text, "^%s+", ""))
+end
+
+-- The radios, checks, titles and buttons of a WoW dropdown menu (SetupMenu),
+-- as WoW builds them on opening: { text, selected, pick(), tooltip lines };
+-- text without colour codes and icons. An entry of a submenu has `menu`, the
+-- text of the button it hangs under.
 function Client:dropdownItems(button)
     local items = {}
-    local root = {}
-    function root.CreateCheckbox(_, text, isSelected, setSelected, data)
-        local plain = string.gsub(string.gsub(text, "|c%x%x%x%x%x%x%x%x", ""), "|r", "")
-        local item = { text = plain, selected = isSelected(data) and true or false, check = true }
-        item.pick = function()
-            setSelected(data)
+    local function newRoot(menu)
+        local root = {}
+        function root.CreateCheckbox(_, text, isSelected, setSelected, data)
+            local item = { text = plainText(text), selected = isSelected(data) and true or false, check = true,
+                menu = menu }
+            item.pick = function()
+                setSelected(data)
+            end
+            items[#items + 1] = item
+            return {}
         end
-        items[#items + 1] = item
-        return {}
-    end
-    function root.CreateRadio(_, text, isSelected, setSelected, data)
-        local item = { text = text, selected = isSelected(data) and true or false }
-        item.pick = function()
-            setSelected(data)
+        function root.CreateRadio(_, text, isSelected, setSelected, data)
+            local item = { text = text, selected = isSelected(data) and true or false, menu = menu }
+            item.pick = function()
+                setSelected(data)
+            end
+            items[#items + 1] = item
+            return { SetTooltip = function(_, fn)
+                local lines = {}
+                local tooltip = {
+                    SetText = function(_, line) lines[#lines + 1] = line end,
+                    AddLine = function(_, line) lines[#lines + 1] = line end,
+                }
+                fn(tooltip)
+                item.tooltip = lines
+            end }
         end
-        items[#items + 1] = item
-        return { SetTooltip = function(_, fn)
-            local lines = {}
-            local tooltip = {
-                SetText = function(_, line) lines[#lines + 1] = line end,
-                AddLine = function(_, line) lines[#lines + 1] = line end,
-            }
-            fn(tooltip)
-            item.tooltip = lines
-        end }
+        function root.CreateTitle(_, text)
+            items[#items + 1] = { text = plainText(text), title = true, menu = menu }
+        end
+        function root.CreateDivider()
+            items[#items + 1] = { divider = true, menu = menu }
+        end
+        function root.CreateButton(_, text, fn)
+            local item = { text = plainText(text), button = true, enabled = true, menu = menu }
+            item.pick = function()
+                if fn then
+                    fn()
+                end
+            end
+            items[#items + 1] = item
+            local submenu = newRoot(item.text)
+            function submenu.SetEnabled(_, on)
+                item.enabled = on and true or false
+            end
+            return submenu
+        end
+        return root
     end
-    assert(button.menuGenerator, self.name .. ": no menu on this dropdown")(button, root)
+    assert(button.menuGenerator, self.name .. ": no menu on this dropdown")(button, newRoot(nil))
     return items
+end
+
+-- Picks an entry of a dropdown menu: its text, after the text of the submenu
+-- button it hangs under when given (a button's text starts with it).
+function Client:pickMenu(button, first, second)
+    local menu
+    for _, item in ipairs(self:dropdownItems(button)) do
+        local text = second and item.menu == nil and item.button and item.text:sub(1, #first) == first
+        if text then
+            menu = item.text
+        end
+    end
+    for _, item in ipairs(self:dropdownItems(button)) do
+        if item.pick and ((not second and item.text == first and item.menu == nil)
+            or (second and menu and item.menu == menu and item.text == second)) then
+            assert(item.enabled ~= false, self.name .. ": menu entry '" .. (second or first) .. "' is disabled")
+            item.pick()
+            return item
+        end
+    end
+    error(self.name .. ": no menu entry '" .. first .. (second and (" > " .. second) or "") .. "'")
 end
 
 function Client:frame(name)

@@ -82,7 +82,7 @@ describe("the player's spec in the game", function()
         world:list("Listed Dps", "D", 799, 20, 300)
         local client = shaman(world, "Roos Bief", ENHANCEMENT)
         world:advance(30)
-        client:slash("/dq join tank dm")
+        client:slash("/dq join dps dm")
         world:advance(2)
         local invite
         for _, w in ipairs(client.whispers) do

@@ -57,8 +57,10 @@ in the group, with roles set for you.
   classes you want per place (a Mage for water, a Warrior to tank); only those classes join you.
 - **Who is looking** — a drawer on the side of the window with the players and groups looking
   for your dungeons or group quests, from Forever Groups and WoW's Group Finder (Quests & Zones
-  for quests); right-click to whisper, invite or request to join. Open by default; the tab with
-  the eye on the window's edge opens and closes it.
+  for quests); right-click to whisper, invite or request to join. Filter boxes on top show only the
+  players of the roles and classes you want, groups that need a role or have room for your
+  class, and players or groups near your level. Open by default; the tab with the eye on the window's edge
+  opens and closes it.
 - **Your own words** — every whisper and party message can be rewritten (any language) or
   turned off. The whispers it sends for you stay out of your own chat; answers always show.
 - **In your language** — English, German, Spanish and Russian, following your WoW client (or

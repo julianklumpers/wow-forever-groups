@@ -206,6 +206,69 @@ describe("WoW layer", function()
         assert.is_true(queued)
     end)
 
+    it("retries a message WoW refuses with an unknown code, and logs the code", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player")
+        world:advance(CONNECT)
+        client.sendResults = { 9 }
+        client:slash("/dq join dps auto")
+        world:advance(5)
+        local queued = false
+        for _, text in ipairs(client.sent) do
+            queued = queued or text:find("^v2|Q|") ~= nil
+        end
+        assert.is_true(queued)
+        assert.is_true(client:logged("%[retry, code 9%]"))
+    end)
+
+    it("with debug on, logs a repeated party message once per ten minutes", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player")
+        world:advance(CONNECT)
+        client.inGroup = true
+        local function count()
+            local n = 0
+            for _, line in ipairs(client.ns.db.log) do
+                n = n + (line:find("-> party v1|GP|3|in", 1, true) and 1 or 0)
+            end
+            return n
+        end
+        for _ = 1, 3 do
+            client.ns.Comm.sendParty("v1|GP|3|in")
+        end
+        assert.are.equal(3, count())
+        client.ns.db.debug = true
+        for _ = 1, 3 do
+            client.ns.Comm.sendParty("v1|GP|3|in")
+            world:advance(30)
+        end
+        assert.are.equal(4, count())
+        client.ns.Comm.sendParty("v1|GP|3|10")
+        world:advance(600)
+        client.ns.Comm.sendParty("v1|GP|3|in")
+        assert.are.equal(5, count())
+    end)
+
+    it("with debug on, keeps a longer log", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player")
+        world:advance(CONNECT)
+        for i = 1, 2500 do
+            client.ns.Log.record("DEBUG", "line %d", i)
+        end
+        assert.are.equal(2000, #client.ns.db.log)
+        client.ns.db.debug = true
+        for i = 1, 2500 do
+            client.ns.Log.record("DEBUG", "line %d", i)
+        end
+        assert.are.equal(4500, #client.ns.db.log)
+        client.ns.db.debug = false
+        client.ns.Log.record("DEBUG", "last")
+        assert.are.equal(2000, #client.ns.db.log)
+        assert.is_truthy(client.ns.db.log[2000]:find("last", 1, true))
+        assert.is_truthy(client.ns.db.log[1999]:find("line 2500", 1, true))
+    end)
+
     it("tells the leader to click when WoW blocks the automatic invite", function()
         local world, clients = fullWorld()
         for _, client in ipairs(clients) do
@@ -335,7 +398,12 @@ describe("WoW UI", function()
 
         local _, shaman = connected("Shaman Player", { class = "SHAMAN" })
         shaman:slash("/dq")
-        assert.is_true(shaman:find("CheckButton", "Tank").enabled)
+        assert.is_false(shaman:find("CheckButton", "Tank").enabled)
+        assert.is_true(shaman:find("CheckButton", "Healer").enabled)
+
+        local _, druid = connected("Druid Player", { class = "DRUID" })
+        druid:slash("/dq")
+        assert.is_true(druid:find("CheckButton", "Tank").enabled)
     end)
 
     it("refuses a role the class cannot play on the command line", function()

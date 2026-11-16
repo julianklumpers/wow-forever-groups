@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- A Shaman can no longer pick tank: the role is greyed out, and Forever Groups no longer offers a Shaman a tank
+  place or lists a Shaman as a possible tank.
+- Who is looking has four filter boxes on its top line instead of the three role buttons, each with WoW's own
+  menu: Roles and Classes of the players, Needs of the groups (with "Room for my class"), and Level (players and
+  groups near your level). A box without a filter says "All roles", "All classes" and so on; with one it shows it
+  in gold ("Roles: Tank/Healer", "Level: 17-23"), and "All …" at the top of its menu turns it off again. Roles you
+  chose before are kept. Refresh moved to a small button in the window's title bar, with when it last searched next to it.
+- The lines Who is looking shows for an empty table ("Nobody listed for your dungeons." and the like) are now
+  translated too.
+- A message WoW refuses for a reason Forever Groups doesn't know is tried again a few times instead of lost, so a
+  group proposal no longer gets stuck on it; the saved log says which code WoW gave.
 - Of the players who fit, those closest to the group's level go first: from WoW's Group Finder (and applicants) the
   one nearest the group's average level before the one listed longest, and in the Forever Groups queue the ones
   nearest the longest waiting player's level (someone who waited 5 minutes counts as near). Only a preference: the

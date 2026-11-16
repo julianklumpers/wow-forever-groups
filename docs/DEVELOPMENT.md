@@ -173,8 +173,11 @@ on every client, so they complete even if the matchmaker disappears.
 
 Messages wait in a send queue (`core/outbox.lua`, 6 at once and 1 per second) while WoW throttles or blocks them;
 some are worthless once late and expire there: a proposal after 8 s (before its members would count as gone), an
-answer after 30 s, a keep-alive after 10 s. A proposal of ours that expired or was dropped is called off on this client
-too (`Engine:cancelOwnProposal`, from `Comm.onDropped`): its players are free again and nobody counts as gone.
+answer after 30 s, a keep-alive after 10 s. A send WoW refuses with a code we don't know (or that raises an error) is
+retried 2 s later, up to 3 tries, before it is dropped; only an invalid prefix, message or chat type is dropped at
+once. Every refused send is logged with WoW's code (`-> … [retry, code 9]`), version pings too. A proposal of ours
+that expired or was dropped is called off on this client too (`Engine:cancelOwnProposal`, from `Comm.onDropped`):
+its players are free again and nobody counts as gone.
 
 Messages can get lost or arrive late, so a proposal is built to end the same way on every client. While it is open
 each member sends its own answer again every 8 s (`Config.ANSWER_RESEND`), and an answer that arrives before its
@@ -562,7 +565,9 @@ Filling has no window of its own: what it waits for goes to the saved log
 players are listed for it, the line says why they were passed over (`Fill.skipped`: already invited/asked/declined,
 outside the dungeon's levels, outside the level limit, a class the class choices leave out, another playstyle,
 picked for another role). The saved log keeps 2000 lines (`wow/log.lua`); the version pings (`DQV|`) are not
-logged, they used to push everything else out within minutes.
+logged, they used to push everything else out within minutes. In the developer copy only (a
+`--@do-not-package@` block, stripped from releases by the packager), with `/fg debug on` it keeps 10000 lines and
+logs the same party message (`-> party …`, sent every few seconds) once per 10 minutes.
 
 Roles in the group (`wow/rolesync.lua`): each player's Forever Groups role is set in WoW's party frames once. A
 party member who then gets another role keeps it when they offered it (the roles of their Group Finder listing or
@@ -686,8 +691,11 @@ parties and the Group Finder's listed groups) and then **Players** (queued solo 
 for your dungeons), with "(n  ·  m in Forever Groups)" in the caption while the Group Finder is used. Every row
 has an icon at its far right for where it comes from (the addon's icon or the Group Finder eye, `row.source`; a
 Forever Groups row's tooltip says it too). A player in both sources shows once, from Forever Groups (`combined`), and on a sort tie
-Forever Groups comes first. When the Group Finder was last searched sits left of Refresh, on the line of the
-role filter. Both tables have the same columns: Roles (what the
+Forever Groups comes first. Refresh is a small button in the title bar, left of the close button, with WoW's own refresh icon
+(`Interface\Buttons\UI-RefreshButton`, its Group Finder's) on the close button's frame level; what it does is in
+its tooltip; when the Group Finder was last searched ("searched 12 s ago") sits left of it in the title bar (a
+font string of the Refresh button, so on its level). The top line is the filter boxes'; a caption's summary is
+cut short at the caption's width. Both tables have the same columns: Roles (what the
 players can play; a party or group: the roles already in it), Name ("+N" for
 the other members; before it, `row.badge`, a crown for a party or group, a solo player's `classicon-<class>`),
 Classes (up to five class icons: a listed group's members, a Forever Groups party's leader; its header and cells
@@ -710,8 +718,22 @@ text, without column headers. Each table folds (its caption is a +/- button) to 
 (`{ groups, players }`), also when they switch between joining and leading. A click
 on a header sorts that table only, a second click reverses; each table keeps its own order for the session only (not saved, a reload
 brings back the default: by role), shown by WoW's `Arrow-Up-Up`/`Arrow-Down-Up` next to the active header (a column marked
-`descending` points down unreversed); the Show filter
-matches a solo player's roles and a party's or group's needs. Right-clicking a row opens `wow/ui/playermenu.lua`
+`descending` points down unreversed). Four filter boxes start the window's top
+line (`BOXES`), each WoW's own menu with one filter (`Widgets.dropdown`, `SetupMenu`; without WoW's menu they are
+hidden and nothing is filtered): **Roles** (a solo player's roles, a flexible player shows for any of them),
+**Classes** (in their colour with `classicon-*`), **Needs** (a group's open places; quest and battleground groups
+have none, so the roles in them; plus Room for my class: an open place of a role the player's class can play, for
+a Forever Groups party with class wishes one wished for that class or any class, `openPlaces` shared with
+`wishesOf`) and **Level** (players near my level, groups near my level: within 3 levels, `NEAR_LEVELS`; a group by
+the average of its members' levels where known, else its leader's). Role icons in the current style
+(`Widgets.roleMarkup`, the classic file cut with WoW's `GetTexCoordsForRole`); checks keep the menu open. Each menu
+starts with "All roles" / "All classes" / "All groups" / "All levels", a check ticked while the box filters nothing,
+that turns its filters off (a check like "Any class" of the class choices; a plain menu button for this did nothing
+in game). A box without a filter says that "All …"; with one it shows it in gold: "Roles: Tank/Healer",
+"Classes:" with up to three class icons and "+n", "Needs: Healer" with the player's class icon for room for their
+class, "Level: 17-23". Up to three class icons, so all four boxes fit on the line with filters on. Kept in `db.whoFilter` (`{ players = { roles, classes,
+near }, groups = { needs, myClass, near } }`); the old `db.queueRoles` is taken over for both tables once. An empty
+filtered table says "Nobody matches your filters." / "No group matches your filters.". Right-clicking a row opens `wow/ui/playermenu.lua`
 (WoW's `MenuUtil` context menu, else a small menu of our own): Whisper and Invite to group for a player; Request to
 join and Whisper leader for a group. Request to join whispers the leader the `applyAsk` message
 (`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised. For a questing group

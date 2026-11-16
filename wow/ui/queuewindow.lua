@@ -20,6 +20,8 @@ local wheelBlocked = false
 -- "dungeons" or "quests": the main window's tab when the window opened.
 local mode = "dungeons"
 local setMode
+local paintFilterBoxes
+local openPlaces
 
 -- The group quests this player is looking for: the questing queue's, else
 -- the ones ticked on the Quests tab; as a set of quest keys.
@@ -854,6 +856,10 @@ local function fillSection(section, y, items, empty)
     end
     section.summary:SetText(folded and summarize(section, items)
         or (faded and ("·  " .. L["faded: outside your limits"])) or "")
+    local room = section.caption:GetWidth()
+    if type(room) == "number" then
+        section.summary:SetWidth(math.max(1, room - 23 - math.ceil(section.header:GetStringWidth() or 0)))
+    end
     if folded then
         section.line:Hide()
         section.area:Hide()
@@ -988,26 +994,130 @@ local COMPARE = {
     end,
 }
 
--- Roles to show; nil means all.
-local function shownRoles()
-    return ns.db.queueRoles
+-- The Filter menu's choices (db.whoFilter): for the players their roles,
+-- classes and a level near the player's; for the groups the roles they need,
+-- a place open to the player's class and a level near the player's.
+local NEAR_LEVELS = 3
+local FILTER_KEYS = { players = { "roles", "classes", "near" }, groups = { "needs", "myClass", "near" } }
+
+local function filters()
+    local db = ns.db
+    if not db.whoFilter then
+        db.whoFilter = { players = { roles = db.queueRoles }, groups = { needs = db.queueRoles } }
+        db.queueRoles = nil
+    end
+    return db.whoFilter
 end
 
--- A solo player is shown for the roles they play; a party or group for the
--- places it still has open.
-local function filtered(items)
-    local roles = shownRoles()
-    if not roles then
+local function sectionFilter(sectionKey)
+    local all = filters()
+    all[sectionKey] = all[sectionKey] or {}
+    return all[sectionKey]
+end
+
+-- How many filters are on: of one table, or of both.
+local function filterCount(sectionKey)
+    if not sectionKey then
+        return filterCount("players") + filterCount("groups")
+    end
+    local filter, count = sectionFilter(sectionKey), 0
+    for _, key in ipairs(FILTER_KEYS[sectionKey]) do
+        local value = filter[key]
+        if value and (type(value) ~= "table" or next(value)) then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function sharesLetter(letters, wanted)
+    for letter in string.gmatch(letters or "", ".") do
+        if string.find(wanted, letter, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function nearMe(level)
+    local mine = ns.Party.playerLevel()
+    return type(level) == "number" and type(mine) == "number" and math.abs(level - mine) <= NEAR_LEVELS
+end
+
+-- A group's level: the average of its members' where known, else its
+-- leader's.
+local function groupLevel(item)
+    local members = (item.group and item.group.memberInfo) or (item.party and item.party.members) or {}
+    local sum, count = 0, 0
+    for _, member in ipairs(members) do
+        if type(member.level) == "number" then
+            sum, count = sum + member.level, count + 1
+        end
+    end
+    return count > 0 and math.floor(sum / count + 0.5) or item.level
+end
+
+-- Whether a group has an open place a player of this class can take: one
+-- of a role the class plays, wished for that class or for any class.
+local function openToClass(item, class)
+    if (item.needs or "") == "" then
+        return true
+    end
+    local places = item.party and openPlaces(item.party.compose, item.needs)
+    for letter in string.gmatch(item.needs, ".") do
+        if ns.Classes.canPlay(class, letter) then
+            if not places then
+                return true
+            end
+            for _, mask in ipairs(places[letter] or {}) do
+                if mask == 0 or ns.Compose.allows(mask, class) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function playerShown(item, filter)
+    if filter.roles and not sharesLetter(item.roles, filter.roles) then
+        return false
+    end
+    if filter.classes and next(filter.classes) then
+        local any = false
+        for _, class in ipairs(item.classes or {}) do
+            any = any or filter.classes[class] == true
+        end
+        if not any then
+            return false
+        end
+    end
+    return not filter.near or nearMe(item.level)
+end
+
+-- A group is shown for the places it still has open (quest and battleground
+-- groups have none: for the roles in it).
+local function groupShown(item, filter)
+    local letters = (item.needs or "") ~= "" and item.needs or item.roles
+    if filter.needs and not sharesLetter(letters, filter.needs) then
+        return false
+    end
+    local class = filter.myClass and ns.Party.playerClass()
+    if class and not openToClass(item, class) then
+        return false
+    end
+    return not filter.near or nearMe(groupLevel(item))
+end
+
+local function filtered(items, sectionKey)
+    if not sections.filterNative or filterCount(sectionKey) == 0 then
         return items
     end
+    local filter, shown = sectionFilter(sectionKey), sectionKey == "groups" and groupShown or playerShown
     local result = {}
     for _, item in ipairs(items) do
-        local letters = (item.needs or "") ~= "" and item.needs or item.roles
-        for letter in string.gmatch(letters, ".") do
-            if string.find(roles, letter, 1, true) then
-                result[#result + 1] = item
-                break
-            end
+        if shown(item, filter) then
+            result[#result + 1] = item
         end
     end
     return result
@@ -1015,7 +1125,7 @@ end
 
 -- Ties go to Forever Groups' queue, then the longest waiting.
 local function sorted(items, sectionKey)
-    items = filtered(items)
+    items = filtered(items, sectionKey)
     local key, reverse = sortOf(sectionKey)
     table.sort(items, function(a, b)
         local result = COMPARE[key](a, b)
@@ -1050,29 +1160,52 @@ end
 -- without wishes. needs: its open places ("HDD"). The wishes are per place;
 -- a place a member holds wishes for nothing (0), so of each role the places
 -- with a wish are open, and the role's other open places take any class.
-local function wishesOf(compose, needs)
+-- The open places of a queued party, per role the masks wished for (0: any
+-- class); nil without wishes.
+function openPlaces(compose, needs)
     local rules = compose and ns.Compose.active(compose, GetServerTime())
     if not rules or needs == "" then
         return nil
     end
-    local list, any = {}, false
+    local places = {}
     for _, role in ipairs(Widgets.ROLES) do
         local open = select(2, string.gsub(needs, role, ""))
-        local seen, wished = {}, 0
+        local masks = {}
         for slot, slotRole in ipairs(ns.Compose.SLOT_ROLES) do
             local mask = rules.masks[slot] or 0
-            if slotRole == role and mask ~= 0 and wished < open then
-                wished = wished + 1
-                for _, class in ipairs(ns.Compose.classesOf(mask)) do
-                    if not seen[class] and Widgets.atlasExists("classicon-" .. string.lower(class)) then
-                        seen[class] = true
-                        list[#list + 1] = { class = class, role = role }
-                        any = true
-                    end
+            if slotRole == role and mask ~= 0 and #masks < open then
+                masks[#masks + 1] = mask
+            end
+        end
+        for _ = #masks + 1, open do
+            masks[#masks + 1] = 0
+        end
+        places[role] = masks
+    end
+    return places
+end
+
+local function wishesOf(compose, needs)
+    local places = openPlaces(compose, needs)
+    if not places then
+        return nil
+    end
+    local list, any = {}, false
+    for _, role in ipairs(Widgets.ROLES) do
+        local seen, anyClass = {}, false
+        for _, mask in ipairs(places[role]) do
+            if mask == 0 then
+                anyClass = true
+            end
+            for _, class in ipairs(mask ~= 0 and ns.Compose.classesOf(mask) or {}) do
+                if not seen[class] and Widgets.atlasExists("classicon-" .. string.lower(class)) then
+                    seen[class] = true
+                    list[#list + 1] = { class = class, role = role }
+                    any = true
                 end
             end
         end
-        if open > wished then
+        if anyClass then
             list[#list + 1] = { role = role }
         end
     end
@@ -1453,18 +1586,14 @@ local function refreshSortBar()
             header.arrow:SetShown(active)
         end
     end
-    local roles = shownRoles() or "THD"
-    for role, toggle in pairs(sections.roleToggles) do
-        Widgets.paintToggle(toggle, string.find(roles, role, 1, true) ~= nil, true)
-    end
 end
 
 -- "Players (27)", with how many of them are in Forever Groups' queue when the
 -- Group Finder's are there too.
-local function caption(word, count, fromAddon, withFinder, suffix)
+local function caption(word, count, fromAddon, withFinder)
     local addon = withFinder and fromAddon > 0 and ("  ·  " .. string.format(L["%d in Forever Groups"], fromAddon))
         or ""
-    return string.format("%s (%d%s)%s", L[word], count, addon, suffix)
+    return string.format("%s (%d%s)", L[word], count, addon)
 end
 
 -- Forever Groups' and the Group Finder's rows in one list; a player in both
@@ -1553,19 +1682,212 @@ function QueueWindow.refresh()
     end
     local allGroups = sorted(combined(parties, groups, leader), sections.groups.key)
     local allPlayers = sorted(combined(solo, finder, leader), sections.players.key)
-    local suffix = shownRoles() and ("  ·  " .. L["filtered"]) or ""
     local y = -64 - TOP
-    sections.groups.header:SetText(caption("Groups", #allGroups, countAddon(allGroups), useFinder, suffix))
-    y = fillSection(sections.groups, y, allGroups, (shownRoles() and "No group needs these roles.")
+    sections.groups.header:SetText(caption("Groups", #allGroups, countAddon(allGroups), useFinder))
+    local groupsFiltered, playersFiltered = filterCount("groups") > 0, filterCount("players") > 0
+    y = fillSection(sections.groups, y, allGroups, ns.Locale.mark(
+        (groupsFiltered and "No group matches your filters.")
         or (not useFinder and "No Forever Groups party is queued right now.")
-        or (quests and "No groups listed in the zones of your quests." or "No groups listed for your dungeons."))
-    sections.players.header:SetText(caption("Players", #allPlayers, countAddon(allPlayers), useFinder, suffix))
-    y = fillSection(sections.players, y, allPlayers, (shownRoles() and "Nobody with these roles listed.")
+        or (quests and "No groups listed in the zones of your quests." or "No groups listed for your dungeons.")))
+    sections.players.header:SetText(caption("Players", #allPlayers, countAddon(allPlayers), useFinder))
+    y = fillSection(sections.players, y, allPlayers, ns.Locale.mark(
+        (playersFiltered and "Nobody matches your filters.")
         or (not useFinder and (quests and "Nobody is looking for a questing group right now."
             or "Nobody is in the Forever Groups queue right now."))
-        or (quests and "Nobody listed in the zones of your quests." or "Nobody listed for your dungeons."))
+        or (quests and "Nobody listed in the zones of your quests." or "Nobody listed for your dungeons.")))
+    paintFilterBoxes()
     frame:SetHeight(-y + 10)
 end
+
+local function classLabel(class)
+    local r, g, b = Widgets.classColor(class)
+    local atlas = "classicon-" .. string.lower(class)
+    return (Widgets.atlasExists(atlas) and ("|A:" .. atlas .. ":14:14|a ") or "")
+        .. string.format("|cff%02x%02x%02x%s|r", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255),
+            ns.Spec.className(class))
+end
+
+local function classMarkup(class)
+    local atlas = "classicon-" .. string.lower(class)
+    return Widgets.atlasExists(atlas) and ("|A:" .. atlas .. ":14:14|a") or ""
+end
+
+local function allClasses()
+    local seen, list = {}, {}
+    for _, role in ipairs(Widgets.ROLES) do
+        for _, class in ipairs(ns.Compose.classesFor(role)) do
+            if not seen[class] then
+                seen[class] = true
+                list[#list + 1] = class
+            end
+        end
+    end
+    table.sort(list, function(a, b)
+        return ns.Spec.className(a) < ns.Spec.className(b)
+    end)
+    return list
+end
+
+local function nearRange()
+    local level = ns.Party.playerLevel() or 1
+    return math.max(1, level - NEAR_LEVELS), level + NEAR_LEVELS
+end
+
+-- The filter boxes on the window's top line, left to right, each WoW's own
+-- menu with one filter: the players' roles and classes, what the groups need
+-- (and room for the player's class), and the level of both. A box with a
+-- filter on shows it in gold: the roles and classes as icons, the level range
+-- as numbers.
+local BOXES = { "roles", "classes", "needs", "level" }
+local BOX_GAP = 5
+local MAX_BOX_ICONS = 3
+
+-- The box's text, and whether a filter in it is on: "All roles" without one,
+-- "Roles: Tank/Healer" with one.
+local function boxText(kind)
+    local players, groups = sectionFilter("players"), sectionFilter("groups")
+    if kind == "roles" then
+        if not players.roles then
+            return L["All roles"], false
+        end
+        return string.format("%s: %s", L["Roles"], Widgets.describeRoles(players.roles)), true
+    elseif kind == "classes" then
+        if not players.classes then
+            return L["All classes"], false
+        end
+        local icons, count = {}, 0
+        for _, class in ipairs(allClasses()) do
+            if players.classes[class] then
+                count = count + 1
+                if count <= MAX_BOX_ICONS then
+                    icons[#icons + 1] = classMarkup(class)
+                end
+            end
+        end
+        local more = count > MAX_BOX_ICONS and (" +" .. (count - MAX_BOX_ICONS)) or ""
+        return string.format("%s: %s%s", L["Classes"], table.concat(icons), more), true
+    elseif kind == "needs" then
+        local mine = groups.myClass and ns.Party.playerClass()
+        if not groups.needs and not mine then
+            return L["All groups"], false
+        end
+        local parts = {}
+        if groups.needs then
+            parts[1] = Widgets.describeRoles(groups.needs)
+        end
+        if mine then
+            parts[#parts + 1] = classMarkup(mine)
+        end
+        return string.format("%s: %s", L["Needs"], table.concat(parts, " ")), true
+    end
+    if not players.near and not groups.near then
+        return L["All levels"], false
+    end
+    return string.format("%s: %d-%d", L["Level"], nearRange()), true
+end
+
+function paintFilterBoxes()
+    for _, kind in ipairs(BOXES) do
+        local box = sections.boxes and sections.boxes[kind]
+        if box then
+            local text, on = boxText(kind)
+            box.label:SetText(text)
+            box.label:SetTextColor(1, on and 0.82 or 1, on and 0 or 1)
+            box.measure:SetText(text)
+            box:SetWidth(math.ceil(box.measure:GetStringWidth() or 0) + Widgets.DROPDOWN_PAD
+                + Widgets.DROPDOWN_ARROW + 4)
+        end
+    end
+end
+
+local function filterChanged()
+    onInput(10)
+    QueueWindow.refresh()
+end
+
+local function keepOpen()
+    return MenuResponse and MenuResponse.Refresh
+end
+
+local function roleChecks(root, filter, key)
+    for _, role in ipairs(Widgets.ROLES) do
+        root:CreateCheckbox(Widgets.roleMarkup(role, 16) .. " " .. Widgets.roleName(role), function()
+            return filter[key] ~= nil and string.find(filter[key], role, 1, true) ~= nil
+        end, function()
+            local on = not (filter[key] and string.find(filter[key], role, 1, true))
+            local roles = Widgets.toggleRole(filter[key], role, on)
+            filter[key] = roles ~= "THD" and roles or nil
+            filterChanged()
+            return keepOpen()
+        end)
+    end
+end
+
+local function toggleCheck(root, text, filter, key)
+    root:CreateCheckbox(text, function()
+        return filter[key] == true
+    end, function()
+        filter[key] = not filter[key] or nil
+        filterChanged()
+        return keepOpen()
+    end)
+end
+
+-- "All roles" and the like at the top of a box's menu: ticked while the box
+-- filters nothing; a click turns its filters off.
+local function allCheck(root, kind, text, keys)
+    root:CreateCheckbox(text, function()
+        return not select(2, boxText(kind))
+    end, function()
+        for _, key in ipairs(keys) do
+            sectionFilter(key[1])[key[2]] = nil
+        end
+        filterChanged()
+        return keepOpen()
+    end)
+end
+
+local MENUS = {
+    roles = function(root)
+        allCheck(root, "roles", L["All roles"], { { "players", "roles" } })
+        roleChecks(root, sectionFilter("players"), "roles")
+    end,
+    classes = function(root)
+        local players = sectionFilter("players")
+        allCheck(root, "classes", L["All classes"], { { "players", "classes" } })
+        for _, class in ipairs(allClasses()) do
+            root:CreateCheckbox(classLabel(class), function()
+                return players.classes ~= nil and players.classes[class] == true
+            end, function()
+                players.classes = players.classes or {}
+                players.classes[class] = not players.classes[class] or nil
+                if not next(players.classes) then
+                    players.classes = nil
+                end
+                filterChanged()
+                return keepOpen()
+            end)
+        end
+    end,
+    needs = function(root)
+        local groups = sectionFilter("groups")
+        allCheck(root, "needs", L["All groups"], { { "groups", "needs" }, { "groups", "myClass" } })
+        roleChecks(root, groups, "needs")
+        local mine = ns.Party.playerClass()
+        if mine then
+            root:CreateDivider()
+            toggleCheck(root, string.format(L["Room for my class (%s)"], classLabel(mine)), groups, "myClass")
+        end
+    end,
+    level = function(root)
+        local low, high = nearRange()
+        allCheck(root, "level", L["All levels"], { { "players", "near" }, { "groups", "near" } })
+        toggleCheck(root, string.format(L["Players near my level (%d-%d)"], low, high), sectionFilter("players"),
+            "near")
+        toggleCheck(root, string.format(L["Groups near my level (%d-%d)"], low, high), sectionFilter("groups"),
+            "near")
+    end,
+}
 
 local function build()
     frame = Widgets.window("ForeverGroupsQueueFrame", "Who is looking", WIDTH, 300)
@@ -1574,35 +1896,47 @@ local function build()
     frame:HookScript("OnHide", function()
         ns.PlayerMenu.hide()
     end)
-    -- In line with the headings and rows below; the role choices one after
-    -- another.
-    local show = Widgets.text(frame, "GameFontNormalSmall")
-    show:SetPoint("TOPLEFT", ROW_LEFT, -38 - TOP)
-    show:SetText("Show:")
-    sections.roleToggles = {}
+    -- In line with the headings and rows below. Only with WoW's own menu.
+    sections.boxes = {}
     local previous
-    for _, role in ipairs(Widgets.ROLES) do
-        local toggle = Widgets.roleToggle(frame, role, 18, "GameFontHighlightSmall", function(self)
-            local roles = Widgets.toggleRole(shownRoles() or "THD", role, self:GetChecked())
-            if roles == nil then
-                self:SetChecked(true)
-                return
-            end
-            ns.db.queueRoles = roles ~= "THD" and roles or nil
-            onInput(10)
-            QueueWindow.refresh()
+    for _, kind in ipairs(BOXES) do
+        local box = Widgets.dropdown(frame, function(self)
+            self:SetupMenu(function(_, root)
+                MENUS[kind](root)
+            end)
         end)
+        box.filterBox = kind
         if previous then
-            toggle:SetPoint("LEFT", previous, "RIGHT", 10, 0)
+            box:SetPoint("LEFT", previous, "RIGHT", BOX_GAP, 0)
         else
-            toggle:SetPoint("LEFT", show, "RIGHT", 8, 0)
+            box:SetPoint("TOPLEFT", ROW_LEFT, -31 - TOP)
         end
-        previous = toggle
-        sections.roleToggles[role] = toggle
+        box:SetShown(box.native)
+        sections.filterNative = box.native
+        sections.boxes[kind] = box
+        previous = box
     end
-    sections.refresh = Widgets.button(frame, "Refresh", 80)
-    sections.refresh:SetHeight(20)
-    sections.refresh:SetPoint("TOPRIGHT", -18, -32 - TOP)
+    -- Refresh in the title bar, left of the close button: WoW's own refresh
+    -- icon (its Group Finder's), drawn on the close button's level so the
+    -- panel's border stays below it.
+    local refresh = CreateFrame("Button", nil, frame)
+    refresh:SetSize(18, 18)
+    local close = frame.CloseButton
+    if close then
+        refresh:SetPoint("RIGHT", close, "LEFT", -2, 0)
+        local level = close:GetFrameLevel()
+        if type(level) == "number" then
+            refresh:SetFrameLevel(level)
+        end
+    else
+        refresh:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -30, -3)
+    end
+    local icon = refresh:CreateTexture(nil, "ARTWORK")
+    icon:SetAllPoints()
+    icon:SetTexture("Interface\\Buttons\\UI-RefreshButton")
+    refresh:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    refresh.iconLabel = "Refresh"
+    sections.refresh = refresh
     Widgets.tooltip(sections.refresh, "Refresh", "Searches WoW's Group Finder again. The list also refreshes "
         .. "when you scroll it, click in this window, or press keys while playing (at most every 10 seconds).")
     sections.refresh:SetScript("OnClick", function()
@@ -1615,9 +1949,10 @@ local function build()
             ns.Log.debug("scrolling may not search the Group Finder; only clicks and keys will")
         end
     end)
-    -- When WoW's Group Finder was last searched, left of Refresh.
-    sections.note = Widgets.text(frame, "GameFontDisableSmall", "RIGHT")
-    sections.note:SetPoint("RIGHT", sections.refresh, "LEFT", -8, 0)
+    -- When WoW's Group Finder was last searched, in the title bar left of
+    -- Refresh (on its level, above the panel's border).
+    sections.note = Widgets.text(sections.refresh, "GameFontDisableSmall", "RIGHT")
+    sections.note:SetPoint("RIGHT", sections.refresh, "LEFT", -4, 0)
     sections.groups = buildSection("Groups", 10, "groups", "groups")
     sections.players = buildSection("Players", 10, "players", "players")
 end

@@ -55,7 +55,7 @@ describe("class wishes", function()
         r = Compose.decode(rules({ 0, 0, MAGE, Compose.maskOf({ "ROGUE" }), Compose.maskOf({ "ROGUE" }) }))
         assert.is_false(Compose.fits(r, { { role = "D", class = "MAGE" }, { role = "D", class = "MAGE" } }))
         assert.is_false(Compose.fits(r, { { role = "D" } }))
-        assert.are.same({ "WARRIOR", "PALADIN", "SHAMAN", "DRUID" }, Compose.classesFor("T"))
+        assert.are.same({ "WARRIOR", "PALADIN", "DRUID" }, Compose.classesFor("T"))
     end)
 end)
 

@@ -21,6 +21,30 @@ local handshakeText
 local handshakeAttempts = 0
 local callbacks = {}
 local lastSentAt
+local dev = {}
+--@do-not-package@
+-- Developer copy only, the packager strips it from releases: with /fg debug
+-- on, the same party message (sent every few seconds) is logged once per
+-- 10 minutes, so it doesn't push the rest out of the log.
+local partyLogged, partyLoggedCount = {}, 0
+function dev.skipPartyLog(line)
+    if not (ns.db and ns.db.debug) then
+        return false
+    end
+    local now = GetTime()
+    if partyLogged[line] and now - partyLogged[line] < 600 then
+        return true
+    end
+    if partyLoggedCount >= 200 then
+        partyLogged, partyLoggedCount = {}, 0
+    end
+    if not partyLogged[line] then
+        partyLoggedCount = partyLoggedCount + 1
+    end
+    partyLogged[line] = now
+    return false
+end
+--@end-do-not-package@
 
 local function isSecret(value)
     return issecretvalue ~= nil and issecretvalue(value) == true
@@ -42,8 +66,11 @@ local function result(code)
         channelId = nil
         Comm.join()
         return "blocked"
+    elseif code == (enum.InvalidPrefix or 1) or code == (enum.InvalidMessage or 2)
+        or code == (enum.InvalidChatType or 4) then
+        return "error"
     end
-    return "error"
+    return "retry"
 end
 
 -- Every client announces its version every few seconds; logged, they pushed
@@ -61,8 +88,10 @@ local function transmit(text)
         return "blocked"
     end
     local ok, code = pcall(C_ChatInfo.SendAddonMessage, Comm.PREFIX, text, "CHANNEL", tostring(channelId))
-    local outcome = ok and result(code) or "error"
-    if not isVersionPing(text) then
+    local outcome = ok and result(code) or "retry"
+    if outcome ~= "ok" then
+        Log.debug("-> %s [%s, %s]", text, outcome, ok and ("code " .. tostring(code)) or tostring(code))
+    elseif not isVersionPing(text) then
         Log.debug("-> %s [%s]", text, outcome)
     end
     if outcome == "ok" then
@@ -307,7 +336,10 @@ function Comm.sendParty(text)
         return
     end
     local ok, code = pcall(C_ChatInfo.SendAddonMessage, Comm.PREFIX, text, "PARTY")
-    Log.debug("-> party %s [%s]", text, ok and tostring(code) or "error")
+    local line = text .. " [" .. (ok and tostring(code) or "error") .. "]"
+    if not (dev.skipPartyLog and dev.skipPartyLog(line)) then
+        Log.debug("-> party %s", line)
+    end
 end
 
 function Comm.init(onReady, onMessage, onParty, onFlood)
