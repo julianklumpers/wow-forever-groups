@@ -439,7 +439,9 @@ tab's picture runs on under it across the content and fades out, as one picture 
 `wow/ui/window/tabs.lua`, parts of the atlas through `Widgets.atlasPart`); the other tab shows only its name. With tabs
 the inner panel starts right under their gold base line, which replaces its top border (the Inset's
 `NineSlice.TopEdge` and top corners are hidden, `W.fitInset`) and runs between its side edges (`W.panelEdges`); the
-chosen tab's sides run into it with an outward rounded corner. The Quests tab lists the group and elite quests in the quest
+chosen tab's sides run into it with an outward rounded corner. The Battlegrounds tab carries a small orange
+"Beta" in its top right corner (out of the way of the name and the status dot), with a tooltip that it is not fully
+tested in the game yet and points to `/fg bugreport`. The Quests tab lists the group and elite quests in the quest
 log outside dungeons: quests WoW tags Group (`C_QuestLog.GetQuestTagInfo`, tagID `Enum.QuestTag.Group`) or suggests
 a group size for (`suggestedGroup`); Dungeon, Raid and PvP quests and quests under a dungeon's header are left out.
 Every listed quest is ticked until the player unticks it. Hovering a quest shows its zone, its objectives as WoW

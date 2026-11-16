@@ -116,6 +116,21 @@ describe("Find group on the Battlegrounds tab", function()
         world:advance(1)
     end
 
+    it("marks the tab as beta, with a tooltip that says why", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 25 })
+        world:advance(CONNECT)
+        client:slash("/dq")
+        local tab = client:find("Button", "Battlegrounds", client:frame("ForeverGroupsFrame"))
+        assert.are.equal("Beta", tab.beta.text)
+        assert.is_true(tab.beta.shown)
+        for _, hook in ipairs(tab.hooks.OnEnter) do
+            hook(tab)
+        end
+        assert.are.equal("Battlegrounds (Beta)", client.env.GameTooltip.text)
+        assert.is_truthy(client.env.GameTooltip.lines[1]:find("not fully tested", 1, true))
+    end)
+
     it("asks a listed group's leader in the player's bracket and joins when invited", function()
         local world = World.new()
         world:listGroup("Bg Lead", 919, { T = 0, H = 0, D = 1 })

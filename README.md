@@ -20,7 +20,7 @@ in the group, with roles set for you.
 - **Dungeons** — queue for one or more dungeons that fit your level, solo or with your party.
 - **Group quests** — a Quests tab with the group and elite quests in your quest log; hover one for its
   objectives, right-click it to open it in your quest log.
-- **Battlegrounds** — a Battlegrounds tab for Warsong Gulch, Arathi Basin and Darkspear Islands
+- **Battlegrounds** (beta) — a Battlegrounds tab for Warsong Gulch, Arathi Basin and Darkspear Islands
   in your level bracket: who is looking, and Find group to team up with other Forever Groups
   players, join a group listed in WoW's Group Finder, or build a party of five or a premade of
   ten (a raid, with at least two healers) from listed players. Sign up at a battlemaster as a

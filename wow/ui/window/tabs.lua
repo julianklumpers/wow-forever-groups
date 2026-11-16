@@ -161,6 +161,28 @@ function W.buildTabs()
             ns.Window.refresh()
         end)
     end
+    -- Battlegrounds is new and not yet tried in the game with several
+    -- players: a small orange "Beta" in the tab's top right corner, out of the
+    -- way of the name and the queue's status, and a tooltip saying so.
+    local battlegrounds = ui.tabs.battlegrounds
+    battlegrounds.beta = Widgets.text(battlegrounds, "GameFontNormalSmall", "RIGHT")
+    battlegrounds.beta:SetText(ns.L["Beta"])
+    battlegrounds.beta:SetTextColor(1, 0.5, 0.15)
+    battlegrounds.beta:SetPoint("TOPRIGHT", battlegrounds, "TOPRIGHT", -5, -3)
+    battlegrounds:HookScript("OnEnter", function(self)
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText(ns.L["Battlegrounds"] .. " (" .. ns.L["Beta"] .. ")", 1, 0.82, 0)
+            GameTooltip:AddLine(ns.L["New and not fully tested in the game yet. Something odd? /fg bugreport opens a "
+                .. "report to copy and send."], 1, 1, 1, true)
+            GameTooltip:Show()
+        end
+    end)
+    battlegrounds:HookScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
     local panel = type(W.frame.Inset) == "table" and W.frame.Inset or W.frame
     ui.tabArtSolid = panel:CreateTexture(nil, "BACKGROUND", nil, 2)
     ui.tabArtSolid:Hide()

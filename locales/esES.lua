@@ -576,4 +576,6 @@ ns.Locale.add({ "esES", "esMX" }, {
     ["Playstyle:"] = "Estilo de juego:",
     ["Choose a role and at least one quest."] = "Elige un rol y al menos una misión.",
     ["Right-click: open in your quest log"] = "Clic derecho: abrir en tu registro de misiones",
+    ["Beta"] = "Beta",
+    ["New and not fully tested in the game yet. Something odd? /fg bugreport opens a report to copy and send."] = "Nuevo y aún no probado del todo en el juego. ¿Algo raro? /fg bugreport abre un informe para copiar y enviar.",
 })

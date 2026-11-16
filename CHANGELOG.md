@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The Battlegrounds tab is marked Beta: it is new and not fully tested in the game yet.
 - Quests tab: hover a quest to see its objectives, right-click it to open it in your quest log.
 - Fixed: filling a quest for five from WoW's Group Finder left the questing queue ("Your party changed") and the
   group never started; the party now steps out of the queue while the invites fill it and is complete at five.
