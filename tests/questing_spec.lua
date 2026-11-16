@@ -444,6 +444,60 @@ describe("the questing queue and WoW's Group Finder", function()
         assert.is_true(client.ns.ProgressWindow.isShown())
     end)
 
+    it("fills a group of five from the Group Finder: out of the queue while the invites fill it", function()
+        local world = World.new()
+        for i, name in ipairs({ "Zone One", "Zone Two", "Zone Three", "Zone Four" }) do
+            world:list(name, "D", ELWYNN, 20, 400 - i)
+        end
+        local client = world:addClient("Solo Quester", { level = 20, questLog = {
+            { "Elwynn Forest", true }, { "The Big Five", false, 301, nil, 5 },
+        } })
+        world:advance(30)
+        client:slash("/dq")
+        client:click("Button", "Quests")
+        client:click("CheckButton", "DPS")
+        client:click("Button", "Find questing group")
+        world:advance(1)
+        assert.are.equal(4, #client.invites)
+        assert.is_nil(client.ns.questEngine.myEntry)
+        assert.is_true(client.ns.QuestQueue.entry().parked)
+        local joinedAt = client.ns.QuestQueue.entry().joinedAt
+        client.isLeader = true
+        for i = 1, 3 do
+            client.party[i] = client.invites[i]
+            client:fire("GROUP_ROSTER_UPDATE")
+            assert.are.equal(i + 1, #client.ns.QuestQueue.entry().members)
+        end
+        world:advance(31)
+        local entry = client.ns.questEngine.myEntry
+        assert.are.equal(4, #entry.members)
+        assert.are.equal(joinedAt, entry.joinedAt)
+        client.party[4] = "Zone Late"
+        client:fire("GROUP_ROSTER_UPDATE")
+        assert.is_true(client:said("Your party changed, so you left the questing queue"))
+
+        local full = World.new()
+        for i, name in ipairs({ "Zone One", "Zone Two", "Zone Three", "Zone Four" }) do
+            full:list(name, "D", ELWYNN, 20, 400 - i)
+        end
+        local leader = full:addClient("Solo Quester", { level = 20, questLog = {
+            { "Elwynn Forest", true }, { "The Big Five", false, 301, nil, 5 },
+        } })
+        full:advance(30)
+        leader:slash("/dq")
+        leader:click("Button", "Quests")
+        leader:click("CheckButton", "DPS")
+        leader:click("Button", "Find questing group")
+        full:advance(1)
+        leader.isLeader = true
+        for i = 1, 4 do
+            leader.party[i] = leader.invites[i]
+            leader:fire("GROUP_ROSTER_UPDATE")
+        end
+        assert.is_true(leader:said("Your group for The Big Five is complete"))
+        assert.is_nil(leader.ns.QuestQueue.entry())
+    end)
+
     it("asks the leader of a group in the zone when nobody is listed alone", function()
         local world = World.new()
         world:listGroup("Full Lead", ELWYNN, { T = 0, H = 0, D = 2 }, 300)
@@ -723,6 +777,10 @@ describe("Who is looking for group quests", function()
             end
         end
         assert.is_truthy(asked and asked:find("could you invite me for Hogger", 1, true))
+        world:advance(2)
+        assert.is_true(client.ns.QuestFinder.wasAsked("Zone Group"))
+        world:advance(300)
+        assert.is_false(client.ns.QuestFinder.wasAsked("Zone Group"))
     end)
 
     it("joining, asks a listed group first and only then invites players itself", function()

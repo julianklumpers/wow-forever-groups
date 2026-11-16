@@ -236,10 +236,12 @@ local function lacking(questId, party, known, patient, sharedTo)
 end
 
 -- Whether we are the one to share it: the first by name of the Forever
--- Groups players who hold it.
-local function isSharer(questId, known)
-    for name, set in pairs(known) do
-        if set[questId] and name < ns.selfName then
+-- Groups players in the party who hold it (lists of players who left stay
+-- in `known`).
+local function isSharer(questId, known, party)
+    for _, member in ipairs(party) do
+        local set = known[member.name]
+        if set and set[questId] and member.name < ns.selfName then
             return false
         end
     end
@@ -257,7 +259,7 @@ function QuestShare.autoShare(patient)
     local queue = {}
     for _, quest in ipairs(ns.Quests.entriesFor(dungeon)) do
         local id = quest.questID
-        if id and isPushable(id) and isSharer(id, known) then
+        if id and isPushable(id) and isSharer(id, known, party) then
             local names = lacking(id, party, known, patient, sharedTo)
             if names == nil then
                 C_Timer.After(AUTO_DELAY, function()

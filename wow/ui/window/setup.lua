@@ -562,7 +562,7 @@ end
 -- without one (wow/ui/playstylemenu.lua).
 function W.buildPlaystyle()
     ui.playstyleLabel = Widgets.text(W.frame, "GameFontNormalSmall")
-    ui.playstyleLabel:SetText("Playstyle:")
+    ui.playstyleLabel:SetText(L["Playstyle:"])
     local button = Widgets.dropdown(W.frame, setupMenu, function(self)
         ns.PlaystyleMenu.toggle(self, pickPlaystyle)
     end)

@@ -140,7 +140,7 @@ function W.refreshQuestsTab(y, state)
     ui.joinSummary:SetText(summary or "")
     ui.joinSummary:SetShown(summary ~= nil)
     Widgets.setEnabled(ui.join, ns.questEngine ~= nil and ready)
-    ui.ready:SetText("Choose a role and at least one quest.")
+    ui.ready:SetText(L["Choose a role and at least one quest."])
     ui.ready:SetShown(setup and not ready and (ui.hint:GetText() or "") == "")
     return y
 end

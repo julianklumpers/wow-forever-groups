@@ -517,7 +517,10 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames, now)
                 entries[i] = entry
             end
             fallback = { entries = entries, picked = pickFor(chosen, slots, anyRoles) }
-            share.left = math.min(share.left, PREFER_BUDGET)
+            -- Steps cut off here are never taken, so the round keeps them.
+            local capped = math.min(share.left, PREFER_BUDGET)
+            share.unused = (share.unused or 0) + share.left - capped
+            share.left = capped
         end
         return false
     end or nil
@@ -581,7 +584,7 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames, now)
                 bestFallback = group
             end
         end
-        local spent = start - share.left
+        local spent = start - share.left - (share.unused or 0)
         shared.left = shared.left - spent
         if rules then
             shared.wishLeft = shared.wishLeft - spent

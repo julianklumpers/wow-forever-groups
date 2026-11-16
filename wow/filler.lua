@@ -444,13 +444,19 @@ function Filler.varietyLeft()
     return math.max(0, ns.Config.VARIETY_TIME - (GetServerTime() - (state.startedAt or 0)))
 end
 
--- The classes in the group and invited to it with their roles, { [class] =
--- { count, roles } } (Fill.avoided).
+-- The classes in the group and on their way to it with their roles: the
+-- party, the players a formed queue group brought and the invites out,
+-- { [class] = { count, roles } } (Fill.avoided).
 local function classesInGroup()
     local classes = {}
     for _, member in ipairs(ns.GroupView.members()) do
         if member.classToken and not state.pending[member.name] then
             Fill.addClass(classes, member.classToken, member.role)
+        end
+    end
+    for _, player in ipairs(ns.Group.expectedPlayers()) do
+        if player.class and not state.pending[player.name] then
+            Fill.addClass(classes, player.class, player.role)
         end
     end
     for _, pending in pairs(state.pending) do
@@ -510,6 +516,18 @@ function Filler.trackInvite(name, role, class, roles)
     return true
 end
 
+-- An invite trackInvite counted that did not go out after all.
+function Filler.untrackInvite(name)
+    if not state or not state.pending[name] then
+        return
+    end
+    state.pending[name] = nil
+    state.exclude[name] = nil
+    state.invited[name] = nil
+    ns.RoleSync.forget(name)
+    changed()
+end
+
 -- Whether a fresh Group Finder search would help: roles are still open and
 -- the results are used up or older than `age` seconds.
 function Filler.wantsSearch(age)
@@ -556,7 +574,7 @@ function Filler.recompute()
         end
     end
     for _, member in ipairs(party) do
-        if not counted[member.name] then
+        if not counted[member.name] and not state.pending[member.name] then
             counted[member.name] = true
             members[#members + 1] = { name = member.name, roles = ns.PartyRoles.rolesOf(member) }
         end

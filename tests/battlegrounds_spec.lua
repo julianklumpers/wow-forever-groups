@@ -208,6 +208,43 @@ describe("Find group on the Battlegrounds tab", function()
         assert.are.equal("Late Healer", client.invites[8])
     end)
 
+    it("counts a healer already in the leader's party", function()
+        local world = World.new()
+        for i = 1, 12 do
+            world:list("Bg Player" .. i, "D", 919, 22)
+        end
+        local client = world:addClient("Solo Player", { level = 25 })
+        client.party, client.isLeader = { "Friend Heal" }, true
+        client.roles["Friend Heal"] = "HEALER"
+        ready(world, client, { "DPS" })
+        client:click("Button", "Find group")
+        world:advance(2)
+        for _, name in ipairs(client.invites) do
+            client:joins(name)
+        end
+        world:advance(5)
+        for i = 4, #client.invites do
+            client:joins(client.invites[i])
+        end
+        world:advance(5)
+        assert.are.equal(7, #client.invites)
+        assert.is_truthy(client:findText("Still looking for 1 healer"))
+    end)
+
+    it("stops looking once the player joins someone else's raid", function()
+        local world = World.new()
+        world:listGroup("Bg Lead", 919, { T = 0, H = 0, D = 1 })
+        local client = world:addClient("Solo Player", { level = 25 })
+        ready(world, client, { "DPS" })
+        client:click("Button", "Find group")
+        world:advance(2)
+        assert.is_true(client.ns.BgFinder.isActive())
+        client.party, client.inRaid, client.isLeader = { "Raid Lead", "Raid Two", "Raid Three" }, true, false
+        client:fire("GROUP_ROSTER_UPDATE")
+        world:advance(2)
+        assert.is_false(client.ns.BgFinder.isActive())
+    end)
+
     it("counts the player as a healer when they ticked Healer", function()
         local world = World.new()
         for i = 1, 6 do

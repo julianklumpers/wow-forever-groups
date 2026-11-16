@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Fixed: filling a quest for five from WoW's Group Finder left the questing queue ("Your party changed") and the
+  group never started; the party now steps out of the queue while the invites fill it and is complete at five.
+- Fixed: the class rule of the first 5 minutes now also counts the Forever Groups players still on their way to a
+  group formed from the queue, so no second Mage DPS is invited from the Group Finder while one is coming.
+- Fixed: a player joining at the moment roles changed could be counted twice, leaving a place unfilled or ending
+  with "Group complete!" at four players.
+- Fixed: after 5 minutes the matchmaker formed fewer groups per round than it could when many players of clashing
+  classes waited.
+- Fixed: a battleground premade now counts a healer already in the leader's party, and Find group stops once you
+  join someone else's raid.
+- Fixed: quests were not shared by yourself when a member who left had the same quest; party members kept seeing
+  "Your party is queued by …" after that player stopped leading; "Request to join" on a questing group was
+  forgotten after a second when not queued; a player who whispered while a group proposal was open was never
+  invited; `/fg fill` gave a Lua error with the Group Finder off before the window was opened; "Playstyle:" and
+  "Choose a role and at least one quest." are now translated.
 - A Shaman can no longer pick tank: the role is greyed out, and Forever Groups no longer offers a Shaman a tank
   place or lists a Shaman as a possible tank.
 - Who is looking has four filter boxes on its top line instead of the three role buttons, each with WoW's own

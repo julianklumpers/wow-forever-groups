@@ -264,6 +264,9 @@ function Window.startFill()
     if ns.Demo.isOn() then
         return
     end
+    if not W.frame then
+        W.build()
+    end
     if not ns.Features.groupFinder() then
         W.setHint(L["WoW's Group Finder is turned off in the settings (/fg settings)."])
         return
@@ -271,9 +274,6 @@ function Window.startFill()
     if ns.Filler.isActive() then
         ns.Filler.searchAgain()
         return
-    end
-    if not W.frame then
-        W.build()
     end
     local entry = ns.engine and ns.engine.myEntry
     local members, err

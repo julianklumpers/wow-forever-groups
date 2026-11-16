@@ -7,6 +7,8 @@ local Group = {}
 local SESSION_TIMEOUT = 120
 
 local pending = {}
+-- The class of each player in `pending`, from their queue entry's spec.
+local pendingClass = {}
 local blocked = false
 -- { name, at }: the leader of the group just formed, whose invite we expect.
 local expected
@@ -95,11 +97,12 @@ function Group.formed(view)
     end
     expected = nil
 
-    pending = {}
+    pending, pendingClass = {}, {}
     local others = {}
     for _, member in ipairs(view.members) do
         if member.owner ~= ns.selfName and not member.fake then
             pending[member.name] = true
+            pendingClass[member.name] = member.spec and (ns.Specs.decode(member.spec)) or nil
             others[#others + 1] = member.name
         end
     end
@@ -175,7 +178,8 @@ local function onRosterUpdate()
 end
 
 -- The players a formed group brought who have not joined the party yet,
--- sorted by name: { { name, role } } (role as agreed, RoleSync).
+-- sorted by name: { { name, role, class } } (role as agreed, RoleSync; class
+-- when their queue entry named it).
 function Group.expectedPlayers()
     local list = {}
     if Group.status() == nil then
@@ -187,7 +191,7 @@ function Group.expectedPlayers()
     end
     for name in pairs(pending) do
         if not inParty[name] then
-            list[#list + 1] = { name = name, role = ns.RoleSync.expected(name) or "D" }
+            list[#list + 1] = { name = name, role = ns.RoleSync.expected(name) or "D", class = pendingClass[name] }
         end
     end
     table.sort(list, function(a, b)

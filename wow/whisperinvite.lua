@@ -165,10 +165,13 @@ local function inviteForDungeon(name, role, class, roles)
     local dungeon = dungeonId and Dungeons.englishName(dungeonId) or "our dungeon"
     local roleName = Widgets.ROLE_NAMES[role]
     if not ns.Filler.trackInvite(name, role, class) then
+        -- A queue proposal is open: invited once it is over.
+        waiting[name] = waiting[name] or { roles = roles or role, class = class, at = GetTime() }
         return false
     end
     if not ns.Invites.send(name, "filler") then
-        return
+        ns.Filler.untrackInvite(name)
+        return false
     end
     reply(name, ns.Messages.inviteText(dungeonId, string.lower(roleName), "whisperYes",
         { role = string.lower(roleName), dungeon = dungeon }))

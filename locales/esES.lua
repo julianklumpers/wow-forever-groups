@@ -573,4 +573,6 @@ ns.Locale.add({ "esES", "esMX" }, {
     ["All classes"] = "Todas las clases",
     ["All groups"] = "Todos los grupos",
     ["All levels"] = "Todos los niveles",
+    ["Playstyle:"] = "Estilo de juego:",
+    ["Choose a role and at least one quest."] = "Elige un rol y al menos una misión.",
 })

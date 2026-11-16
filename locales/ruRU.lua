@@ -573,4 +573,6 @@ ns.Locale.add({ "ruRU" }, {
     ["All classes"] = "Все классы",
     ["All groups"] = "Все группы",
     ["All levels"] = "Все уровни",
+    ["Playstyle:"] = "Стиль игры:",
+    ["Choose a role and at least one quest."] = "Выбери роль и хотя бы одно задание.",
 })

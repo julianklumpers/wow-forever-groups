@@ -146,6 +146,11 @@ local function onRosterUpdate()
         info, lastSent = nil, nil
         return
     end
+    if not isLeader() and info and info.phase ~= "formed" and not select(2, fromMyParty(info.leader)) then
+        -- Its queue went with the lead; a new leader without Forever Groups
+        -- never says so.
+        info = nil
+    end
     if isLeader() then
         resendSoon()
     elseif not info and GetServerTime() - lastRequest >= REQUEST_INTERVAL then

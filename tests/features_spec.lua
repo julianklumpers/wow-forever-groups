@@ -609,6 +609,23 @@ describe("sharing dungeon quests in a new group", function()
         assert.are.same({}, heal.pushed)
     end)
 
+    it("shares a quest itself once the member who held it first has left", function()
+        local world, leader, heal = party(true, {
+            { "The Deadmines", true }, { "Red Silk Bandanas", false, 101 },
+        })
+        leader.unitQuests["No Addon"] = { [101] = true, [102] = true }
+        heal.unitQuests["No Addon"] = { [101] = true }
+        heal.ns.GroupView.track("5")
+        heal:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.are.same({ 102 }, leader.pushed)
+        leader.party = { "No Addon", "New Member" }
+        leader.unitQuests["New Member"] = {}
+        leader:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.are.same({ 102, 101, 102 }, leader.pushed)
+    end)
+
     local function fill(world, leader, heal)
         leader.party = { "Heally Mcheal", "No Addon", "Ann Addonless", "Bo Addonless" }
         heal.party = { "Tanky Mctank", "No Addon", "Ann Addonless", "Bo Addonless" }

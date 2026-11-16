@@ -106,8 +106,21 @@ function QuestQueue.isQueued()
     return engine() ~= nil and engine().myEntry ~= nil
 end
 
+-- A party whose Group Finder invites fill it: out of the queue (an entry
+-- holds at most Config.MAX_PREMADE players and places), kept here until the
+-- invitees join or an invite runs out. { members, key, joinedAt }
+local parked
+
+-- The queue entry, or while parked one like it (not on the channel).
 function QuestQueue.entry()
-    return engine() and engine().myEntry
+    local quests = engine()
+    if quests and quests.myEntry then
+        return quests.myEntry
+    end
+    if parked then
+        return { id = ns.selfName, members = parked.members, dungeons = { parked.key }, joinedAt = parked.joinedAt,
+            reserved = ns.QuestFinder.pendingRoles(), parked = true }
+    end
 end
 
 -- The player and, for a party leader, the party with each member's roles;
@@ -225,8 +238,75 @@ function QuestQueue.restore(attempt)
 end
 
 local function partyChanged()
-    engine():leave("auto")
+    parked = nil
+    if engine().myEntry then
+        engine():leave("auto")
+    end
+    QuestQueue.persist()
     Log.info("Your party changed, so you left the questing queue.")
+end
+
+local function complete(key)
+    parked = nil
+    if engine().myEntry then
+        engine():leave("auto")
+    end
+    QuestQueue.persist()
+    ns.Filler.stop(true)
+    Log.info("Your group for %s is complete.", ns.Quests.nameOf(key))
+    ns.QuestGroup.start({ dungeon = key })
+end
+
+-- Puts the party and the invites out into the queue: complete at the
+-- quest's group size; out of the queue while the invites fill the party,
+-- back in at the old place once one runs out; else the entry updated.
+-- keys: the quests to queue for, nil to keep them.
+function QuestQueue.sync(members, keys)
+    local quests = engine()
+    if not quests then
+        return
+    end
+    local key = ns.QuestFinder.focus()
+    local _, size = ns.QuestMatch.parse(key or "")
+    if size and #members >= size then
+        complete(key)
+        return
+    end
+    local reserved = ns.QuestFinder.pendingRoles()
+    if #members + #reserved > ns.Config.MAX_PREMADE then
+        if quests.myEntry then
+            parked = { members = members, key = key or quests.myEntry.dungeons[1], joinedAt = quests.myEntry.joinedAt }
+            quests:leave("auto")
+            Log.detail("The Group Finder invites fill the party; out of the questing queue until they join.")
+        elseif parked then
+            parked.members = members
+        end
+        return
+    end
+    if parked then
+        local saved = parked
+        parked = nil
+        if QuestQueue.join(keys or { saved.key }, members, saved.joinedAt) then
+            Log.detail("An invite ran out; back in the questing queue at the old place.")
+            if reserved ~= "" then
+                quests:updateEntry(members, reserved, nil)
+            end
+        end
+        return
+    end
+    if not quests.myEntry then
+        return
+    end
+    local ok, err = quests:updateEntry(members, reserved, keys)
+    if not ok and err == "proposal open" then
+        -- The proposal was made for the old party; step out of it so the
+        -- group is not formed with someone who left.
+        quests:withdrawFromProposal()
+        ok, err = quests:updateEntry(members, reserved, keys)
+    end
+    if not ok then
+        Log.debug("questing queue entry not updated: %s", tostring(err))
+    end
 end
 
 -- Keeps the queue entry in step with the party: players invited from the
@@ -268,25 +348,7 @@ local function onRosterUpdate()
         return
     end
     local key = ns.QuestFinder.focus()
-    local _, size = ns.QuestMatch.parse(key or "")
-    if size and #members >= size then
-        engine():leave("auto")
-        ns.Filler.stop(true)
-        Log.info("Your group for %s is complete.", ns.Quests.nameOf(key))
-        ns.QuestGroup.start({ dungeon = key })
-        return
-    end
-    local reserved, keys = ns.QuestFinder.pendingRoles(), key and { key } or nil
-    local ok, err = engine():updateEntry(members, reserved, keys)
-    if not ok and err == "proposal open" then
-        -- The proposal was made for the old party; step out of it so the
-        -- group is not formed with someone who left.
-        engine():withdrawFromProposal()
-        ok, err = engine():updateEntry(members, reserved, keys)
-    end
-    if not ok then
-        Log.debug("questing queue entry not updated: %s", tostring(err))
-    end
+    QuestQueue.sync(members, key and { key } or nil)
 end
 
 function QuestQueue.init()
@@ -295,6 +357,11 @@ end
 
 function QuestQueue.leave()
     local quests = engine()
+    if parked then
+        parked = nil
+        ns.charDb.questQueue = nil
+        Log.info("You left the questing queue.")
+    end
     if quests and quests.myEntry then
         quests:leave()
     end

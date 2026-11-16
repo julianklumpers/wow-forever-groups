@@ -19,6 +19,9 @@ local PARTY_SIZE = 5
 local MAX_ASKS = 1
 local ASK_WAIT = 20
 local PROMISE_WAIT = 30
+-- How long a request the player clicked (Who is looking) is remembered, also
+-- while not queued, so the leader's answer is recognised.
+local REQUEST_KEPT = 300
 
 local invited = {}
 
@@ -125,7 +128,7 @@ local function updateEntry(key)
     if not current then
         return
     end
-    ns.questEngine:updateEntry(current.members, pendingRoles(), { key })
+    ns.QuestQueue.sync(current.members, { key })
 end
 
 -- Returns whether the whisper went out.
@@ -395,7 +398,7 @@ function QuestFinder.request(listing, roles, wanted)
         Log.debug("asking %s failed: the whisper did not go out", listing.leader)
         return
     end
-    asks:add(listing.leader, listing.id, role)
+    asks:add(listing.leader, listing.id, role, true)
     Log.info("Asked %s to invite you for %s.", listing.leader, subject)
 end
 
@@ -429,7 +432,7 @@ end
 
 function QuestFinder.reset()
     invited, tried, focus, chosen, focusJoined = {}, {}, nil, nil, nil
-    asks = newAsks()
+    asks:keepRequests(REQUEST_KEPT)
 end
 
 -- For the status: { invited = n, asked = n }.
@@ -443,8 +446,10 @@ end
 
 function QuestFinder.tick()
     if not entry() then
-        if next(invited) or asks:any() or next(tried) or focus then
+        if next(invited) or next(tried) or focus then
             QuestFinder.reset()
+        else
+            asks:keepRequests(REQUEST_KEPT)
         end
         return
     end
@@ -461,7 +466,7 @@ function QuestFinder.tick()
     local current = entry()
     if next(invited) == nil and not focusJoined and chosen and current then
         focus = nil
-        ns.questEngine:updateEntry(current.members, pendingRoles(), chosen)
+        ns.QuestQueue.sync(current.members, chosen)
         chosen = nil
     else
         updateEntry(focus)

@@ -109,7 +109,7 @@ local function comingPlayers()
     for _, player in ipairs(ns.Group.expectedPlayers()) do
         local entry = ns.engine and ns.engine.queue:get(player.name)
         list[#list + 1] = { name = player.name, role = player.role,
-            class = entry and (ns.Specs.decode(entry.spec)) or nil }
+            class = player.class or (entry and (ns.Specs.decode(entry.spec))) or nil }
     end
     for _, invite in ipairs(ns.Filler.pendingPlaces()) do
         list[#list + 1] = invite

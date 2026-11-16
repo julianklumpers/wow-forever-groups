@@ -277,6 +277,17 @@ describe("Matchmaker", function()
             assert.are.equal("T", roleOf.War1)
         end)
 
+        it("forms every group of clashing classes after 5 minutes in one round", function()
+            local entries = {}
+            for i = 1, 300 do
+                local role = (i % 5 == 1) and "T" or (i % 5 == 2) and "H" or "D"
+                local id = string.format("P%04d", i)
+                entries[i] = as(id, i, role, role == "H" and "PRIEST" or "WARRIOR")
+                entries[i].dungeons = { "5" }
+            end
+            assert.are.equal(60, #Matchmaker.findGroups(entries, nil, 300 + 300))
+        end)
+
         it("leaves a second of a class in one role out of a partial group too", function()
             local entries = {
                 as("War1", 1, "D", "WARRIOR"), as("War2", 2, "D", "WARRIOR"), as("Mage", 3, "D", "MAGE"),

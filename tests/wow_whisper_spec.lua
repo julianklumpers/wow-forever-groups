@@ -51,6 +51,26 @@ describe("whisper invites while building a group", function()
         assert.truthy(repliesTo(tank, "Whisper Dps")[1]:find("Inviting you as dps for The Deadmines"))
     end)
 
+    it("invites a whisperer once a queue proposal that was open is over", function()
+        local world, tank = building()
+        tank.ns.engine.held = true
+        tank:whisperFrom("Whisper Dps", "dps here, inv?")
+        assert.is_false(invited(tank, "Whisper Dps"))
+        tank.ns.engine.held = false
+        world:advance(2)
+        assert.is_true(invited(tank, "Whisper Dps"))
+        assert.are.equal("DD", tank.ns.Filler.stillNeeded())
+
+        local invite = tank.env.C_PartyInfo.InviteUnit
+        tank.env.C_PartyInfo.InviteUnit = function()
+            error("blocked")
+        end
+        tank:whisperFrom("Other Dps", "dps here, inv?")
+        tank.env.C_PartyInfo.InviteUnit = invite
+        assert.is_nil(tank.ns.Filler.roleOf("Other Dps"))
+        assert.are.equal("DD", tank.ns.Filler.stillNeeded())
+    end)
+
     it("asks for the role once when someone only asks to join, and invites on the answer", function()
         local _, tank = building()
         tank:whisperFrom("Some Player", "inv pls")

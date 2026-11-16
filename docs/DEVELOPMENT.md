@@ -394,7 +394,8 @@ answers and questions handled as for dungeons) and joins an asked leader's invit
 off); after 60 s without one (also when no group is listed, so the Forever Groups queue gets its chance first), or
 with the wish to lead, or as a party leader, it builds the group from listed solo
 players in the bracket (the longest listed first, but healers first while the group lacks one per five players:
-the player counts when they ticked Healer, invited healers while in the group or on the way; the places still
+the player counts when they ticked Healer, invited healers while in the group or on the way, and the others in
+the group whose role (WoW's or the agreed one) is healer; the places still
 lacking a healer stay open, and the status says "Still looking for N healers"; the
 `bgInvite` whisper before each invite; no answer within 30 s or a decline frees the place, read from WoW's own
 `ERR_DECLINE_GROUP_S` / `ERR_ALREADY_IN_GROUP_S` texts through `Filler.declinedName`). Once a player it invited
@@ -472,7 +473,12 @@ group") and is still alone first asks the leader of a listed group in the zone t
 (the next after 20 s without an invite); only when there is no group left to ask, or when leading, are players
 listed alone in a quest's zone invited, with a whisper that names the quest and offers to share it ("Inviting you
 for Hogger (Elwynn Forest, group of 3). I can share the quest."); the entry then narrows to that quest with the
-invited roles reserved, invitees who join become members, and the group is complete at the quest's size. Opening
+invited roles reserved, invitees who join become members, and the group is complete at the quest's size. A queue
+entry holds at most `Config.MAX_PREMADE` players and places, so once members and invites out are more (a quest for
+five filled from the Group Finder) the party leaves the queue for the moment (`parked` in `wow/questqueue.lua`;
+`QuestQueue.entry()` still returns it, marked `parked`, so the finder and the window carry on): joins are followed
+there, the group completes at the quest's size, and an invite that runs out puts it back in the queue at its old
+place (`QuestQueue.sync`, the one way every update goes). Opening
 the window searches for what its open tab shows (`QueueWindow.searchIfStale(30, tab)`: the quests' zones on the
 Quests tab, the battlegrounds on the Battlegrounds tab), and every tab switch searches for the new tab
 (`searchIfStale(0, tab)`, so only the burst limit holds it back). Who is looking's "searched … ago" note uses the
@@ -523,7 +529,8 @@ Finder search (searching is protected and needs a click), then the best listed s
 dungeon; single-role players first, longest listed first) get a whisper and an invite. For the first 5 minutes of a
 group Forever Groups starts (`VARIETY_TIME`; not a run's replacement, `Filler.start`'s `replacement`; not while the
 leader's class wishes have a free place; `db.noClassVariety` turns it off) nobody is picked whose class the group
-(members and invites out, with their roles) already has in that role, or has twice (`Fill.avoided`, `MAX_OF_CLASS`;
+(members, the players a formed queue group brought who have not joined yet with the class of their queue entry,
+and invites out, with their roles) already has in that role, or has twice (`Fill.avoided`, `MAX_OF_CLASS`;
 `Filler.avoidClasses` → `Fill.pick`'s `avoid`, also for applicants to our listing): a Paladin tank and a Paladin DPS
 are fine, a third Paladin waits. The matchmaker holds groups from the queue to the same rule while their anchor (who
 waited longest) has waited less than `Config.VARIETY_TIME` and has no class wishes (`checkFor` in
@@ -533,8 +540,8 @@ the spec on the wire); a party's other players and places held for invites count
 Only the elected matchmaker computes groups, so an older one simply leaves the rule out. Past that time the rule is a
 preference: `Fill.pick`'s `prefer` (`Filler.preferClasses`) picks with it first and fills the roles left open with
 anyone who fits ("Passed over … another class was listed" in the log); the matchmaker keeps the first complete set that
-is not varied as a fallback, looks `PREFER_BUDGET` steps further for a varied one, and takes the fallback when there is
-none (`canStayVaried` prunes sets that can never be varied while the rule is hard).
+is not varied as a fallback, looks `PREFER_BUDGET` steps further for a varied one (the steps that cuts off are not
+charged to the round's budget, `share.unused`), and takes the fallback when there is none (`canStayVaried` prunes sets that can never be varied while the rule is hard).
 Levels are a preference too (never a limit; the dungeon's levels and a level limit still are): `Fill.pick`'s `near`
 (`Filler.groupLevel`, the player's and the party's average) puts the closest level before the longest listed, after
 single-role players; the matchmaker sorts an anchor's candidates by how far their average level is from the anchor's
@@ -737,7 +744,8 @@ filtered table says "Nobody matches your filters." / "No group matches your filt
 (WoW's `MenuUtil` context menu, else a small menu of our own): Whisper and Invite to group for a player; Request to
 join and Whisper leader for a group. Request to join whispers the leader the `applyAsk` message
 (`LfgApply.request`); the request is remembered for 5 minutes so the leader's invite is recognised. For a questing group
-it is the `questAsk` message naming a wanted quest in the group's zone (`QuestFinder.request`). Opened from the Quests
+it is the `questAsk` message naming a wanted quest in the group's zone (`QuestFinder.request`), kept for 5
+minutes too, also while not queued (`Asks:add`'s `request`, `Asks:keepRequests`). Opened from the Quests
 tab the window shows group quests instead (`QueueWindow.subject()`, which follows the main window's page, also when
 that page changes by itself), without the playstyle filter and without a Needs column for questing parties (quest
 groups have their own sizes and no fixed roles): the questing queue, and the Group Finder's "Quests & Zones"
@@ -790,7 +798,8 @@ not on the Quests tab.
   the counts per player, and "Share my quests" shares every shareable quest, 1.5 s apart (`wow/questshare.lua`).
   Sharing also happens by itself (`QuestShare.autoShare`, off with `db.noAutoShareQuests`) 5 s after the roster
   changes or a list arrives: each of our shareable quests for the dungeon that a member lacks is shared, by the
-  first by name of the Forever Groups players holding it, once per member (`sharedTo`, so a member who joins later
+  first by name of the Forever Groups players in the party holding it (lists of players who left are kept but
+  not counted), once per member (`sharedTo`, so a member who joins later
   gets it too). A member with Forever Groups whose list has not come in is waited for once (5 s more); one without
   it gets the quest unless `C_QuestLog.IsUnitOnQuest(unit, id)` says it has it (that says false at a distance, and
   WoW skips members already on the quest: "X is already on that quest."). Sharing from a timer is allowed

@@ -154,14 +154,31 @@ local function heals(listing)
     return string.find(listing.roles or "", "H", 1, true) ~= nil
 end
 
+local HEALER = { HEALER = "H" }
+
 -- Healers the group still lacks: one per five players; the player counts
--- when they ticked Healer, invited healers while in the group or on the way.
+-- when they ticked Healer, invited healers while in the group or on the way,
+-- and the others in the group by the role WoW or Forever Groups gave them.
 local function healersShort()
     local have = string.find(state.roles or "", "H", 1, true) and 1 or 0
     local names = groupNames()
     for name in pairs(state.healerNames) do
         if names[name] or state.pending[name] then
             have = have + 1
+        end
+    end
+    local prefix, count = "party", 4
+    if IsInRaid() then
+        prefix, count = "raid", 40
+    end
+    for i = 1, count do
+        local unit = prefix .. i
+        local name = ns.Party.unitName(unit)
+        if name and name ~= ns.selfName and not state.healerNames[name] then
+            local role = ns.RoleSync.expected(name) or HEALER[UnitGroupRolesAssigned(unit)]
+            if role == "H" then
+                have = have + 1
+            end
         end
     end
     return math.max(0, math.ceil(state.size / PARTY_SIZE) - have)
@@ -395,7 +412,8 @@ function BgFinder.tick()
     if not state then
         return
     end
-    if ns.Party.state() == "member" then
+    local party = ns.Party.state()
+    if party == "member" or (party == "raid" and not UnitIsGroupLeader("player")) then
         finish(nil)
         return
     end

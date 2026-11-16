@@ -18,8 +18,10 @@ function Asks.new(opts)
     }, Asks)
 end
 
-function Asks:add(leader, listingId, role)
-    self.list[leader] = { at = self.clock(), listingId = listingId, role = role }
+-- request: the player asked this one themselves (Who is looking), not the
+-- finder.
+function Asks:add(leader, listingId, role, request)
+    self.list[leader] = { at = self.clock(), listingId = listingId, role = role, request = request or nil }
 end
 
 -- The key an incoming name is stored under, or nil.
@@ -34,6 +36,19 @@ end
 
 function Asks:any()
     return next(self.list) ~= nil
+end
+
+-- Keeps only the player's own requests younger than `age` seconds; returns
+-- whether any ask of the finder's own was dropped.
+function Asks:keepRequests(age)
+    local dropped = false
+    for leader, ask in pairs(self.list) do
+        if not ask.request or self.clock() - ask.at >= age then
+            self.list[leader] = nil
+            dropped = dropped or not ask.request
+        end
+    end
+    return dropped
 end
 
 local function promised(self, ask)

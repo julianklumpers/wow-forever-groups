@@ -152,6 +152,15 @@ describe("Party status for members", function()
         assert.is_nil(statusText(member))
     end)
 
+    it("stops showing the queue once its leader no longer leads the party", function()
+        local _, leader, member = party()
+        assert.truthy(statusText(member):find("^Your party is queued by Tanky Mctank"))
+        leader.party, leader.isLeader = {}, false
+        member.party = { "No Addon Lead" }
+        member:fire("GROUP_ROSTER_UPDATE")
+        assert.is_nil(statusText(member))
+    end)
+
     it("tells members when the leader gets a proposal", function()
         local world, _, member = party()
         local others = {}

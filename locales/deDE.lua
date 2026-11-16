@@ -573,4 +573,6 @@ ns.Locale.add({ "deDE" }, {
     ["All classes"] = "Alle Klassen",
     ["All groups"] = "Alle Gruppen",
     ["All levels"] = "Alle Stufen",
+    ["Playstyle:"] = "Spielstil:",
+    ["Choose a role and at least one quest."] = "Wähle eine Rolle und mindestens eine Quest.",
 })
