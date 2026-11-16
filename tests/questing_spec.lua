@@ -62,6 +62,44 @@ describe("group and elite quests", function()
         assert.is_nil(client:findText("^Group and elite quests"))
         assert.is_not_nil(client:find("CheckButton", "The Deadmines"))
     end)
+
+    it("show their objectives on hover and open in the quest log on a right click", function()
+        local world = World.new()
+        local log = questLog()
+        log[2][6] = { { text = "Hogger slain: 0/1", finished = false }, { text = "Gnoll Paw: 1/1", finished = true } }
+        local client = world:addClient("Solo Player", { level = 20, questLog = log })
+        world:advance(12)
+        client:slash("/dq")
+        client:click("Button", "Quests")
+        local row = client:find("CheckButton", "Hogger")
+        for _, hook in ipairs(row.hooks.OnEnter) do
+            hook(row)
+        end
+        local tip = table.concat(client.env.GameTooltip.lines, "\n")
+        assert.is_truthy(tip:find("- Hogger slain: 0/1", 1, true))
+        assert.is_truthy(tip:find("- Gnoll Paw: 1/1", 1, true))
+        assert.is_truthy(tip:find("Right-click: open in your quest log", 1, true))
+
+        local opened
+        client.env.QuestMapFrame_OpenToQuestDetails = function(id)
+            opened = id
+        end
+        row.checked = not row.checked
+        row.scripts.OnClick(row, "RightButton")
+        assert.are.equal(176, opened)
+        assert.is_true(row.checked)
+        assert.is_not_nil(client:findText("^Group and elite quests  ·  2 selected$"))
+
+        client.env.QuestMapFrame_OpenToQuestDetails = nil
+        local toggled = false
+        client.env.ToggleQuestLog = function()
+            toggled = true
+        end
+        row.checked = not row.checked
+        row.scripts.OnClick(row, "RightButton")
+        assert.is_true(toggled)
+        assert.is_true(row.checked)
+    end)
 end)
 
 describe("the questing queue", function()

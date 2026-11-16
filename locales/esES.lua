@@ -575,4 +575,5 @@ ns.Locale.add({ "esES", "esMX" }, {
     ["All levels"] = "Todos los niveles",
     ["Playstyle:"] = "Estilo de juego:",
     ["Choose a role and at least one quest."] = "Elige un rol y al menos una misión.",
+    ["Right-click: open in your quest log"] = "Clic derecho: abrir en tu registro de misiones",
 })

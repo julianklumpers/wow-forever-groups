@@ -575,4 +575,5 @@ ns.Locale.add({ "ruRU" }, {
     ["All levels"] = "Все уровни",
     ["Playstyle:"] = "Стиль игры:",
     ["Choose a role and at least one quest."] = "Выбери роль и хотя бы одно задание.",
+    ["Right-click: open in your quest log"] = "Правый клик: открыть в журнале заданий",
 })

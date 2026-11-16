@@ -442,7 +442,11 @@ the inner panel starts right under their gold base line, which replaces its top 
 chosen tab's sides run into it with an outward rounded corner. The Quests tab lists the group and elite quests in the quest
 log outside dungeons: quests WoW tags Group (`C_QuestLog.GetQuestTagInfo`, tagID `Enum.QuestTag.Group`) or suggests
 a group size for (`suggestedGroup`); Dungeon, Raid and PvP quests and quests under a dungeon's header are left out.
-Every listed quest is ticked until the player unticks it. "Find questing group" queues the player with the chosen
+Every listed quest is ticked until the player unticks it. Hovering a quest shows its zone, its objectives as WoW
+words them (`C_QuestLog.GetQuestObjectives`' `text`, finished ones green) and who waits for it; a right click
+(the row takes `RightButtonUp` too, and undoes the tick WoW makes) opens it like WoW's own tracker
+(`QuestMapFrame_OpenToQuestDetails`; without it `C_QuestLog.SetSelectedQuest` and `ToggleQuestLog`, the debug log
+says which). "Find questing group" queues the player with the chosen
 roles; a party leader queues the whole party (members keep their party roles) for the ticked quests the party is
 not already big enough for, and a party that changes leaves the questing queue. Playstyles do not apply to quests.
 A `/reload` keeps the place in the questing queue (`charDb.questQueue`). For both queues: back within 2 minutes

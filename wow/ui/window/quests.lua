@@ -15,6 +15,40 @@ local questRows = W.questRows
 
 -- The Quests tab: group and elite quests to queue for.
 
+-- Opens the quest in WoW's quest log: on the map's quest details as WoW's
+-- own tracker does, else the quest log selected on it.
+local function openInQuestLog(questID)
+    if type(QuestMapFrame_OpenToQuestDetails) == "function" and pcall(QuestMapFrame_OpenToQuestDetails, questID) then
+        ns.Log.debug("quest %d opened on the map's quest details", questID)
+        return
+    end
+    if C_QuestLog and C_QuestLog.SetSelectedQuest then
+        pcall(C_QuestLog.SetSelectedQuest, questID)
+    end
+    if type(ToggleQuestLog) == "function" then
+        pcall(ToggleQuestLog)
+    end
+    ns.Log.debug("quest %d: no map quest details, opened the quest log", questID)
+end
+
+-- The quest's objectives as WoW words them ("Hogger slain: 0/1"), finished
+-- ones in green, into the tooltip.
+local function addObjectives(questID)
+    if not questID or not C_QuestLog or not C_QuestLog.GetQuestObjectives then
+        return
+    end
+    local ok, objectives = pcall(C_QuestLog.GetQuestObjectives, questID)
+    for _, objective in ipairs(ok and type(objectives) == "table" and objectives or {}) do
+        if type(objective.text) == "string" and objective.text ~= "" then
+            if objective.finished then
+                GameTooltip:AddLine("- " .. objective.text, 0.4, 0.9, 0.4, true)
+            else
+                GameTooltip:AddLine("- " .. objective.text, 1, 1, 1, true)
+            end
+        end
+    end
+end
+
 function W.questUnticked()
     ns.charDb.questUnticked = ns.charDb.questUnticked or {}
     return ns.charDb.questUnticked
@@ -47,6 +81,7 @@ function W.showQuestRow(row, quest, y)
     local key = quest.key
     local _, size = ns.QuestMatch.parse(key)
     row.key = key
+    row.questID = quest.questID
     row.label:SetText(quest.title or ns.Quests.nameOf(key))
     row.range:SetText(string.format(L["%s · group of %d"], L[quest.label or "Group"], size or 0))
     row.zoneName = quest.zone
@@ -179,11 +214,23 @@ function W.buildQuests()
     ui.questEmpty = Widgets.text(W.frame, "GameFontDisableSmall")
     ui.questEmpty:SetWidth(W.CONTENT)
     for i = 1, MAX_QUEST_ROWS do
-        local row = Widgets.check(W.frame, "", function(self)
+        local row = Widgets.check(W.frame, "", function(self, button)
+            if button == "RightButton" then
+                -- WoW ticks a check box on any click it takes; a right
+                -- click only opens the quest.
+                self:SetChecked(not self:GetChecked())
+                if self.questID then
+                    openInQuestLog(self.questID)
+                end
+                return
+            end
             W.questUnticked()[self.key] = not self:GetChecked() or nil
             W.setHint("")
             ns.Window.refresh()
         end)
+        if row.RegisterForClicks then
+            row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        end
         row.range = Widgets.text(row, "GameFontDisableSmall")
         row.range:SetPoint("LEFT", row, "LEFT", RANGE_X + 40, 0)
         -- Like the dungeons: who is looking (Forever Groups and solo players
@@ -200,9 +247,13 @@ function W.buildQuests()
                 if self.zoneName then
                     GameTooltip:AddLine(self.zoneName, 1, 1, 1)
                 end
+                addObjectives(self.questID)
                 if (self.waitingCount or 0) > 0 then
                     GameTooltip:AddLine(string.format(L["%d waiting with Forever Groups"], self.waitingCount),
                         1, 0.82, 0)
+                end
+                if self.questID then
+                    GameTooltip:AddLine(L["Right-click: open in your quest log"], 0.6, 0.6, 0.6)
                 end
                 GameTooltip:Show()
             end

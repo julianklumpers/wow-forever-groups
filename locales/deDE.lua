@@ -575,4 +575,5 @@ ns.Locale.add({ "deDE" }, {
     ["All levels"] = "Alle Stufen",
     ["Playstyle:"] = "Spielstil:",
     ["Choose a role and at least one quest."] = "Wähle eine Rolle und mindestens eine Quest.",
+    ["Right-click: open in your quest log"] = "Rechtsklick: im Questlog öffnen",
 })

@@ -115,7 +115,7 @@ local wow_read_globals = {
     "UnitName",
     "UnitSetRole",
     "date",
-    "issecretvalue", "canaccessvalue", "GameFontNormalSmall", "GameFontHighlightSmall", "geterrorhandler", "C_QuestLog", "QuestLogPushQuest", "C_EncounterJournal", "EJ_GetEncounterInfoByIndex", "EJ_GetInstanceForMap", "GetNumQuestLogEntries", "GetQuestLogTitle", "C_Map", "UiMapPoint", "C_SuperTrack", "UnitPosition", "CreateVector2D", "GetInstanceInfo",
+    "issecretvalue", "canaccessvalue", "GameFontNormalSmall", "GameFontHighlightSmall", "geterrorhandler", "C_QuestLog", "QuestLogPushQuest", "QuestMapFrame_OpenToQuestDetails", "ToggleQuestLog", "C_EncounterJournal", "EJ_GetEncounterInfoByIndex", "EJ_GetInstanceForMap", "GetNumQuestLogEntries", "GetQuestLogTitle", "C_Map", "UiMapPoint", "C_SuperTrack", "UnitPosition", "CreateVector2D", "GetInstanceInfo",
     "strsplit",
     "time",
 }
