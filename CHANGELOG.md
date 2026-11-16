@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.29.0 (2026-11-16)
 
 - The windows no longer always cover WoW's own: click the map and it comes to the front, click Forever Groups and
   it comes back (the main window and Who is looking together). A group proposal still shows above everything.
