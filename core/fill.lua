@@ -28,10 +28,18 @@ local function limitFits(listing, limit)
 end
 
 -- Players who can play only the open role come first, so flexible players
--- stay available for scarcer roles; then whoever has been listed longest.
-local function better(a, b)
+-- stay available for scarcer roles; then, with `near` (the group's level),
+-- whoever is closest to it; then whoever has been listed longest.
+local function distance(listing, near)
+    return listing.level and math.abs(listing.level - near) or math.huge
+end
+
+local function better(a, b, near)
     if #a.roles ~= #b.roles then
         return #a.roles < #b.roles
+    end
+    if near and distance(a, near) ~= distance(b, near) then
+        return distance(a, near) < distance(b, near)
     end
     if (a.age or 0) ~= (b.age or 0) then
         return (a.age or 0) > (b.age or 0)
@@ -98,7 +106,8 @@ local function pickInOrder(listings, opts, order)
                 if listing.solo and not exclude[listing.name] and not taken[listing.name]
                     and Roles.has(listing.roles, role) and lists(listing, opts.dungeon)
                     and levelFits(listing, opts.range) and limitFits(listing, opts.levels)
-                    and (not best or better(listing, best)) and fitsWith(places, picks, role, listing.classToken)
+                    and (not best or better(listing, best, opts.near))
+                    and fitsWith(places, picks, role, listing.classToken)
                     and not Fill.avoided(opts.avoid, picked, listing.classToken, role) then
                     best = listing
                 end
@@ -120,11 +129,40 @@ end
 -- opts: missing ("HDD"), dungeon (our id), exclude (set of names),
 -- range ({ min, max } for the dungeon, optional), places (class wishes,
 -- optional), levels (a leader's level limit, optional), avoid (the group's
--- classes while it should get varied ones, optional; Fill.avoided).
+-- classes while it should get varied ones, optional; Fill.avoided), prefer
+-- (the same, as a preference: the roles nobody of another class can fill go
+-- to anyone who fits; never with class wishes, `places`).
 -- Returns picks { { name, role } } and the roles still open ("D").
 -- Roles are tried in every order and the order that fills the most roles
 -- wins, so a flexible player is not spent on a role someone else could take.
 function Fill.pick(listings, opts)
+    if opts.prefer and not opts.avoid then
+        local varied = {}
+        for key, value in pairs(opts) do
+            varied[key] = value
+        end
+        varied.avoid, varied.prefer = opts.prefer, nil
+        local picks, open = Fill.pick(listings, varied)
+        if open == "" then
+            return picks, open
+        end
+        local rest, exclude = {}, {}
+        for key, value in pairs(opts) do
+            rest[key] = value
+        end
+        for name in pairs(opts.exclude or {}) do
+            exclude[name] = true
+        end
+        for _, pick in ipairs(picks) do
+            exclude[pick.name] = true
+        end
+        rest.missing, rest.exclude, rest.prefer = open, exclude, nil
+        local more, still = Fill.pick(listings, rest)
+        for _, pick in ipairs(more) do
+            picks[#picks + 1] = pick
+        end
+        return picks, still
+    end
     local bestPicks, bestOpen
     for _, order in ipairs(ROLE_ORDERS) do
         local picks, open = pickInOrder(listings, opts, order)
@@ -179,7 +217,7 @@ function Fill.plan(listings, opts)
         local picks, open = Fill.pick(listings, {
             missing = opts.missing, dungeon = dungeon, exclude = opts.exclude,
             range = opts.ranges and opts.ranges[dungeon], places = opts.places, levels = opts.levels,
-            avoid = opts.avoid,
+            avoid = opts.avoid, prefer = opts.prefer, near = opts.near,
         })
         if not best or #picks > #best.picks then
             best = { dungeon = dungeon, picks = picks, open = open }

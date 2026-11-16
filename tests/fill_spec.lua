@@ -44,6 +44,28 @@ describe("Fill", function()
         assert.is_true(Fill.avoided({ PALADIN = { count = 2, roles = { T = true, H = true } } }, {}, "PALADIN", "D"))
     end)
 
+    it("prefers another class, and takes one the group has when nobody else is listed", function()
+        local war, mage = listing("War", "D", nil, 900), listing("Mage", "D", nil, 10)
+        war.classToken, mage.classToken = "WARRIOR", "MAGE"
+        local prefer = { WARRIOR = { count = 1, roles = { D = true } } }
+        local picks = Fill.pick({ war, mage }, { missing = "D", dungeon = "5", prefer = prefer })
+        assert.are.equal("Mage", picks[1].name)
+        picks = Fill.pick({ war }, { missing = "D", dungeon = "5", prefer = prefer })
+        assert.are.equal("War", picks[1].name)
+        picks = Fill.pick({ war, mage }, { missing = "DD", dungeon = "5", prefer = prefer })
+        assert.are.equal(2, #picks)
+    end)
+
+    it("takes the player closest to the group's level before the one listed longest", function()
+        local far, close = listing("Far", "D", nil, 900, 16), listing("Close", "D", nil, 10, 21)
+        local picks = Fill.pick({ far, close }, { missing = "D", dungeon = "5", near = 20 })
+        assert.are.equal("Close", picks[1].name)
+        picks = Fill.pick({ far, close }, { missing = "D", dungeon = "5" })
+        assert.are.equal("Far", picks[1].name)
+        local plan = Fill.plan({ far, close }, { missing = "D", dungeons = { "5" }, near = 20 })
+        assert.are.equal("Close", plan.picks[1].name)
+    end)
+
     it("picks a player for each open role, longest listed first", function()
         local listings = {
             listing("NewHeal", "H", nil, 10), listing("OldHeal", "H", nil, 300), listing("Dps", "D", nil, 50),

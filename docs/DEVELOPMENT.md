@@ -221,6 +221,7 @@ Lua 5.1, luacheck and busted are installed locally in `.lua51/`
 SOAK_SEED=7 SOAK_STEPS=2000 .lua51/bin/busted tests/soak_spec.lua   # a longer random session
 LOAD=1 .lua51/bin/busted tests/load_spec.lua   # channel load measurement (left out of the normal run)
 LOAD_CLIENTS=150 LOAD_SECONDS=300 .lua51/bin/busted tests/load_spec.lua   # a bigger one
+.lua51/bin/lua tools/simulate.lua busy 60 1 5 grace   # matchmaking variants (scenario, minutes, seed, runs, set)
 python3 scripts/package.py        # dist/ForeverGroups-<version>.zip with only what the .toc loads
 ```
 
@@ -228,6 +229,25 @@ python3 scripts/package.py        # dist/ForeverGroups-<version>.zip with only w
 proposals, logging out) and checks after every step that nobody is stuck: no queue held without a proposal in the
 other, no proposal open past its deadline, no popup without a proposal or proposal without a popup. The mock keeps
 Group Finder results secret during chat-messaging lockdown (`World.SECRET`), as Midnight does.
+
+`tools/simulate.lua` compares matchmaking variants without the game, second by second: Forever Groups players arrive
+(roles, classes, 1-3 of 6 dungeons, some duos) and others see their entry 1-2 s later, the real
+`Matchmaker.findGroups` / `findPartialGroup` run every 5 s at a moment of their own, and a player without a group
+invites simulated Group Finder listings with the real `Fill.pick` / `Fill.plan` (60% accept after 5-20 s, the rest
+time out after 30 s). A player with a possible partner waits the variant's `grace` first (`PARTNER_GRACE`), and a
+group that builds leaves a role a queued solo Forever Groups player can play to them for 20 s (`ADDON_GRACE`, as
+`addonRoles` in `wow/filler.lua`); one who invited anyone is a party for the matchmaker (open invites are reserved roles), two parties never merge, and an entry
+whose invites fill the group leaves the matchmaker until a place opens (as `wow/main.lua` parks it). Every variant
+replays the same arrivals and answers. Sets (`Sim.VARIANT_SETS`): `main` (current, no partial groups, no class
+variety, no partner grace), `hold` (with and without leaving roles to Forever Groups players), `level` (with and
+without the level preference), `adaptive` (the strict class time fixed at 5, 2 or 1 minutes, or growing with the
+listed players available; measured: shorter saves at most ~30 s and gives 2-3x the class doubles, so 5 minutes stays)
+and `grace` (0-20 s). Dungeons have levels (15-31) and players pick only those their
+level fits; the "levels" column is the average gap between a group's highest and lowest level. The table shows groups by source (full from the queue, partial, a
+lone player's own), the wait of queued players until their group is complete (average, median, 90th percentile, max),
+who is still waiting at the end, groups with two of a class in one role or three of a class, Forever Groups players
+per group, and the matchmaker's time per round. Left out: playstyles, languages, class wishes, asking listed groups
+first. `tests/simulate_spec.lua` runs a short one so it keeps working.
 
 `tests/load_spec.lua` (only with `LOAD=1` or a `LOAD_*` setting) measures the channel load: many dungeon engines on one channel, with players logging in and
 out, reloading, queueing and answering proposals, once at a quiet login rate and once at a busy one (`LOAD_LOGINS`,
@@ -497,12 +517,25 @@ language).
 When queued players cannot make a full group, the matchmaker proposes a partial group right away (`PARTIAL_AFTER = 0`; at least 2
 players); the roles left open are filled from WoW's own Group Finder: the leader's Accept click also runs a Group
 Finder search (searching is protected and needs a click), then the best listed solo players (right role, level and
-dungeon; single-role players first, longest listed first) get a whisper and an invite. For the first 3 minutes of a
+dungeon; single-role players first, longest listed first) get a whisper and an invite. For the first 5 minutes of a
 group Forever Groups starts (`VARIETY_TIME`; not a run's replacement, `Filler.start`'s `replacement`; not while the
 leader's class wishes have a free place; `db.noClassVariety` turns it off) nobody is picked whose class the group
 (members and invites out, with their roles) already has in that role, or has twice (`Fill.avoided`, `MAX_OF_CLASS`;
 `Filler.avoidClasses` → `Fill.pick`'s `avoid`, also for applicants to our listing): a Paladin tank and a Paladin DPS
-are fine, a third Paladin waits. A whisperer held back waits in `wow/whisperinvite.lua` until then; the log counts
+are fine, a third Paladin waits. The matchmaker holds groups from the queue to the same rule while their anchor (who
+waited longest) has waited less than `Config.VARIETY_TIME` and has no class wishes (`checkFor` in
+`core/matchmaker.lua`: a complete set is accepted only with a role assignment, from every assignment
+`Roles.options(…, true)`, that passes `varied`; partial groups too). It knows only each entry's owner's class (from
+the spec on the wire); a party's other players and places held for invites count as unknown and are never held back.
+Only the elected matchmaker computes groups, so an older one simply leaves the rule out. Past that time the rule is a
+preference: `Fill.pick`'s `prefer` (`Filler.preferClasses`) picks with it first and fills the roles left open with
+anyone who fits ("Passed over … another class was listed" in the log); the matchmaker keeps the first complete set that
+is not varied as a fallback, looks `PREFER_BUDGET` steps further for a varied one, and takes the fallback when there is
+none (`canStayVaried` prunes sets that can never be varied while the rule is hard).
+Levels are a preference too (never a limit; the dungeon's levels and a level limit still are): `Fill.pick`'s `near`
+(`Filler.groupLevel`, the player's and the party's average) puts the closest level before the longest listed, after
+single-role players; the matchmaker sorts an anchor's candidates by how far their average level is from the anchor's
+(`Matchmaker.levelPreference`, `averageLevel`), whoever waited `VARIETY_TIME` counting as near, then by queue order. A whisperer held back waits in `wow/whisperinvite.lua` until then; the log counts
 them per role ("of a class your group has in that role or twice, for 95 s more"). The test mock turns it off unless a client
 is made with `classVariety` (its listed players are mostly Paladins). Anyone who declines or does not
 join within 30 s is replaced (a player who joins later is kept while a spot is open). The invite follows the whisper

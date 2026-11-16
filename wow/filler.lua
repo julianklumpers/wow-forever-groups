@@ -30,10 +30,6 @@ local ADDON_GRACE = 20
 -- Results stay usable this long: delisted players drop out of them as WoW
 -- reports it, only new listings need a search (which needs player input).
 local STALE_RESULTS = 300
--- A group Forever Groups starts building gets varied classes for this long
--- (core/fill.lua, Fill.avoided); after it anyone who fits
--- (db.noClassVariety: never held back).
-local VARIETY_TIME = 180
 local DECLINE_MESSAGES = { "ERR_DECLINE_GROUP_S", "ERR_ALREADY_IN_GROUP_S", "ERR_BAD_PLAYER_NAME_S" }
 
 local state
@@ -285,11 +281,12 @@ function Filler.step()
         return
     end
     local picks, open
-    local places, avoid = Filler.freePlaces(), Filler.avoidClasses()
+    local places, avoid, prefer = Filler.freePlaces(), Filler.avoidClasses(), Filler.preferClasses()
+    local near = Filler.groupLevel()
     if state.dungeon then
         picks, open = Fill.pick(listings, {
             missing = needed, dungeon = state.dungeon, exclude = state.exclude, range = rangeOf(state.dungeon),
-            places = places, levels = ns.PartyLevels.rules("dungeons"), avoid = avoid,
+            places = places, levels = ns.PartyLevels.rules("dungeons"), avoid = avoid, prefer = prefer, near = near,
         })
     else
         local ranges = {}
@@ -298,12 +295,26 @@ function Filler.step()
         end
         local plan = Fill.plan(listings, {
             missing = needed, dungeons = state.dungeons, exclude = state.exclude, ranges = ranges, places = places,
-            levels = ns.PartyLevels.rules("dungeons"), avoid = avoid,
+            levels = ns.PartyLevels.rules("dungeons"), avoid = avoid, prefer = prefer, near = near,
         })
         picks, open = plan.picks, plan.open
         if #picks > 0 then
             state.dungeon = plan.dungeon
             ns.GroupView.track(plan.dungeon)
+        end
+    end
+    if prefer and #picks > 0 and state.dungeon then
+        local chosen = {}
+        for _, pick in ipairs(picks) do
+            chosen[pick.name] = true
+        end
+        local plain = Fill.pick(listings, { missing = needed, dungeon = state.dungeon, exclude = state.exclude,
+            range = rangeOf(state.dungeon), levels = ns.PartyLevels.rules("dungeons"), near = near })
+        for _, pick in ipairs(plain) do
+            if not chosen[pick.name] then
+                Log.detail("Passed over %s (%s) for a %s place: another class was listed.", pick.name,
+                    pick.class and ns.Spec.className(pick.class) or "?", Widgets.ROLE_NAMES[pick.role])
+            end
         end
     end
     local room = freePlaces()
@@ -418,22 +429,24 @@ end
 
 -- An invite sent another way (an applicant to our listing) counts like one of
 -- ours: its role is reserved, and joining or not is followed the same way.
--- Seconds left in which the group gets varied classes; 0 when that is over,
--- off, or the leader's class wishes decide instead.
+-- Varied classes (Fill.avoided) for this group: not for a replacement, off
+-- with db.noClassVariety, and the leader's class wishes decide instead.
+local function wantsVariety()
+    return state ~= nil and state.variety == true and not ns.db.noClassVariety and Filler.freePlaces() == nil
+end
+
+-- Seconds left of Config.VARIETY_TIME from the start, in which a class the
+-- group has enough of waits; 0 when that is over or there is no variety.
 function Filler.varietyLeft()
-    if not state or not state.variety or ns.db.noClassVariety or Filler.freePlaces() then
+    if not wantsVariety() then
         return 0
     end
-    return math.max(0, VARIETY_TIME - (GetServerTime() - (state.startedAt or 0)))
+    return math.max(0, ns.Config.VARIETY_TIME - (GetServerTime() - (state.startedAt or 0)))
 end
 
 -- The classes in the group and invited to it with their roles, { [class] =
--- { count, roles } } (Fill.avoided), while the group should get varied ones
--- (Filler.varietyLeft); nil otherwise.
-function Filler.avoidClasses()
-    if Filler.varietyLeft() <= 0 then
-        return nil
-    end
+-- { count, roles } } (Fill.avoided).
+local function classesInGroup()
     local classes = {}
     for _, member in ipairs(ns.GroupView.members()) do
         if member.classToken and not state.pending[member.name] then
@@ -446,6 +459,34 @@ function Filler.avoidClasses()
         end
     end
     return classes
+end
+
+-- The average level of the player and the party: of the players who fit, the
+-- closest to it go first (Fill.pick's near).
+function Filler.groupLevel()
+    local sum, count = 0, 0
+    local own = Party.playerLevel()
+    if type(own) == "number" and own > 0 then
+        sum, count = own, 1
+    end
+    for _, member in ipairs(Party.members() or {}) do
+        if type(member.level) == "number" and member.level > 0 then
+            sum, count = sum + member.level, count + 1
+        end
+    end
+    return count > 0 and sum / count or nil
+end
+
+-- The group's classes while one it has enough of waits (Filler.varietyLeft);
+-- nil otherwise.
+function Filler.avoidClasses()
+    return Filler.varietyLeft() > 0 and classesInGroup() or nil
+end
+
+-- The group's classes once nobody waits for another class any more: another
+-- class that is listed still goes first (Fill.pick's prefer); nil otherwise.
+function Filler.preferClasses()
+    return wantsVariety() and Filler.varietyLeft() <= 0 and classesInGroup() or nil
 end
 
 -- The class wishes' free places, with the invites on their way counted

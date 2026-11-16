@@ -21,6 +21,9 @@ local Config = {
     PARTIAL_GROUPS = true,
     PARTIAL_AFTER = 0,
     PARTIAL_MIN_PLAYERS = 2,
+    -- A group gets varied classes while its longest waiting player has
+    -- waited less than this, or Forever Groups builds it this long (Fill.avoided).
+    VARIETY_TIME = 300,
     SLOTS = { T = 1, H = 1, D = 3 },
 }
 

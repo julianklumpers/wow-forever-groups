@@ -220,4 +220,95 @@ describe("Matchmaker", function()
         assert.are.same({}, Matchmaker.findGroups(entries))
         assert.is_true(os.clock() - started < 1)
     end)
+
+    describe("the first minutes of a group", function()
+        local function as(id, joinedAt, roles, class)
+            local e = entry(id, joinedAt, roles)
+            e.spec = class
+            return e
+        end
+
+        it("takes no second of a class in one role while the longest waiting has waited under 5 minutes", function()
+            local entries = {
+                as("Tank", 1, "T", "PALADIN"), as("Heal", 2, "H", "PRIEST"), as("War1", 3, "D", "WARRIOR"),
+                as("War2", 4, "D", "WARRIOR"), as("Mage", 5, "D", "MAGE"), as("Rogue", 6, "D", "ROGUE"),
+            }
+            local groups = Matchmaker.findGroups(entries, nil, 60)
+            assert.are.same({ "Heal", "Mage", "Rogue", "Tank", "War1" }, ids(groups[1]))
+            assert.are.same({ "Heal", "Mage", "Tank", "War1", "War2" }, ids(Matchmaker.findGroups(entries)[1]))
+        end)
+
+        it("still prefers another class after 5 minutes, but forms the group when there is none", function()
+            local entries = {
+                as("Tank", 1, "T", "PALADIN"), as("Heal", 2, "H", "PRIEST"), as("War1", 3, "D", "WARRIOR"),
+                as("War2", 4, "D", "WARRIOR"), as("Mage", 5, "D", "MAGE"), as("Rogue", 6, "D", "ROGUE"),
+            }
+            local later = 1 + 300
+            local group = Matchmaker.findGroups(entries, nil, later)[1]
+            assert.are.same({ "Heal", "Mage", "Rogue", "Tank", "War1" }, ids(group))
+            local warriors = {
+                as("Tank", 1, "T", "PALADIN"), as("Heal", 2, "H", "PRIEST"), as("War1", 3, "D", "WARRIOR"),
+                as("War2", 4, "D", "WARRIOR"), as("War3", 5, "D", "WARRIOR"),
+            }
+            assert.are.equal(0, #Matchmaker.findGroups(warriors, nil, 60))
+            group = Matchmaker.findGroups(warriors, nil, later)[1]
+            assert.are.same({ "Heal", "Tank", "War1", "War2", "War3" }, ids(group))
+        end)
+
+        it("takes a class in another role, but no third of it", function()
+            local entries = {
+                as("Tank", 1, "T", "PALADIN"), as("Heal", 2, "H", "PALADIN"), as("Pala", 3, "D", "PALADIN"),
+                as("War", 4, "D", "WARRIOR"), as("Mage", 5, "D", "MAGE"), as("Rogue", 6, "D", "ROGUE"),
+            }
+            assert.are.same({ "Heal", "Mage", "Rogue", "Tank", "War" }, ids(Matchmaker.findGroups(entries, nil, 60)[1]))
+        end)
+
+        it("gives a flexible player the role that keeps the classes varied", function()
+            local entries = {
+                as("Heal", 1, "H", "PRIEST"), as("War1", 2, "TD", "WARRIOR"), as("War2", 3, "D", "WARRIOR"),
+                as("Mage", 4, "D", "MAGE"), as("Rogue", 5, "D", "ROGUE"),
+            }
+            local group = Matchmaker.findGroups(entries, nil, 60)[1]
+            assert.are.same({ "Heal", "Mage", "Rogue", "War1", "War2" }, ids(group))
+            local roleOf = {}
+            for _, member in ipairs(group.members) do
+                roleOf[member.name] = member.role
+            end
+            assert.are.equal("T", roleOf.War1)
+        end)
+
+        it("leaves a second of a class in one role out of a partial group too", function()
+            local entries = {
+                as("War1", 1, "D", "WARRIOR"), as("War2", 2, "D", "WARRIOR"), as("Mage", 3, "D", "MAGE"),
+            }
+            local group = Matchmaker.findPartialGroup(entries, nil, 60, 0, 2)
+            assert.are.same({ "Mage", "War1" }, ids(group))
+        end)
+    end)
+
+    describe("levels", function()
+        local function at(id, joinedAt, roles, level)
+            local e = entry(id, joinedAt, roles)
+            e.members[1].level = level
+            return e
+        end
+
+        it("takes the players closest to the anchor's level first", function()
+            local entries = {
+                at("Tank", 1, "T", 20), at("Heal", 2, "H", 20), at("D15", 3, "D", 15), at("D16", 4, "D", 16),
+                at("D20", 5, "D", 20), at("D21", 6, "D", 21), at("D19", 7, "D", 19),
+            }
+            assert.are.same({ "D19", "D20", "D21", "Heal", "Tank" }, ids(Matchmaker.findGroups(entries, nil, 60)[1]))
+            assert.are.same({ "D15", "D16", "D20", "Heal", "Tank" }, ids(Matchmaker.findGroups(entries)[1]))
+        end)
+
+        it("counts a player who waited 5 minutes as close, whatever their level", function()
+            local entries = {
+                at("Tank", 1, "T", 20), at("D15", 2, "D", 15), at("Heal", 3, "H", 20), at("D16", 4, "D", 16),
+                at("D20", 5, "D", 20), at("D21", 6, "D", 21), at("D19", 7, "D", 19),
+            }
+            local group = Matchmaker.findGroups(entries, nil, 2 + 300)[1]
+            assert.are.same({ "D15", "D20", "D21", "Heal", "Tank" }, ids(group))
+        end)
+    end)
 end)

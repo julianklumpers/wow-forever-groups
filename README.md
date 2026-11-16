@@ -33,8 +33,10 @@ in the group, with roles set for you.
   language; tick more languages in Settings → Groups to be grouped with those players too.
 - **Uses WoW's Group Finder too** — invites solo players listed for your dungeon, asks listed
   groups to invite you (and joins when they do, as the role they still need), lists your own
-  group, and invites players who whisper a needed role. The first 3 minutes of building a group
-  it invites no second of a class for the same role and no third of a class (a setting).
+  group, and invites players who whisper a needed role. The first 5 minutes of building a group
+  it invites no second of a class for the same role and no third of a class (a setting), and after
+  that still another class first when there is one; groups of Forever Groups players from the
+  queue follow the same rule. Of the players who fit, those closest to the group's level go first.
 - **One screen** — the window looks the same while you choose, wait and play: your roles stay
   on screen while you wait (press Stop to change them), and the group's five places show under
   them as they fill.

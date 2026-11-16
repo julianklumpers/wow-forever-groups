@@ -42,10 +42,12 @@ local TABS = {
                             .. "still works." },
                     { key = "noClassVariety", inverted = true, parent = "noGroupFinder",
                         label = "Prefer different classes in my group",
-                        tip = "For the first 3 minutes of building your group, Forever Groups invites no second "
+                        tip = "For the first 5 minutes of building your group, Forever Groups invites no second "
                             .. "player of a class for the same role, and no third of a class at all; after that "
-                            .. "anyone who fits. Your own class choices always come first, and a replacement is "
-                            .. "never held back." },
+                            .. "anyone who fits, another class first when one is listed. Your own class choices "
+                            .. "always come first, and a replacement is "
+                            .. "never held back. Groups of Forever Groups players from the queue always follow this "
+                            .. "rule while their longest waiting player has waited less than 5 minutes." },
                     { key = "noListing", inverted = true, parent = "noGroupFinder",
                         label = "List my group in WoW's Group Finder",
                         tip = "While your group still needs players, it is listed so others can apply; applicants "

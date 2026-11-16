@@ -2,10 +2,19 @@
 
 ## Unreleased
 
+- Of the players who fit, those closest to the group's level go first: from WoW's Group Finder (and applicants) the
+  one nearest the group's average level before the one listed longest, and in the Forever Groups queue the ones
+  nearest the longest waiting player's level (someone who waited 5 minutes counts as near). Only a preference: the
+  dungeon's levels and your level limit still decide who may come, and nobody waits for a closer level.
+- After those 5 minutes another class still goes first: Forever Groups no longer waits for one, but when a Mage and a
+  third Warrior are both there, the Mage gets the place (Group Finder, applicants and the queue alike).
+- Groups of Forever Groups players from the queue follow the same class rule: while the longest waiting of them has
+  waited less than 5 minutes, no class twice in one role and none three times (a flexible player gets the role that
+  keeps it varied); after that anyone who fits. Not where the leader chose classes.
 - A replacement for a run with a boss down gets that in the invite whisper: "Hi! Our The Deadmines run needs a dps
   (1/6 bosses down, group is inside). Inviting you now." (also to a player who whispered, or one from the queue). Its
   own message in Settings → Messages.
-- While Forever Groups builds your group, the first 3 minutes it invites no second player of a class for the same
+- While Forever Groups builds your group, the first 5 minutes it invites no second player of a class for the same
   role and no third of a class at all (from WoW's Group Finder, applicants and whispers): a Paladin tank with a
   Paladin DPS is fine, three Warrior DPS are not; after that anyone who fits. Your own class choices still decide
   where you made them, and a replacement is never held back. Settings → "Prefer different classes in my group" (on).

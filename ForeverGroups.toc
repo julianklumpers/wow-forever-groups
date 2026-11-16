@@ -29,6 +29,7 @@ core\compose.lua
 core\levels.lua
 core\languages.lua
 core\protocol.lua
+core\fill.lua
 core\matchmaker.lua
 core\questmatch.lua
 core\bgmatch.lua
@@ -40,7 +41,6 @@ core\outbox.lua
 core\ratelimit.lua
 core\dungeons.lua
 core\battlegrounds.lua
-core\fill.lua
 core\lfgpick.lua
 core\replies.lua
 core\asks.lua
