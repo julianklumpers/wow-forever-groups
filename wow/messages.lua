@@ -14,6 +14,9 @@ Messages.LIST = {
     { id = "fillInvite", label = "Inviting a player from the Group Finder",
         default = "Hi! Our group for {dungeon} needs a {role}. Inviting you now.",
         keys = { "dungeon", "role", "spec" } },
+    { id = "replaceInvite", label = "Inviting a replacement for a run with a boss down",
+        default = "Hi! Our {dungeon} run needs a {role} ({progress}). Inviting you now.",
+        keys = { "dungeon", "role", "progress" } },
     { id = "groupInvite", label = "Inviting the group the queue found",
         default = "Group found for {dungeon}. Inviting you now.",
         keys = { "dungeon" } },
@@ -58,7 +61,8 @@ Messages.LIST = {
         keys = { "dungeon" } },
 }
 
-Messages.PLACEHOLDERS = { "dungeon", "quest", "zone", "size", "role", "roles", "spec", "level", "battleground" }
+Messages.PLACEHOLDERS = { "dungeon", "quest", "zone", "size", "role", "roles", "spec", "level", "battleground",
+    "progress" }
 
 local byId, known = {}, {}
 for _, message in ipairs(Messages.LIST) do
@@ -153,13 +157,25 @@ function Messages.text(id, values)
     return fit(MARK .. " " .. body)
 end
 
+-- The whisper to a player invited for dungeon as role ("dps"): for a run
+-- with a boss down (Run.replacementProgress) the replacement's, else
+-- fallback (an id) with values.
+function Messages.inviteText(dungeon, role, fallback, values)
+    local progress = ns.Run.replacementProgress(dungeon)
+    if progress then
+        return Messages.text("replaceInvite", { dungeon = ns.Dungeons.englishName(dungeon), role = role,
+            progress = progress })
+    end
+    return Messages.text(fallback, values)
+end
+
 -- Example values for the preview in the Messages window.
 function Messages.sample(id)
     local spec = ns.Spec.myLabel()
     return Messages.text(id, {
         dungeon = "The Deadmines", quest = "Hogger", zone = "Elwynn Forest", size = 3, role = "healer",
         roles = "Healer, DPS", spec = spec ~= nil and spec or "Enhancement Shaman", level = UnitLevel("player"),
-        battleground = "Warsong Gulch",
+        battleground = "Warsong Gulch", progress = "1/6 bosses down, group is inside",
     })
 end
 

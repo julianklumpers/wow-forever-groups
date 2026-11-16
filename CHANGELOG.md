@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- A replacement for a run with a boss down gets that in the invite whisper: "Hi! Our The Deadmines run needs a dps
+  (1/6 bosses down, group is inside). Inviting you now." (also to a player who whispered, or one from the queue). Its
+  own message in Settings → Messages.
+- While Forever Groups builds your group, the first 3 minutes it invites no second player of a class for the same
+  role and no third of a class at all (from WoW's Group Finder, applicants and whispers): a Paladin tank with a
+  Paladin DPS is fine, three Warrior DPS are not; after that anyone who fits. Your own class choices still decide
+  where you made them, and a replacement is never held back. Settings → "Prefer different classes in my group" (on).
+
 ## 0.28.0 (2026-11-16)
 
 - A party leader no longer sees "You lead this party" or "Queue your party below…": "Your party: 2/5"

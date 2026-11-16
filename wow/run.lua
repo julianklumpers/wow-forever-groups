@@ -155,6 +155,26 @@ local function finished(info)
     return info.total ~= nil and info.total > 0 and info.kills >= info.total
 end
 
+-- For the invite whisper of a replacement, in English: "1/6 bosses down,
+-- group is inside" ("2 bosses down" without a known total; the group part
+-- while the player is inside). nil without a boss down in a run of that
+-- dungeon that goes on.
+function Run.replacementProgress(dungeon)
+    if not run or run.ended or run.dungeon ~= dungeon or not IsInGroup() then
+        return nil
+    end
+    local info = Run.current()
+    if info.kills < 1 or finished(info) then
+        return nil
+    end
+    local text = info.total and string.format("%d/%d bosses down", math.min(info.kills, info.total), info.total)
+        or (info.kills == 1 and "1 boss down" or string.format("%d bosses down", info.kills))
+    if Run.isInside() then
+        text = text .. ", group is inside"
+    end
+    return text
+end
+
 local function partyNames()
     local members = ns.Party.members()
     if not members then
@@ -280,7 +300,7 @@ local function queueGroup(fromClick)
         ns.join(members, { dungeon })
     end
     if ns.Features.fill() then
-        ns.Filler.start({ dungeon = dungeon, missing = open, members = names })
+        ns.Filler.start({ dungeon = dungeon, missing = open, members = names, replacement = true })
     end
     -- After the fill started, so the click's one search covers its dungeon.
     if fromClick then

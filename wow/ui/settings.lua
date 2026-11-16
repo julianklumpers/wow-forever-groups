@@ -40,6 +40,12 @@ local TABS = {
                             .. "WoW's Group Finder (also the open places of a group the queue formed, and players "
                             .. "in the zone of a group quest). Off: only Forever Groups players; the Fill button "
                             .. "still works." },
+                    { key = "noClassVariety", inverted = true, parent = "noGroupFinder",
+                        label = "Prefer different classes in my group",
+                        tip = "For the first 3 minutes of building your group, Forever Groups invites no second "
+                            .. "player of a class for the same role, and no third of a class at all; after that "
+                            .. "anyone who fits. Your own class choices always come first, and a replacement is "
+                            .. "never held back." },
                     { key = "noListing", inverted = true, parent = "noGroupFinder",
                         label = "List my group in WoW's Group Finder",
                         tip = "While your group still needs players, it is listed so others can apply; applicants "

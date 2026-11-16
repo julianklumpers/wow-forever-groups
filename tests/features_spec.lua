@@ -269,6 +269,43 @@ describe("finding a replacement", function()
         assert.is_not_nil(leader:find("Button", "Stop"))
     end)
 
+    it("tells a replacement how far the run is in the invite whisper", function()
+        local world, leader = inDungeon()
+        leader.journalMaps[291], leader.journalBosses[63] = 63, 6
+        leader.positions.player = { 291, 0.5, 0.5 }
+        leader:fire("PLAYER_ENTERING_WORLD")
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        leader:leaves("Dps A")
+        world:advance(1)
+        leader:slash("/dq")
+        leader:click("Button", "Find replacement")
+        world:advance(3)
+        local text
+        for _, w in ipairs(leader.whispers) do
+            if w.target == "Dps D" then
+                text = w.text
+            end
+        end
+        assert.are.equal("[Forever Groups] Hi! Our The Deadmines run needs a dps (1/6 bosses down, group is inside). "
+            .. "Inviting you now.", text)
+    end)
+
+    it("invites with the usual whisper while no boss is down", function()
+        local world, leader = inDungeon()
+        leader:leaves("Dps A")
+        world:advance(1)
+        leader:slash("/dq")
+        leader:click("Button", "Find replacement")
+        world:advance(3)
+        local text
+        for _, w in ipairs(leader.whispers) do
+            if w.target == "Dps D" then
+                text = w.text
+            end
+        end
+        assert.are.equal("[Forever Groups] Hi! Our group for The Deadmines needs a dps. Inviting you now.", text)
+    end)
+
     it("lets the leader choose the classes for an open place before finding a replacement", function()
         local world, leader = inDungeon()
         leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)

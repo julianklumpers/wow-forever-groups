@@ -129,8 +129,14 @@ function Group.formed(view)
         or (view.queue == "battlegrounds" and ns.Battlegrounds.englishName(ns.Battlegrounds.parseKey(view.dungeon)))
         or dungeon
     local text = ns.Messages.text("groupInvite", { dungeon = english, spec = ns.Spec.myLabel(mine) })
+    local roleOf = {}
+    for _, member in ipairs(view.members) do
+        roleOf[member.name] = member.role
+    end
     for _, name in ipairs(others) do
-        whisper(name, text)
+        local role = view.queue == nil and ns.Widgets.ROLE_NAMES[roleOf[name]]
+        whisper(name, role and ns.Messages.inviteText(view.dungeon, string.lower(role), "groupInvite",
+            { dungeon = english, spec = ns.Spec.myLabel(mine) }) or text)
         invite(name)
     end
 end

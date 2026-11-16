@@ -30,6 +30,10 @@ local ADDON_GRACE = 20
 -- Results stay usable this long: delisted players drop out of them as WoW
 -- reports it, only new listings need a search (which needs player input).
 local STALE_RESULTS = 300
+-- A group Forever Groups starts building gets varied classes for this long
+-- (core/fill.lua, Fill.avoided); after it anyone who fits
+-- (db.noClassVariety: never held back).
+local VARIETY_TIME = 180
 local DECLINE_MESSAGES = { "ERR_DECLINE_GROUP_S", "ERR_ALREADY_IN_GROUP_S", "ERR_BAD_PLAYER_NAME_S" }
 
 local state
@@ -75,7 +79,7 @@ local function whyNobody(open, all, listings)
         ranges[id] = rangeOf(id)
     end
     local opts = { dungeons = dungeons, ranges = ranges, exclude = state.exclude, places = Filler.freePlaces(),
-        levels = ns.PartyLevels.rules("dungeons") }
+        levels = ns.PartyLevels.rules("dungeons"), avoid = Filler.avoidClasses() }
     local lines, seen = {}, {}
     for letter in string.gmatch(open, ".") do
         if not seen[letter] then
@@ -94,8 +98,11 @@ local function whyNobody(open, all, listings)
                 add(why.level, "outside the dungeon's levels")
                 add(why.limit, "outside your level limit")
                 add(why.class, "of a class your class choices leave out")
+                add(why.variety, string.format("of a class your group has in that role or twice, for %d s more",
+                    Filler.varietyLeft()))
                 add(style, "of another playstyle")
-                add(why.listed - why.excluded - why.level - why.limit - why.class, "picked for another role")
+                add(why.listed - why.excluded - why.level - why.limit - why.class - why.variety,
+                    "picked for another role")
                 lines[#lines + 1] = string.format("%s: %d listed (%s)", Widgets.ROLE_NAMES[letter], total,
                     table.concat(reasons, ", "))
             end
@@ -158,7 +165,7 @@ local function invite(pick)
     state.pending[pick.name] = { role = pick.role, at = GetTime(), class = pick.class }
     state.invited[pick.name] = pick.role
     ns.RoleSync.expect(pick.name, pick.role, pick.roles)
-    local whispered = whisper(pick.name, ns.Messages.text("fillInvite", {
+    local whispered = whisper(pick.name, ns.Messages.inviteText(state.dungeon, string.lower(role), "fillInvite", {
         dungeon = Dungeons.englishName(state.dungeon), role = string.lower(role),
         spec = ns.Spec.myLabel(ns.RoleSync.expected(ns.selfName)),
     }))
@@ -278,11 +285,11 @@ function Filler.step()
         return
     end
     local picks, open
-    local places = Filler.freePlaces()
+    local places, avoid = Filler.freePlaces(), Filler.avoidClasses()
     if state.dungeon then
         picks, open = Fill.pick(listings, {
             missing = needed, dungeon = state.dungeon, exclude = state.exclude, range = rangeOf(state.dungeon),
-            places = places, levels = ns.PartyLevels.rules("dungeons"),
+            places = places, levels = ns.PartyLevels.rules("dungeons"), avoid = avoid,
         })
     else
         local ranges = {}
@@ -291,7 +298,7 @@ function Filler.step()
         end
         local plan = Fill.plan(listings, {
             missing = needed, dungeons = state.dungeons, exclude = state.exclude, ranges = ranges, places = places,
-            levels = ns.PartyLevels.rules("dungeons"),
+            levels = ns.PartyLevels.rules("dungeons"), avoid = avoid,
         })
         picks, open = plan.picks, plan.open
         if #picks > 0 then
@@ -329,7 +336,8 @@ function Filler.step()
 end
 
 -- opts: missing ("HD"), dungeon (fixed) or dungeons (to choose from),
--- members (names already in or joining the group).
+-- members (names already in or joining the group), replacement (a run's
+-- open place: no class variety).
 function Filler.start(opts)
     local exclude = { [ns.selfName] = true }
     for _, name in ipairs(opts.members or {}) do
@@ -340,6 +348,7 @@ function Filler.start(opts)
     state = {
         open = opts.missing, dungeon = dungeon, dungeons = dungeons,
         pending = {}, late = {}, exclude = exclude, invited = {},
+        startedAt = GetServerTime(), variety = not opts.replacement or nil,
     }
     if dungeon then
         ns.GroupView.track(dungeon)
@@ -409,6 +418,36 @@ end
 
 -- An invite sent another way (an applicant to our listing) counts like one of
 -- ours: its role is reserved, and joining or not is followed the same way.
+-- Seconds left in which the group gets varied classes; 0 when that is over,
+-- off, or the leader's class wishes decide instead.
+function Filler.varietyLeft()
+    if not state or not state.variety or ns.db.noClassVariety or Filler.freePlaces() then
+        return 0
+    end
+    return math.max(0, VARIETY_TIME - (GetServerTime() - (state.startedAt or 0)))
+end
+
+-- The classes in the group and invited to it with their roles, { [class] =
+-- { count, roles } } (Fill.avoided), while the group should get varied ones
+-- (Filler.varietyLeft); nil otherwise.
+function Filler.avoidClasses()
+    if Filler.varietyLeft() <= 0 then
+        return nil
+    end
+    local classes = {}
+    for _, member in ipairs(ns.GroupView.members()) do
+        if member.classToken and not state.pending[member.name] then
+            Fill.addClass(classes, member.classToken, member.role)
+        end
+    end
+    for _, pending in pairs(state.pending) do
+        if pending.class then
+            Fill.addClass(classes, pending.class, pending.role)
+        end
+    end
+    return classes
+end
+
 -- The class wishes' free places, with the invites on their way counted
 -- (wow/partycompose.lua); nil without wishes.
 function Filler.freePlaces()
@@ -551,7 +590,7 @@ function Filler.saved()
         exclude[#exclude + 1] = name
     end
     return { open = state.open, dungeon = state.dungeon, dungeons = state.dungeons, pending = pending,
-        exclude = exclude, invited = state.invited }
+        exclude = exclude, invited = state.invited, startedAt = state.startedAt, variety = state.variety }
 end
 
 -- Fills on after a /reload from Filler.saved(), `away` seconds later; the
@@ -581,6 +620,7 @@ function Filler.restore(saved, away)
     state = {
         open = saved.open, dungeon = saved.dungeon, dungeons = saved.dungeons,
         pending = pending, late = {}, exclude = exclude, invited = invited,
+        startedAt = tonumber(saved.startedAt) or GetServerTime(), variety = saved.variety == true or nil,
     }
     if state.dungeon then
         ns.GroupView.track(state.dungeon)

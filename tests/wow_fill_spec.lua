@@ -799,5 +799,97 @@ describe("The group card's places", function()
         end
         assert.are.same({ "T=open", "H=open", "D=Dps Leader", "D=Some Dps", "D=open" }, shown)
     end)
+
 end)
 
+describe("Filling with classes the group lacks first", function()
+    local function listClass(world, name, roles, class, age)
+        world:list(name, roles, 799, 20, age)
+        world.listings[#world.listings].class = class
+    end
+
+    local function invited(client, name)
+        for _, other in ipairs(client.invites) do
+            if other == name then
+                return true
+            end
+        end
+        return false
+    end
+
+    it("holds a second of a class in one role and a third of a class for 3 minutes", function()
+        local world = World.new()
+        local client = world:addClient("Tanky Mctank", { level = 20, class = "PALADIN", classVariety = true })
+        listClass(world, "Heal", "H", "PALADIN", 900)
+        listClass(world, "Dps Pala", "D", "PALADIN", 800)
+        listClass(world, "Dps War", "D", "WARRIOR", 700)
+        listClass(world, "Dps War Two", "D", "WARRIOR", 600)
+        listClass(world, "Dps Mage", "D", "MAGE", 100)
+        world:advance(CONNECT)
+        client:slash("/dq")
+        client:click("CheckButton", "Tank")
+        client:slash("/dq fill")
+        world:advance(2)
+        table.sort(client.invites)
+        assert.are.same({ "Dps Mage", "Dps War", "Heal" }, client.invites)
+        assert.is_true(client:logged("2 of a class your group has in that role or twice"))
+        for name, class in pairs({ Heal = "PALADIN", ["Dps Mage"] = "MAGE", ["Dps War"] = "WARRIOR" }) do
+            client.partyClasses[name] = class
+            client:joins(name)
+        end
+        world:advance(150)
+        assert.is_false(invited(client, "Dps Pala"))
+        assert.is_false(invited(client, "Dps War Two"))
+        world:advance(40)
+        assert.is_true(invited(client, "Dps Pala"))
+    end)
+
+    it("holds a whisperer of a class the group has in that role until the 3 minutes are over", function()
+        local world = World.new()
+        local client = world:addClient("Tanky Mctank", { level = 20, class = "WARRIOR", classVariety = true })
+        world:advance(CONNECT)
+        client:slash("/dq")
+        client:click("CheckButton", "Tank")
+        client:slash("/dq fill")
+        world:advance(2)
+        client:whisperFrom("Whisper War", "dps inv?", "WARRIOR")
+        client:whisperFrom("Whisper Mage", "dps inv?", "MAGE")
+        world:advance(2)
+        client:whisperFrom("Whisper Mage Two", "dps inv?", "MAGE")
+        world:advance(2)
+        assert.is_true(invited(client, "Whisper War"))
+        assert.is_true(invited(client, "Whisper Mage"))
+        assert.is_false(invited(client, "Whisper Mage Two"))
+        for name, class in pairs({ ["Whisper War"] = "WARRIOR", ["Whisper Mage"] = "MAGE" }) do
+            client.partyClasses[name] = class
+            client:joins(name)
+        end
+        world:advance(120)
+        assert.is_false(invited(client, "Whisper Mage Two"))
+        world:advance(60)
+        assert.is_true(invited(client, "Whisper Mage Two"))
+    end)
+
+    it("never holds back a replacement, nor with class choices or the setting off", function()
+        local world = World.new()
+        local client = world:addClient("Tanky Mctank", { level = 20, class = "WARRIOR", classVariety = true })
+        world:advance(CONNECT)
+        local Filler = client.ns.Filler
+        Filler.start({ dungeon = "5", missing = "D", members = {} })
+        assert.are.equal(1, Filler.avoidClasses().WARRIOR.count)
+        client.ns.db.noClassVariety = true
+        assert.is_nil(Filler.avoidClasses())
+        client.ns.db.noClassVariety = nil
+        client.ns.PartyCompose.setOn(true)
+        for place = 3, 5 do
+            client.ns.PartyCompose.setClasses(place, { "MAGE" })
+        end
+        client.ns.charDb.wantsLead = true
+        client.ns.PartyLevels.noteStart("dungeons")
+        assert.is_nil(Filler.avoidClasses())
+        client.ns.PartyCompose.setOn(false)
+        Filler.stop(true)
+        Filler.start({ dungeon = "5", missing = "D", members = {}, replacement = true })
+        assert.is_nil(Filler.avoidClasses())
+    end)
+end)

@@ -1511,7 +1511,9 @@ function World:addClient(name, opts)
         client.env.ForeverGroupsDB = opts.saved.db
         client.env.ForeverGroupsCharDB = opts.saved.charDb
     elseif not opts.fresh and not opts.oldAddon then
-        client.env.ForeverGroupsDB = {}
+        -- Most listed players are Paladins here: preferring other classes
+        -- (on by default) is left to the tests that ask for it.
+        client.env.ForeverGroupsDB = { noClassVariety = not opts.classVariety or nil }
     end
     client.disabledAddOns, client.oldAddon = {}, opts.oldAddon
     if opts.oldAddon then

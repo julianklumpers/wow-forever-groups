@@ -144,6 +144,15 @@ local function inviteForDungeon(name, role, class, roles)
             Widgets.ROLE_NAMES[role])
         return false
     end
+    if ns.Fill.avoided(ns.Filler.avoidClasses(), {}, class, role) then
+        if not (waiting[name] and waiting[name].variety) then
+            Log.detail("%s whispered you for a %s place, but your group has a %s in that role or two already; "
+                .. "inviting them in %d s if no other class came by then.", name, Widgets.ROLE_NAMES[role],
+                ns.Spec.className(class), ns.Filler.varietyLeft())
+        end
+        waiting[name] = { roles = roles or role, class = class, at = GetTime(), variety = true }
+        return false
+    end
     if ns.Filler.room() <= 0 then
         if not waiting[name] then
             Log.detail("%s whispered you for a %s place, but every place is held by an open invite; inviting "
@@ -161,7 +170,8 @@ local function inviteForDungeon(name, role, class, roles)
     if not ns.Invites.send(name, "filler") then
         return
     end
-    reply(name, ns.Messages.text("whisperYes", { role = string.lower(roleName), dungeon = dungeon }))
+    reply(name, ns.Messages.inviteText(dungeonId, string.lower(roleName), "whisperYes",
+        { role = string.lower(roleName), dungeon = dungeon }))
     Log.detail("Invited %s, who whispered you, as %s.", name, roleName)
     return true
 end
@@ -258,13 +268,13 @@ function WhisperInvite.tick()
     local now = GetTime()
     for name, wait in pairs(waiting) do
         if not goal or goal.invite ~= inviteForDungeon or goal.excluded[name]
-            or now - wait.at >= ns.Invites.LIFETIME then
+            or (not wait.variety and now - wait.at >= ns.Invites.LIFETIME) then
             waiting[name] = nil
         elseif ns.Filler.room() > 0 then
             local role = pickRole(wait.roles, goal.needed, wait.class)
             if not role or not fits(role, wait.class) then
                 waiting[name] = nil
-            elseif inviteForDungeon(name, role, wait.class) then
+            elseif inviteForDungeon(name, role, wait.class, wait.roles) then
                 waiting[name] = nil
                 asked[name] = nil
             end

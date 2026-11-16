@@ -19,6 +19,31 @@ describe("Fill", function()
         assert.are.equal("", open)
     end)
 
+    it("takes no second of a class in one role and no third of a class while varying classes", function()
+        local function as(name, roles, class, age)
+            local l = listing(name, roles, nil, age)
+            l.classToken = class
+            return l
+        end
+        local listings = {
+            as("Pala Heal", "H", "PALADIN", 900), as("Pala Dps", "D", "PALADIN", 800),
+            as("War Dps", "D", "WARRIOR", 700),
+            as("Mage A", "D", "MAGE", 500), as("Mage B", "D", "MAGE", 400), as("Who", "D", nil, 100),
+        }
+        local avoid = { PALADIN = { count = 1, roles = { T = true } }, WARRIOR = { count = 1, roles = { D = true } } }
+        local picks, open = Fill.pick(listings, { missing = "HDDD", dungeon = "5", avoid = avoid })
+        local names = {}
+        for _, pick in ipairs(picks) do
+            names[#names + 1] = pick.name
+        end
+        assert.are.same({ "Pala Heal", "Mage A", "Who" }, names)
+        assert.are.equal("D", open)
+        local why = Fill.skipped(listings, { dungeons = { "5" }, avoid = avoid }, "D")
+        assert.are.equal(1, why.variety)
+        assert.is_false(Fill.avoided({ PALADIN = { count = 1, roles = { H = true } } }, {}, "PALADIN", "D"))
+        assert.is_true(Fill.avoided({ PALADIN = { count = 2, roles = { T = true, H = true } } }, {}, "PALADIN", "D"))
+    end)
+
     it("picks a player for each open role, longest listed first", function()
         local listings = {
             listing("NewHeal", "H", nil, 10), listing("OldHeal", "H", nil, 300), listing("Dps", "D", nil, 50),

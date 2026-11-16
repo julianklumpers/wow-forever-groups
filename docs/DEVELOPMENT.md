@@ -497,7 +497,14 @@ language).
 When queued players cannot make a full group, the matchmaker proposes a partial group right away (`PARTIAL_AFTER = 0`; at least 2
 players); the roles left open are filled from WoW's own Group Finder: the leader's Accept click also runs a Group
 Finder search (searching is protected and needs a click), then the best listed solo players (right role, level and
-dungeon; single-role players first, longest listed first) get a whisper and an invite. Anyone who declines or does not
+dungeon; single-role players first, longest listed first) get a whisper and an invite. For the first 3 minutes of a
+group Forever Groups starts (`VARIETY_TIME`; not a run's replacement, `Filler.start`'s `replacement`; not while the
+leader's class wishes have a free place; `db.noClassVariety` turns it off) nobody is picked whose class the group
+(members and invites out, with their roles) already has in that role, or has twice (`Fill.avoided`, `MAX_OF_CLASS`;
+`Filler.avoidClasses` → `Fill.pick`'s `avoid`, also for applicants to our listing): a Paladin tank and a Paladin DPS
+are fine, a third Paladin waits. A whisperer held back waits in `wow/whisperinvite.lua` until then; the log counts
+them per role ("of a class your group has in that role or twice, for 95 s more"). The test mock turns it off unless a client
+is made with `classVariety` (its listed players are mostly Paladins). Anyone who declines or does not
 join within 30 s is replaced (a player who joins later is kept while a spot is open). The invite follows the whisper
 after 1.5 s, so an away player's automatic reply (`CHAT_MSG_AFK`/`CHAT_MSG_DND`) comes first and they are passed over
 uninvited. Every open invite takes a place in the party, also one given up on: WoW keeps an unanswered invite open
@@ -753,6 +760,10 @@ not on the Quests tab.
   followed run goes on (`GroupView.isActive`) the window shows no setup (roles, party, dungeons); for the leader with
   an open place its main button is "Find replacement" (`Run.findReplacement`, the same as the popup's). Its click
 searches after the filler started, so the one search covers the run's dungeon.
+  While the run of that dungeon has a boss down and goes on, every invite whisper for it (the filler's, the answer
+  to a whisperer, the queue group's) is the `replaceInvite` message (`Messages.inviteText`,
+  `Run.replacementProgress`: "1/6 bosses down, group is inside" in English, the group part while the player is
+  inside).
   Its open places are cards like the class choices' (`placeRows(..., choosing)` maps each to a free
   `Compose.SLOT_ROLES` place, `row.wishSlot`), built by the same `W.newClassCard` (WoW's dropdown menu, our own list without it): a pick
   switches the class choices on (cleared first when they were off) and sets that place's classes (`PartyCompose.setClasses`), which the replacement search then uses; while it searches

@@ -189,7 +189,7 @@ function Listing.checkApplicants()
     local picks = Fill.pick(candidates, {
         missing = ns.Filler.stillNeeded(), dungeon = dungeon, exclude = ns.Filler.excluded(),
         range = entry and entry.min and { min = entry.min, max = entry.max } or nil,
-        places = ns.Filler.freePlaces(), levels = ns.PartyLevels.rules("dungeons"),
+        places = ns.Filler.freePlaces(), levels = ns.PartyLevels.rules("dungeons"), avoid = ns.Filler.avoidClasses(),
     })
     for _, pick in ipairs(picks) do
         local id = byName[pick.name]

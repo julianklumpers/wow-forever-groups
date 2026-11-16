@@ -59,9 +59,36 @@ local function fitsWith(places, picks, role, class)
     return Compose.fitsPlaces(places, members)
 end
 
+-- While a group should get varied classes (wow/filler.lua): at most this
+-- many of one class, and never two of one class in the same role.
+local MAX_OF_CLASS = 2
+
+-- avoid: the group's classes, { [class] = { count, roles = { [role] = true } } };
+-- picked: the same for the picks so far. A player whose class is not known
+-- is not held back.
+function Fill.avoided(avoid, picked, class, role)
+    if not avoid or not class then
+        return false
+    end
+    local had, new = avoid[class], picked[class]
+    local count = (had and had.count or 0) + (new and new.count or 0)
+    local sameRole = (had and had.roles[role]) or (new and new.roles[role])
+    return count >= MAX_OF_CLASS or sameRole == true
+end
+
+local function addClass(set, class, role)
+    local entry = set[class] or { count = 0, roles = {} }
+    entry.count = entry.count + 1
+    if role then
+        entry.roles[role] = true
+    end
+    set[class] = entry
+end
+Fill.addClass = addClass
+
 local function pickInOrder(listings, opts, order)
     local exclude = opts.exclude or {}
-    local taken, picks, open = {}, {}, {}
+    local taken, picks, open, picked = {}, {}, {}, {}
     local counts = Roles.countLetters(opts.missing) or { T = 0, H = 0, D = 0 }
     local places = opts.places
     for _, role in ipairs(order) do
@@ -71,13 +98,17 @@ local function pickInOrder(listings, opts, order)
                 if listing.solo and not exclude[listing.name] and not taken[listing.name]
                     and Roles.has(listing.roles, role) and lists(listing, opts.dungeon)
                     and levelFits(listing, opts.range) and limitFits(listing, opts.levels)
-                    and (not best or better(listing, best)) and fitsWith(places, picks, role, listing.classToken) then
+                    and (not best or better(listing, best)) and fitsWith(places, picks, role, listing.classToken)
+                    and not Fill.avoided(opts.avoid, picked, listing.classToken, role) then
                     best = listing
                 end
             end
             if best then
                 taken[best.name] = true
                 picks[#picks + 1] = { name = best.name, role = role, class = best.classToken }
+                if best.classToken then
+                    addClass(picked, best.classToken, role)
+                end
             else
                 open[role] = (open[role] or 0) + 1
             end
@@ -88,7 +119,8 @@ end
 
 -- opts: missing ("HDD"), dungeon (our id), exclude (set of names),
 -- range ({ min, max } for the dungeon, optional), places (class wishes,
--- optional), levels (a leader's level limit, optional).
+-- optional), levels (a leader's level limit, optional), avoid (the group's
+-- classes while it should get varied ones, optional; Fill.avoided).
 -- Returns picks { { name, role } } and the roles still open ("D").
 -- Roles are tried in every order and the order that fills the most roles
 -- wins, so a flexible player is not spent on a role someone else could take.
@@ -105,10 +137,11 @@ end
 
 -- Why the solo players listed in a role for one of the dungeons were not
 -- picked, for the log. opts: dungeons ({ ids }), ranges ({ [id] = range }),
--- exclude, levels, places. Returns { listed, excluded, level, limit, class }
+-- exclude, levels, places, avoid. Returns { listed, excluded, level, limit,
+-- class, variety }
 -- (a player counts for the first reason only).
 function Fill.skipped(listings, opts, role)
-    local why = { listed = 0, excluded = 0, level = 0, limit = 0, class = 0 }
+    local why = { listed = 0, excluded = 0, level = 0, limit = 0, class = 0, variety = 0 }
     local exclude = opts.exclude or {}
     local ranges = opts.ranges or {}
     for _, listing in ipairs(listings) do
@@ -129,6 +162,8 @@ function Fill.skipped(listings, opts, role)
                 why.limit = why.limit + 1
             elseif not fitsWith(opts.places, {}, role, listing.classToken) then
                 why.class = why.class + 1
+            elseif Fill.avoided(opts.avoid, {}, listing.classToken, role) then
+                why.variety = why.variety + 1
             end
         end
     end
@@ -144,6 +179,7 @@ function Fill.plan(listings, opts)
         local picks, open = Fill.pick(listings, {
             missing = opts.missing, dungeon = dungeon, exclude = opts.exclude,
             range = opts.ranges and opts.ranges[dungeon], places = opts.places, levels = opts.levels,
+            avoid = opts.avoid,
         })
         if not best or #picks > #best.picks then
             best = { dungeon = dungeon, picks = picks, open = open }
