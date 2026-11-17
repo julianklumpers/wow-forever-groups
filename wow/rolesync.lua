@@ -5,23 +5,23 @@ local Log = ns.Log
 
 -- Shows each player's Forever Groups role in WoW's party frames. A leader may
 -- set anyone's role, everyone else only their own (UnitSetRole). The role is
--- set once, when the player joins; if the player picks another role after
--- that, Forever Groups adopts it instead of setting it back. Not when it turns
--- into one they did not offer: WoW sets a role from the spec by itself (a
--- Feral druid becomes the tank a few seconds after joining as healer), so
--- that one is set back: the role chosen in Forever Groups, or offered in WoW's
--- Group Finder (`offered`), wins over the spec. The player's own always; a
--- party member's at most MAX_RESETS times, after which it counts as theirs.
--- At most once per RESET_GAP, so a server that keeps changing it is not
--- answered in a loop. The roles are kept per character, so they still hold
--- after a /reload.
+-- set once, when the player joins, and is the role they were taken for: WoW
+-- sets a role from the spec by itself (a Feral druid becomes the tank a few
+-- seconds after joining as healer, a Protection warrior invited as DPS the
+-- tank), so another role is set back: the player's own unless they ticked
+-- that one too; a party member's always (Deadly Boss Mods sets it from the
+-- spec again after each of their /reloads). Only the leader changing a
+-- member's role in WoW's party frames makes it their new role.
+-- Each change is answered at once; only LOOP_MAX set-backs of one player
+-- within LOOP_WINDOW seconds (something keeps changing it) pause it, so that
+-- is not answered in a loop. The roles are kept per character, so they still
+-- hold after a /reload.
 local RoleSync = {}
 
 local WOW_ROLES = { T = "TANK", H = "HEALER", D = "DAMAGER" }
 local LETTERS = { TANK = "T", HEALER = "H", DAMAGER = "D" }
 local MAX_ATTEMPTS = 3
-local RESET_GAP = 5
-local MAX_RESETS = 2
+local LOOP_WINDOW, LOOP_MAX = 10, 6
 -- Seconds between two tries: the server takes a moment to apply a role, and
 -- roster updates come in bursts.
 local RETRY_AFTER = 2
@@ -30,10 +30,13 @@ local expected = {}
 local attempts = {}
 local attemptedAt = {}
 local settled = {}
+-- Per player the times of their set-backs within LOOP_WINDOW, and whether a
+-- pause for a loop was logged.
 local resets = {}
-local resetCounts = {}
-local offered = {}
+local paused = {}
 local listeners = {}
+-- While Forever Groups itself sets a role (onRoleSet leaves that alone).
+local setting = false
 
 -- The player's name, also before the channel told it (right after a
 -- /reload, when WoW may already have changed the role).
@@ -43,26 +46,35 @@ end
 
 local function save()
     ns.charDb.roleSync = next(expected) and RoleSync.all() or nil
-    local kept = {}
-    for name, roles in pairs(offered) do
-        if expected[name] then
-            kept[name] = roles
-        end
-    end
-    ns.charDb.roleSyncOffered = next(kept) and kept or nil
+    ns.charDb.roleSyncOffered = nil
 end
 
--- Whether the player could have picked this role: anyone else's among the
--- roles they offered (any when not known, or once set back MAX_RESETS
--- times); the player's own only among the roles they queued for.
+-- Whether another role is the player's own choice: never a party member's
+-- (only the leader changes it, onRoleSet); the player's own among the roles
+-- they queued for.
 local function ownChoice(name, role)
     if name ~= me() then
-        return offered[name] == nil or string.find(offered[name], role, 1, true) ~= nil
-            or (resetCounts[name] or 0) >= MAX_RESETS
+        return false
     end
     local entry = ns.engine and ns.engine.myEntry
     local roles = (entry and entry.members[1].roles) or ns.charDb.lastRoles
     return roles == nil or string.find(roles, role, 1, true) ~= nil
+end
+
+-- Seconds to wait before setting a player's role back again: nil while
+-- fewer than LOOP_MAX set-backs fell within LOOP_WINDOW.
+local function loopWait(name, now)
+    local kept = {}
+    for _, at in ipairs(resets[name] or {}) do
+        if now - at < LOOP_WINDOW then
+            kept[#kept + 1] = at
+        end
+    end
+    resets[name] = kept
+    if #kept < LOOP_MAX then
+        return nil
+    end
+    return LOOP_WINDOW - (now - kept[1])
 end
 
 local function canSet(unit)
@@ -80,9 +92,7 @@ local function cancelBossModsCheck()
     end
 end
 
--- roles: what a party member offered (e.g. "TH" in WoW's Group Finder), kept
--- when nil.
-function RoleSync.expect(name, role, roles)
+function RoleSync.expect(name, role)
     local self = me()
     if name and WOW_ROLES[role] and (self == nil or name == self) then
         cancelBossModsCheck()
@@ -93,10 +103,6 @@ function RoleSync.expect(name, role, roles)
         attemptedAt[name] = nil
         settled[name] = false
         resets[name] = nil
-        resetCounts[name] = nil
-        if type(roles) == "string" and roles ~= "" then
-            offered[name] = roles
-        end
         save()
     end
 end
@@ -116,7 +122,7 @@ end
 
 function RoleSync.forget(name)
     expected[name], attempts[name], settled[name], attemptedAt[name], resets[name] = nil, nil, nil, nil, nil
-    resetCounts[name], offered[name] = nil, nil
+    paused[name] = nil
     save()
 end
 
@@ -124,15 +130,19 @@ function RoleSync.onChange(listener)
     listeners[#listeners + 1] = listener
 end
 
-local retryScheduled = false
+-- When the next look is planned; a sooner one is planned on top of it.
+local retryAt
 
 local function retryLater(seconds)
-    if retryScheduled then
+    local at = GetTime() + math.max(0.1, seconds)
+    if retryAt and retryAt <= at then
         return
     end
-    retryScheduled = true
-    C_Timer.After(math.max(0.1, seconds), function()
-        retryScheduled = false
+    retryAt = at
+    C_Timer.After(at - GetTime(), function()
+        if retryAt == at then
+            retryAt = nil
+        end
         RoleSync.apply()
     end)
 end
@@ -163,10 +173,34 @@ local function claimOwn()
     RoleSync.expect(name, (current and string.find(roles, current, 1, true)) and current or roles:sub(1, 1))
 end
 
+-- In any other party (a friend's, before or without a queue) a single
+-- ticked role is the player's role in WoW too; with several ticked their
+-- role is left alone. tickHeld: the hold is the tick's, not an agreed one.
+local tickHeld = false
+
+local function claimTicked()
+    local name = me()
+    if not name or ns.GroupView.isTracking() or (ns.Demo and ns.Demo.isOn()) then
+        return
+    end
+    local roles = ns.charDb.lastRoles
+    local single = type(roles) == "string" and #roles == 1 and WOW_ROLES[roles] and roles or nil
+    if single and (tickHeld or not expected[name]) then
+        if expected[name] ~= single then
+            RoleSync.expect(name, single)
+        end
+        tickHeld = true
+    elseif not single and tickHeld then
+        tickHeld = false
+        RoleSync.forget(name)
+    end
+end
+
 function RoleSync.apply()
     if not IsInGroup() then
         return
     end
+    claimTicked()
     claimOwn()
     local units = { "player" }
     for i = 1, 4 do
@@ -183,27 +217,40 @@ function RoleSync.apply()
         elseif role and current and settled[name] and (ownChoice(name, current) or not canSet(unit)) then
             -- Theirs, or not ours to set back (only a leader sets others' roles).
             changed(name, current)
-        elseif role and current and settled[name] and now - (resets[name] or -math.huge) >= RESET_GAP then
-            Log.debug("WoW made %s %s; setting %s back", name, WOW_ROLES[current], WOW_ROLES[role])
-            resets[name] = now
-            resetCounts[name] = (resetCounts[name] or 0) + 1
-            settled[name], attempts[name], attemptedAt[name] = false, 0, nil
-            RoleSync.apply()
-            return
         elseif role and current and settled[name] then
-            retryLater(RESET_GAP - (now - resets[name]))
+            local wait = loopWait(name, now)
+            if not wait then
+                Log.debug("WoW made %s %s; setting %s back", name, WOW_ROLES[current], WOW_ROLES[role])
+                table.insert(resets[name], now)
+                paused[name] = nil
+                settled[name], attempts[name], attemptedAt[name] = false, 0, nil
+                RoleSync.apply()
+                return
+            end
+            if not paused[name] then
+                paused[name] = true
+                Log.debug("%s's role keeps changing; pausing %d s", name, math.ceil(wait))
+            end
+            retryLater(wait)
         elseif not role or waiting then -- luacheck: ignore 542
             -- Nothing to set, or the last try may still be on its way.
         elseif type(UnitSetRole) == "function" and canSet(unit) and attempts[name] < MAX_ATTEMPTS then
             attempts[name] = attempts[name] + 1
             attemptedAt[name] = now
+            setting = true
             local ok, err = pcall(UnitSetRole, unit, WOW_ROLES[role])
+            setting = false
             Log.debug("set role of %s to %s: %s", name, WOW_ROLES[role], ok and "ok" or tostring(err))
-            -- WoW says nothing when a role does not take: look again.
-            retryLater(RETRY_AFTER)
+            if LETTERS[UnitGroupRolesAssigned(unit)] == role then
+                -- Taken at once: the next change is answered at once too.
+                settled[name], attemptedAt[name] = true, nil
+            else
+                -- WoW says nothing when a role does not take: look again.
+                retryLater(RETRY_AFTER)
+            end
         elseif current and attempts[name] >= MAX_ATTEMPTS and (name ~= me() or ownChoice(name, current)) then
             -- The role could not be set: a party member plays the one they
-            -- have, whatever they offered.
+            -- have.
             settled[name] = true
             changed(name, current)
         end
@@ -211,11 +258,23 @@ function RoleSync.apply()
 end
 
 -- Another addon that sets the player's role anyway is answered at once,
--- before WoW even reports the change, so the wrong role barely shows.
+-- before WoW even reports the change, so the wrong role barely shows. A
+-- member's role the leader sets (in WoW's party frames, not Forever Groups
+-- itself) is their new role.
 local answering = false
 
 local function onRoleSet(unit, role)
-    if answering or unit ~= "player" then
+    if answering or setting then
+        return
+    end
+    if unit ~= "player" then
+        local name = Party.unitName(unit)
+        local letter = LETTERS[role]
+        if name and letter and expected[name] and expected[name] ~= letter and UnitIsGroupLeader("player") then
+            changed(name, letter)
+            settled[name], attempts[name], attemptedAt[name] = false, 0, nil
+            Log.debug("you made %s %s", name, role)
+        end
         return
     end
     local name = me()
@@ -259,16 +318,20 @@ local function restore()
     if next(expected) or type(saved) ~= "table" then
         return
     end
-    local roles = type(ns.charDb.roleSyncOffered) == "table" and ns.charDb.roleSyncOffered or {}
     for name, role in pairs(saved) do
-        RoleSync.expect(name, role, roles[name])
+        RoleSync.expect(name, role)
     end
+end
+
+-- The roles ticked in the window changed.
+function RoleSync.ticked()
+    RoleSync.apply()
 end
 
 local function onRosterUpdate()
     if not IsInGroup() then
-        expected, attempts, settled, attemptedAt, resets = {}, {}, {}, {}, {}
-        resetCounts, offered = {}, {}
+        expected, attempts, settled, attemptedAt, resets, paused = {}, {}, {}, {}, {}, {}
+        tickHeld = false
         ns.charDb.roleSync, ns.charDb.roleSyncOffered = nil, nil
         return
     end

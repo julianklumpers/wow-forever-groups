@@ -938,6 +938,65 @@ describe("Main window role line", function()
     end)
 end)
 
+describe("The role in a party of friends", function()
+    it("is the one ticked role, held against changes, and left alone with several ticked", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 20, class = "PALADIN" })
+        world:advance(12)
+        client:slash("/dq")
+        client.party, client.isLeader = { "Friend Person" }, true
+        client.roles["Solo Player"] = "DAMAGER"
+        client:fire("GROUP_ROSTER_UPDATE")
+        for _, role in ipairs({ "Tank", "Healer", "DPS" }) do
+            local tile = client:find("CheckButton", role)
+            if tile.checked then
+                client:click("CheckButton", role)
+            end
+        end
+        client:click("CheckButton", "Tank")
+        world:advance(1)
+        assert.are.equal("TANK", client.roles["Solo Player"])
+        client.env.UnitSetRole("player", "DAMAGER")
+        world:advance(1)
+        assert.are.equal("TANK", client.roles["Solo Player"])
+        client:click("CheckButton", "Healer")
+        client:click("CheckButton", "Tank")
+        world:advance(1)
+        assert.are.equal("HEALER", client.roles["Solo Player"])
+        client:click("CheckButton", "DPS")
+        world:advance(1)
+        client.env.UnitSetRole("player", "DAMAGER")
+        world:advance(6)
+        assert.are.equal("DAMAGER", client.roles["Solo Player"])
+    end)
+end)
+
+describe("A queue update the queue refuses", function()
+    it("is logged once per reason, not at every roster change", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        world:advance(30)
+        leader.party, leader.isLeader = { "Friend Person" }, true
+        leader.roles["Friend Person"] = "DAMAGER"
+        leader:slash("/dq")
+        leader:click("CheckButton", "Tank")
+        leader:click("Button", "Find group")
+        world:advance(2)
+        leader.rolesIgnored = { ["Friend Person"] = true }
+        leader.roles["Friend Person"] = "TANK"
+        for _ = 1, 4 do
+            leader:fire("ROLE_CHANGED_INFORM")
+            leader:fire("GROUP_ROSTER_UPDATE")
+            world:advance(5)
+        end
+        local count = 0
+        for _, line in ipairs(leader.ns.db.log) do
+            count = count + (line:find("queue update refused: role composition", 1, true) and 1 or 0)
+        end
+        assert.are.equal(1, count)
+    end)
+end)
+
 describe("Main window stability", function()
     it("keeps its height when roles are ticked and unticked", function()
         local world = World.new()

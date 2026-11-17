@@ -50,6 +50,7 @@ describe("Filling from WoW's Group Finder", function()
         tank:joins("Old Heal")
         tank:system("Good Dps declines your group invitation.")
         assert.is_true(tank:logged("Good Dps did not join"))
+        assert.is_true(tank:logged("WoW said: Good Dps declines your group invitation%."))
         world:advance(2)
         invitedOnly(tank, { "Next Dps" })
         tank:joins("Next Dps")
@@ -559,7 +560,7 @@ describe("A group filled to five", function()
 end)
 
 describe("A player who switches roles after joining", function()
-    it("is followed: the addon looks for the role that became free", function()
+    it("is set back to the role they were taken for, however often, until the leader changes it", function()
         local world = World.new()
         local leader = world:addClient("Tanky Mctank", { level = 20 })
         world:list("Listed Heal", "HD", 799, 20, 300)
@@ -575,12 +576,21 @@ describe("A player who switches roles after joining", function()
         leader:joins("Listed Heal")
         world:advance(6)
         assert.are.equal("HEALER", leader.roles["Listed Heal"])
+        for _ = 1, 4 do
+            leader.roles["Listed Heal"] = "DAMAGER"
+            leader:fire("ROLE_CHANGED_INFORM")
+            world:advance(6)
+            assert.are.equal("HEALER", leader.roles["Listed Heal"])
+        end
 
         world:list("Second Heal", "H", 799, 20, 50)
-        leader.roles["Listed Heal"] = "DAMAGER"
+        local unit = "party" .. #leader.party
+        assert.are.equal("Listed Heal", leader.party[#leader.party])
+        leader.env.UnitSetRole(unit, "DAMAGER")
         leader:fire("ROLE_CHANGED_INFORM")
-        world:advance(1)
+        world:advance(6)
         assert.are.equal("DAMAGER", leader.roles["Listed Heal"])
+        assert.are.equal("D", leader.ns.RoleSync.expected("Listed Heal"))
         assert.is_true(leader:logged("Roles changed; now looking for: Healer"))
         leader:slash("/dq fill")
         world:advance(2)
@@ -607,7 +617,7 @@ describe("A player who switches roles after joining", function()
         assert.are.equal("T", leader.ns.RoleSync.expected("Feral Heal"))
     end)
 
-    it("is set back when WoW gives a role from the spec the player never offered, until they insist", function()
+    it("is set back when WoW gives a role from the spec, also after their /reloads and twice in a row", function()
         local world = World.new()
         local leader = world:addClient("Tanky Mctank", { level = 20 })
         world:list("Feral Heal", "H", 799, 20, 300)
@@ -622,17 +632,51 @@ describe("A player who switches roles after joining", function()
         leader:joins("Feral Heal")
         world:advance(6)
         assert.are.equal("HEALER", leader.roles["Feral Heal"])
-        for _ = 1, 2 do
+        for _ = 1, 4 do
             leader.roles["Feral Heal"] = "TANK"
             leader:fire("ROLE_CHANGED_INFORM")
             world:advance(6)
             assert.are.equal("HEALER", leader.roles["Feral Heal"])
         end
+        assert.are.equal("H", leader.ns.RoleSync.expected("Feral Heal"))
+
+        leader.roles["Feral Heal"] = "DAMAGER"
+        leader:fire("ROLE_CHANGED_INFORM")
+        world:advance(0.2)
+        assert.are.equal("HEALER", leader.roles["Feral Heal"])
         leader.roles["Feral Heal"] = "TANK"
         leader:fire("ROLE_CHANGED_INFORM")
+        world:advance(0.2)
+        assert.are.equal("HEALER", leader.roles["Feral Heal"])
+    end)
+
+    it("pauses only when something keeps changing a role back, in a loop", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        world:list("Feral Heal", "H", 799, 20, 300)
+        world:list("Dps A", "D", 799, 20, 200)
+        world:advance(CONNECT)
+        leader:slash("/dq")
+        leader:click("CheckButton", "Tank")
+        leader:click("Button", "None")
+        leader:click("CheckButton", "The Deadmines")
+        leader:slash("/dq fill")
+        world:advance(2)
+        leader:joins("Feral Heal")
         world:advance(6)
+        for _ = 1, 6 do
+            leader.roles["Feral Heal"] = "TANK"
+            leader:fire("ROLE_CHANGED_INFORM")
+            world:advance(0.2)
+            assert.are.equal("HEALER", leader.roles["Feral Heal"])
+        end
+        leader.roles["Feral Heal"] = "TANK"
+        leader:fire("ROLE_CHANGED_INFORM")
+        world:advance(0.2)
         assert.are.equal("TANK", leader.roles["Feral Heal"])
-        assert.are.equal("T", leader.ns.RoleSync.expected("Feral Heal"))
+        assert.is_true(leader:logged("Feral Heal's role keeps changing; pausing %d+ s"))
+        world:advance(11)
+        assert.are.equal("HEALER", leader.roles["Feral Heal"])
     end)
 end)
 
@@ -767,12 +811,15 @@ describe("The player's own role", function()
         assert.are.equal("HEALER", client.roles["Heally Mcheal"])
     end)
 
-    it("is left alone in a group Forever Groups does not follow", function()
+    it("is left alone in a group Forever Groups does not follow while several roles are ticked", function()
         local world = World.new()
         local client = world:addClient("Heally Mcheal", { level = 20, class = "DRUID" })
         world:advance(CONNECT)
         client:slash("/dq")
         client:click("CheckButton", "Healer")
+        if not client:find("CheckButton", "DPS").checked then
+            client:click("CheckButton", "DPS")
+        end
         client.party, client.isLeader = { "Some Tank" }, true
         client.roles["Heally Mcheal"] = "TANK"
         client:fire("GROUP_ROSTER_UPDATE")

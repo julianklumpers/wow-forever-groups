@@ -162,7 +162,7 @@ function Listing.checkApplicants()
         return
     end
     local dungeon = ns.Filler.dungeon()
-    local candidates, byName, rolesOf = {}, {}, {}
+    local candidates, byName = {}, {}
     for _, id in ipairs(ids) do
         local infoOk, info = call("GetApplicantInfo", id)
         local member = applicantMember(id)
@@ -181,7 +181,6 @@ function Listing.checkApplicants()
                     classToken = not ns.isSecret(member.class) and member.class or nil,
                 }
                 byName[member.name] = id
-                rolesOf[member.name] = roles
             end
         end
     end
@@ -195,7 +194,7 @@ function Listing.checkApplicants()
     for _, pick in ipairs(picks) do
         local id = byName[pick.name]
         local roleName = ns.Widgets.ROLE_NAMES[pick.role]
-        if ns.Filler.trackInvite(pick.name, pick.role, pick.class, rolesOf[pick.name]) then
+        if ns.Filler.trackInvite(pick.name, pick.role, pick.class) then
             -- Only now: one refused while a queue proposal is open is asked again later.
             handled[id] = true
             Input.queue("applicant:" .. id, "invite applicant " .. pick.name, function()

@@ -24,6 +24,7 @@ end
 
 local chosenDungeons
 local parked
+local lastRefusal
 
 local LANGUAGE_DROPPED = "Your languages do not fit in the queue message with this many dungeons; you queue "
     .. "without them and are grouped with players of any language."
@@ -288,12 +289,15 @@ local function syncEntry()
     end
     syncPending = not ok and err == "proposal open"
     if ok then
+        lastRefusal = nil
         persistQueue()
         PartyStatus.sendState()
         if #members < #entry.members then
             Log.info("Your group changed; you stay in the queue as a group of %d.", #members)
         end
-    elseif not syncPending then
+    elseif not syncPending and err ~= lastRefusal then
+        -- Once per reason: every roster change tries again.
+        lastRefusal = err
         Log.debug("queue update refused: %s", tostring(err))
     end
 end
@@ -563,7 +567,7 @@ ns.on("ADDON_LOADED", function(name)
     Comm.init(onReady, onMessage, function(sender, text)
         ns.Presence.seen(sender)
         if not ns.QuestShare.onMessage(sender, text) and not ns.QuestGroup.onMessage(sender, text)
-            and not ns.GroupPlaces.onMessage(sender, text) then
+            and not ns.GroupPlaces.onMessage(sender, text) and not ns.Spec.onMessage(sender, text) then
             PartyStatus.onMessage(sender, text)
         end
     end, function(sender)

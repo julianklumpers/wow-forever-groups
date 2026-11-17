@@ -123,6 +123,21 @@ local function fits(role, class)
     return ns.PartyCompose.fits({ { role = role, class = class } })
 end
 
+-- Of the needed roles, those a player of this class can play and has a free
+-- place for under the leader's class wishes; with the class unknown, all.
+local function openFor(needed, class)
+    if not class then
+        return needed
+    end
+    local open = ""
+    for role in string.gmatch(needed, ".") do
+        if not string.find(open, role, 1, true) and ns.Classes.canPlay(class, role) and fits(role, class) then
+            open = open .. role
+        end
+    end
+    return open
+end
+
 -- The first role the player named that is needed and has a place for them:
 -- "heal or dps" still gets the DPS place when the healer place wants a class.
 local function pickRole(roles, needed, class)
@@ -222,17 +237,32 @@ function WhisperInvite.onWhisper(text, sender, ...)
     if string.find(text, "^%[Forever Groups%]") or string.find(text, "^%[DungeonQueue%]") then
         return
     end
-    local needed = goal.needed
+    local class = goal.invite == inviteForDungeon and classOf(sender, guid) or nil
+    -- A class no open place takes (the class wishes, or what it can play):
+    -- told so once, as nothing it says would get an invite.
+    local needed = openFor(goal.needed, class)
+    if needed == "" then
+        if not (asked[sender] and asked[sender].silent) then
+            asked[sender] = { needed = needed, count = MAX_ASKS, at = GetTime(), silent = true }
+            Log.detail("%s whispered you, but no open place takes a %s; told them so.", sender,
+                ns.Spec.className(class))
+            reply(sender, ns.Messages.text("whisperClass", { class = ns.Spec.englishClass(class) }))
+        end
+        return
+    end
+    if asked[sender] and asked[sender].silent then
+        asked[sender] = nil
+    end
     local roles = WhisperInvite.rolesIn(text)
     if roles ~= "" then
-        local class = goal.invite == inviteForDungeon and classOf(sender, guid) or nil
         local role = pickRole(roles, needed, class)
         if role then
             if goal.invite(sender, role, class, roles) then
                 asked[sender] = nil
             end
         elseif not asked[sender] or asked[sender].needed ~= needed then
-            asked[sender] = { needed = needed, count = 0, at = GetTime() }
+            -- Told, not asked: what they say next without a role is no answer.
+            asked[sender] = { needed = needed, count = MAX_ASKS, at = GetTime(), told = true }
             Log.detail("%s whispered \"%s\" (%s), a role no longer needed; told them what is.", sender, quote(text),
                 roles)
             reply(sender, ns.Messages.text("whisperNo", { roles = neededNames(needed) }))
@@ -246,6 +276,9 @@ function WhisperInvite.onWhisper(text, sender, ...)
             Log.detail("%s whispered \"%s\" without a role; asked which role they play.", sender, quote(text))
             reply(sender, ns.Messages.text("whisperWhich", { roles = neededNames(needed) }))
         end
+        return
+    end
+    if question.told or question.silent then
         return
     end
     if question.count >= MAX_ASKS then

@@ -160,7 +160,7 @@ local function invite(pick)
     local role = Widgets.ROLE_NAMES[pick.role]
     state.pending[pick.name] = { role = pick.role, at = GetTime(), class = pick.class }
     state.invited[pick.name] = pick.role
-    ns.RoleSync.expect(pick.name, pick.role, pick.roles)
+    ns.RoleSync.expect(pick.name, pick.role)
     local whispered = whisper(pick.name, ns.Messages.inviteText(state.dungeon, string.lower(role), "fillInvite", {
         dungeon = Dungeons.englishName(state.dungeon), role = string.lower(role),
         spec = ns.Spec.myLabel(ns.RoleSync.expected(ns.selfName)),
@@ -324,13 +324,8 @@ function Filler.step()
         return
     end
     state.waitingForPlace = #picks > room or nil
-    local offered = {}
-    for _, listing in ipairs(listings) do
-        offered[listing.name] = listing.roles
-    end
     for i, pick in ipairs(picks) do
         if i <= room then
-            pick.roles = offered[pick.name]
             invite(pick)
         end
     end
@@ -501,9 +496,7 @@ function Filler.freePlaces()
     return ns.PartyCompose.freePlaces()
 end
 
--- roles: the roles the player offered (their listing or application), or
--- nil when not known.
-function Filler.trackInvite(name, role, class, roles)
+function Filler.trackInvite(name, role, class)
     if not state or queueProposalOpen() then
         return false
     end
@@ -511,7 +504,7 @@ function Filler.trackInvite(name, role, class, roles)
     -- The caller sends the invite right away.
     state.pending[name] = { role = role, at = GetTime(), sentAt = GetTime(), class = class }
     state.invited[name] = role
-    ns.RoleSync.expect(name, role, roles or role)
+    ns.RoleSync.expect(name, role)
     changed()
     return true
 end
@@ -855,6 +848,7 @@ local function onSystemMessage(text)
             state.pending[name] = nil
             ns.RoleSync.forget(name)
             Log.detail("%s did not join; trying someone else.", name)
+            Log.debug("WoW said: %s", text)
             changed()
             Filler.step()
             return

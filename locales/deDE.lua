@@ -578,4 +578,5 @@ ns.Locale.add({ "deDE" }, {
     ["Right-click: open in your quest log"] = "Rechtsklick: im Questlog öffnen",
     ["Beta"] = "Beta",
     ["New and not fully tested in the game yet. Something odd? /fg bugreport opens a report to copy and send."] = "Neu und im Spiel noch nicht vollständig getestet. Etwas seltsam? /fg bugreport öffnet einen Bericht zum Kopieren und Senden.",
+    ["Answer: their class is not wanted"] = "Antwort: die Klasse wird nicht gesucht",
 })

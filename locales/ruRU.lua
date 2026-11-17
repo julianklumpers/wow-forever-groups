@@ -578,4 +578,5 @@ ns.Locale.add({ "ruRU" }, {
     ["Right-click: open in your quest log"] = "Правый клик: открыть в журнале заданий",
     ["Beta"] = "Бета",
     ["New and not fully tested in the game yet. Something odd? /fg bugreport opens a report to copy and send."] = "Новое и ещё не до конца проверено в игре. Что-то не так? /fg bugreport открывает отчёт, который можно скопировать и отправить.",
+    ["Answer: their class is not wanted"] = "Ответ: такой класс не нужен",
 })

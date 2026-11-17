@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+- A player invited for a role keeps that role: when WoW or an addon makes them something else from their spec (a
+  Protection warrior invited as DPS becoming the tank), the leader sets it back, every time, also when they listed
+  that other role too. Only you as leader change it: set their role in WoW's party frames and Forever Groups keeps
+  that one.
+- When an invite is not accepted, the debug log says what WoW said.
+- A player who whispers to join while your class choices leave their class out is told once, politely, that you are
+  not looking for their class (Settings → Messages), instead of being asked their role for nothing; a class that
+  fits is asked only about the roles it can take.
+- A queue update the queue refuses (a party of two tanks) is logged once, not at every roster change.
+- After telling a whisperer their role is not needed ("Sorry, we only need Healer right now."), Forever Groups no
+  longer asks for their role when they just reply "got ya" or ":)"; naming a needed role still gets an invite.
+- In a party with a friend, a single ticked role becomes your role in WoW's party frames, and is set back when
+  something else changes it; with several ticked your role is left alone.
+- The group card shows the trees party members with Forever Groups have their points in (they tell each other),
+  and your own trees no longer turn into the place's tree when WoW briefly gives no talent points.
+- The group card also inspects members who are far away (outside the dungeon), not only those close by.
+- The specs the group card learned (from the proposal, from inspecting a member nearby, or from their message) now
+  survive a /reload, for four hours, so "Holy/Shadow" no longer turns into "Healer" once the group is far away.
+
 ## 0.29.0 (2026-11-16)
 
 - The windows no longer always cover WoW's own: click the map and it comes to the front, click Forever Groups and

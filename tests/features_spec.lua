@@ -736,13 +736,14 @@ describe("sharing dungeon quests in a new group", function()
 end)
 
 describe("the group card", function()
-    it("shows the spec of members without the addon by inspecting them out of combat", function()
+    it("shows the spec of members without the addon by inspecting them out of combat, near ones first", function()
         local world = World.new()
         local leader = world:addClient("Tanky Mctank", { level = 20 })
         world:advance(12)
         leader.party, leader.isLeader = { "Vaielia Poisonblade", "Far Mage" }, true
         leader.partyClasses = { ["Vaielia Poisonblade"] = "ROGUE", ["Far Mage"] = "MAGE" }
         leader.inspectTalents["Vaielia Poisonblade"] = { { 1000, 4 }, { 5000, 8 } }
+        leader.inspectTalents["Far Mage"] = { { 5000, 6 } }
         leader.farAway["Far Mage"] = true
         leader.inCombat = true
         leader.ns.GroupView.track("5")
@@ -751,12 +752,13 @@ describe("the group card", function()
         assert.are.same({}, leader.inspects)
         leader.inCombat = false
         world:advance(5)
-        assert.are.same({ "Vaielia Poisonblade" }, leader.inspects)
-        assert.is_nil(leader.inspected)
+        assert.are.same({ "Vaielia Poisonblade", "Far Mage" }, leader.inspects)
         leader:slash("/dq")
         assert.is_not_nil(leader:findText("|cffe6c273Combat/Assassination|r$"))
+        assert.is_true(leader:logged("inspected Vaielia Poisonblade: ROGUE2 %(%d+ trees, %d+ nodes, 12 ranks%)"))
+        assert.are.same({ "Fire" }, leader.ns.Spec.treesOf("Far Mage"))
         world:advance(30)
-        assert.are.same({ "Vaielia Poisonblade" }, leader.inspects)
+        assert.are.same({ "Vaielia Poisonblade", "Far Mage" }, leader.inspects)
     end)
 
     it("shows where the others are once you are inside", function()

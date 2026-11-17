@@ -119,11 +119,16 @@ describe("whisper invites while building a group", function()
         assert.truthy(repliesTo(dps, "Other Guy")[4]:find("we only need"))
     end)
 
-    it("says which roles are needed when the whispered role is taken", function()
-        local _, tank = building()
+    it("says which roles are needed when the whispered role is taken, and asks nothing after", function()
+        local world, tank = building()
         tank:whisperFrom("Other Tank", "tank lf group")
         assert.is_false(invited(tank, "Other Tank"))
         assert.truthy(repliesTo(tank, "Other Tank")[1]:find("Sorry, we only need DPS right now%."))
+        for _, text in ipairs({ "got ya", ":)" }) do
+            world:advance(5)
+            tank:whisperFrom("Other Tank", text)
+        end
+        assert.are.equal(1, #repliesTo(tank, "Other Tank"))
     end)
 
     it("ignores whispers when not building a group, and other chat", function()
@@ -206,6 +211,25 @@ describe("whisper invites while building a group", function()
         lead:whisperFrom("Paj Verus", "tank inv?", "DRUID")
         assert.is_true(invited(lead, "Paj Verus"))
         assert.are.equal("T", lead.ns.Filler.roleOf("Paj Verus"))
+    end)
+
+    it("names only the places a whisperer's class can take, and tells a class no place takes once", function()
+        local world = World.new()
+        local lead = wantsDruidTank(world)
+        lead:whisperFrom("Warrior Guy", "can i join", "WARRIOR")
+        local asked = repliesTo(lead, "Warrior Guy")[1]
+        assert.truthy(asked:find("Still needed: DPS", 1, true))
+        assert.is_falsy(asked:find("Tank", 1, true))
+
+        lead.ns.charDb.compose = { masks = { 256, 0, 256, 256, 256 } }
+        lead.ns.Window.refresh()
+        lead:whisperFrom("Hunter Guy", "can i join", "HUNTER")
+        lead:whisperFrom("Hunter Guy", "dps", "HUNTER")
+        assert.are.same({ "[Forever Groups] Sorry, we are not looking for a Hunter right now." },
+            repliesTo(lead, "Hunter Guy"))
+        assert.is_false(invited(lead, "Hunter Guy"))
+        lead:whisperFrom("Paj Verus", "can i join", "DRUID")
+        assert.truthy(repliesTo(lead, "Paj Verus")[1]:find("Still needed: Tank, DPS", 1, true))
     end)
 
     it("takes a whisperer's class from their Group Finder listing", function()

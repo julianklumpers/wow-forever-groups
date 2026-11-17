@@ -282,6 +282,46 @@ describe("the group card's places", function()
     end)
 end)
 
+describe("trees told over the party channel", function()
+    it("show a party member's own trees, and the player's own when WoW gives no points for a moment", function()
+        local world = World.new()
+        local lay = world:addClient("Lay Ohands", { level = 22, class = "PALADIN",
+            talents = { { 1000, 5 }, { 9000, 8 } } })
+        local swole = world:addClient("Swole Mcg", { level = 22, class = "WARRIOR",
+            talents = { { 1000, 6 }, { 5000, 2 } } })
+        world:advance(12)
+        lay.party, lay.isLeader = { "Swole Mcg" }, true
+        swole.party = { "Lay Ohands" }
+        lay.partyClasses["Swole Mcg"], swole.partyClasses["Lay Ohands"] = "WARRIOR", "PALADIN"
+        lay:fire("GROUP_ROSTER_UPDATE")
+        swole:fire("GROUP_ROSTER_UPDATE")
+        world:advance(3)
+        assert.are.same({ "Arms" }, lay.ns.Spec.treesOf("Swole Mcg"))
+        assert.are.same({ "Retribution", "Holy" }, swole.ns.Spec.treesOf("Lay Ohands"))
+        lay.talents = nil
+        assert.are.same({ "Retribution", "Holy" }, lay.ns.Spec.treesOf("Lay Ohands"))
+    end)
+
+    it("keeps the specs it learned over a /reload, for four hours", function()
+        local world = World.new()
+        local client = world:addClient("Lay Ohands", { level = 22, class = "PALADIN" })
+        world:advance(12)
+        client.ns.Spec.learn("Winzi Winz", "PRIEST", { 0, 10, 6 })
+        client.ns.Spec.remember({ members = { { name = "Thalvex Grave", spec = "MAGE2" } } })
+        local saved = client:logout()
+        local again = world:addClient("Lay Ohands", { level = 22, class = "PALADIN", saved = saved })
+        world:advance(12)
+        assert.are.same({ "Holy", "Shadow" }, again.ns.Spec.treesOf("Winzi Winz"))
+        assert.are.equal("Fire", again.ns.Spec.treeOf("Thalvex Grave"))
+        local later = again:logout()
+        world:advance(4 * 3600 + 1)
+        local next = world:addClient("Lay Ohands", { level = 22, class = "PALADIN", saved = later })
+        world:advance(12)
+        assert.is_nil(next.ns.Spec.treesOf("Winzi Winz"))
+        assert.is_nil(next.ns.Spec.treeOf("Thalvex Grave"))
+    end)
+end)
+
 describe("the demo's group card", function()
     it("shows the spec of every member, and the player's own spec again after the demo", function()
         local world = World.new()

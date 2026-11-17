@@ -35,7 +35,8 @@ local function number(value)
 end
 
 -- Points spent per tree { n1, n2, n3 } in a talent config (the player's,
--- or the inspected player's), or nil when the client does not tell.
+-- or the inspected player's), or nil when the client does not tell; second,
+-- what WoW gave, for the log: "2 trees, 31 nodes, 0 ranks".
 function Spec.pointsOf(configID)
     if not number(configID) or not (C_Traits and C_Traits.GetConfigInfo and C_Traits.GetTreeNodes) then
         return nil
@@ -44,38 +45,91 @@ function Spec.pointsOf(configID)
     if not infoOk or type(info) ~= "table" or type(info.treeIDs) ~= "table" then
         return nil
     end
-    local points = { 0, 0, 0 }
+    local points, nodeCount, rankCount = { 0, 0, 0 }, 0, 0
     for _, treeID in ipairs(info.treeIDs) do
         local nodesOk, nodes = pcall(C_Traits.GetTreeNodes, treeID)
         for _, nodeID in ipairs(nodesOk and type(nodes) == "table" and nodes or {}) do
             local nodeOk, node = pcall(C_Traits.GetNodeInfo, configID, nodeID)
             if nodeOk and type(node) == "table" then
+                nodeCount = nodeCount + 1
                 local ranks = number(node.ranksPurchased) or 0
                 local tree = Specs.treeForX(number(node.posX))
                 if tree and points[tree] and ranks > 0 then
                     points[tree] = points[tree] + ranks
+                    rankCount = rankCount + ranks
                 end
             end
         end
     end
-    return points
+    return points, string.format("%d trees, %d nodes, %d ranks", #info.treeIDs, nodeCount, rankCount)
 end
+
+-- The last points WoW gave: it does not always give them (no active config
+-- for a moment), and the spec does not change in between.
+local lastPoints
 
 function Spec.points()
     if not (C_ClassTalents and C_ClassTalents.GetActiveConfigID) then
-        return nil
+        return lastPoints
     end
     local ok, configID = pcall(C_ClassTalents.GetActiveConfigID)
-    return ok and Spec.pointsOf(configID) or nil
+    local points = ok and Spec.pointsOf(configID) or nil
+    lastPoints = points or lastPoints
+    return lastPoints
 end
 
--- A party member's spec, from inspecting their talents.
+-- Other players' specs are saved per character, so a /reload keeps what
+-- this session learned: { [name] = { spec, points, class, at } }, each for
+-- KEEP_SPECS seconds after it was last learned.
+local KEEP_SPECS = 4 * 3600
+local loaded = false
+
+local function savedSpecs()
+    if not ns.charDb then
+        return nil
+    end
+    ns.charDb.knownSpecs = type(ns.charDb.knownSpecs) == "table" and ns.charDb.knownSpecs or {}
+    return ns.charDb.knownSpecs
+end
+
+local function load()
+    local saved = savedSpecs()
+    if loaded or not saved then
+        return
+    end
+    loaded = true
+    local now = GetServerTime()
+    for name, entry in pairs(saved) do
+        if type(entry) ~= "table" or now - (tonumber(entry.at) or 0) > KEEP_SPECS then
+            saved[name] = nil
+        else
+            known[name] = known[name] or entry.spec
+            if not pointsKnown[name] and entry.class and type(entry.points) == "table" then
+                pointsKnown[name] = { classToken = entry.class, points = entry.points }
+            end
+        end
+    end
+end
+
+local function save(name)
+    local saved = savedSpecs()
+    if not saved or not name then
+        return
+    end
+    local points = pointsKnown[name]
+    saved[name] = { spec = known[name], class = points and points.classToken, points = points and points.points,
+        at = GetServerTime() }
+end
+
+-- A party member's spec, from inspecting their talents or their message.
 function Spec.learn(name, classToken, points)
+    load()
     local index = points and Specs.dominant(points)
     local code = index and Specs.encode(classToken, index)
     if name and code then
         known[name] = code
         pointsKnown[name] = { classToken = classToken, points = { points[1] or 0, points[2] or 0, points[3] or 0 } }
+        save(name)
     end
     return code
 end
@@ -85,6 +139,7 @@ end
 -- when the points are not known (only the main tree came with the queue, or
 -- nobody inspected them yet) or none are spent.
 function Spec.treesOf(name)
+    load()
     local classToken, points
     if name == ns.selfName then
         classToken, points = ns.Party.playerClass(), Spec.points()
@@ -216,9 +271,11 @@ end
 
 
 function Spec.remember(view)
+    load()
     for _, member in ipairs(view and view.members or {}) do
         if member.spec then
             known[member.name] = member.spec
+            save(member.name)
         end
     end
 end
@@ -229,6 +286,7 @@ function Spec.indexOf(name)
         local spec = Spec.current()
         return spec and spec.index
     end
+    load()
     local _, index = Specs.decode(known[name])
     return index
 end
@@ -248,6 +306,7 @@ function Spec.treeOf(name)
         local spec = Spec.current()
         return spec and spec.name
     end
+    load()
     local token, index = Specs.decode(known[name])
     local tree = token and Specs.tree(token, index)
     return tree and tree.name
@@ -257,6 +316,7 @@ end
 -- after that the player's own ticks stay.
 local function onTalentsChanged()
     dirty = true
+    Spec.shareSoon(false)
     for _, engine in ipairs(ns.Queues.engines()) do
         engine:setSpec(Spec.code())
     end
@@ -286,7 +346,61 @@ function Spec.checkRoles(roles)
     Log.warn("You queue as %s, but most of your talents are in %s.", ns.Widgets.describeRoles(roles), spec.name)
 end
 
+-- Party members with Forever Groups tell each other their points per tree
+-- over the PARTY addon channel (inspecting gives nothing on Forever as of
+-- 2026-11): "v1|SP|<class>|<points>/<points>/<points>".
+local PARTY_PREFIX = "v1|SP|"
+local SHARE_DELAY = 2
+local sharedText
+local shareScheduled = false
+
+local function shareText()
+    local points, class = Spec.points(), classToken()
+    if type(points) ~= "table" or not class or not Specs.TREES[class] then
+        return nil
+    end
+    return string.format("%s%s|%d/%d/%d", PARTY_PREFIX, class, points[1] or 0, points[2] or 0, points[3] or 0)
+end
+
+-- force: the party changed, so a newcomer gets it even when it is the same.
+function Spec.shareSoon(force)
+    if force then
+        sharedText = nil
+    end
+    if shareScheduled then
+        return
+    end
+    shareScheduled = true
+    C_Timer.After(SHARE_DELAY, function()
+        shareScheduled = false
+        local text = IsInGroup() and shareText()
+        if text and text ~= sharedText then
+            sharedText = text
+            ns.Comm.sendParty(text)
+        end
+    end)
+end
+
+-- From the PARTY addon channel; returns true when the message was ours.
+function Spec.onMessage(sender, text)
+    if string.sub(text, 1, #PARTY_PREFIX) ~= PARTY_PREFIX then
+        return false
+    end
+    local class, a, b, c = string.match(text, "^v1|SP|(%u+)|(%d+)/(%d+)/(%d+)$")
+    a, b, c = tonumber(a), tonumber(b), tonumber(c)
+    if class and Specs.TREES[class] and a <= 100 and b <= 100 and c <= 100 then
+        Spec.learn(sender, class, { a, b, c })
+        if ns.Window then
+            ns.Window.refresh()
+        end
+    end
+    return true
+end
+
 function Spec.init()
+    ns.on("GROUP_ROSTER_UPDATE", function()
+        Spec.shareSoon(true)
+    end)
     for _, event in ipairs({ "PLAYER_LOGIN", "TRAIT_CONFIG_UPDATED", "PLAYER_TALENT_UPDATE",
         "ACTIVE_PLAYER_SPECIALIZATION_CHANGED", "PLAYER_LEVEL_UP" }) do
         ns.on(event, onTalentsChanged)

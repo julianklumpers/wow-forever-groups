@@ -121,7 +121,10 @@ How the addon works inside, for anyone reading or changing the code. The player-
   (`Engine:proposalKeepsMyWishes`, as a matchmaker of an older version doesn't know them; classes as
   `restrictFor` counts them). `Engine:changeEntry` keeps a field that does not fit the queue message out. An applicant's class comes from `GetApplicantMemberInfo`; a player who whispers has it from their
   Group Finder listing (`classToken`), else from the whisper's GUID (`GetPlayerInfoByGUID`, `CHAT_MSG_WHISPER`'s
-  12th argument), and only gets a place open to any class when neither tells. Who is looking fades solo players who don't fit the places left. The
+  12th argument), and only gets a place open to any class when neither tells. With the class known, the answers name
+  only the roles that class can take (`openFor`: it plays the role and a free place takes it); a class no open place
+  takes gets the `whisperClass` answer once ("Sorry, we are not looking for a Hunter right now.") and no role
+  question. Who is looking fades solo players who don't fit the places left. The
   block
   sits under the join/lead buttons on the Dungeons tab: the switch, and while it is on the five places side by side
   as place cards (below): the wished classes as their round `classicon-<class>` icons in a grid of up to three by
@@ -352,8 +355,9 @@ tree their class plays that role with (`Specs.forRole`: a Feral druid healing sh
 the same through `Spec.labelInRole`); when several trees could, or nothing is known, their class's emblem
 (`classicon-<class>`, dimmed), both filling the card; the name is always in the small font on one line (cut off with
 "..."), the class's round icon right before it, the two centred together, and the line under it has the spec only
-(the class name and spec on a client without class icons); where the points per tree are known (the player, and
-members once inspected: `Spec.learn` keeps them, `Spec.treesOf`) it names the tree with the most points and any
+(the class name and spec on a client without class icons); where the points per tree are known (the player,
+members with Forever Groups who sent them, and members once inspected: `Spec.learn` keeps them, `Spec.treesOf`) it
+names the tree with the most points and any
 other with at least a third of all points, most first ("Shadow/Holy" for 0/20/31 or 0/5/6, "Shadow" for 0/3/8,
 "Holy" for 0/51/0), so it works at low level too (that line is 2 points smaller than the name, set from
 `GameFontHighlightSmall`'s own size, as a font set by hand outlives `SetFontObject`); else, when no tree of theirs plays the place's role (a
@@ -582,12 +586,20 @@ logged, they used to push everything else out within minutes. In the developer c
 `--@do-not-package@` block, stripped from releases by the packager), with `/fg debug on` it keeps 10000 lines and
 logs the same party message (`-> party …`, sent every few seconds) once per 10 minutes.
 
-Roles in the group (`wow/rolesync.lua`): each player's Forever Groups role is set in WoW's party frames once. A
-party member who then gets another role keeps it when they offered it (the roles of their Group Finder listing or
-application, `RoleSync.expect`'s third argument, kept in `charDb.roleSyncOffered`; any role when not known); one they
-did not offer is WoW setting the role from their spec (a Feral druid invited as healer becomes the tank 6 s after
-joining), so the leader sets it back, at most twice (`MAX_RESETS`), after which it counts as their own choice; a
-player who is not the leader (who cannot set others' roles) takes the member's role over at once. The
+Roles in the group (`wow/rolesync.lua`): each player's Forever Groups role is set in WoW's party frames once, and
+is the role they were taken for. A party member who then gets another role is mostly WoW setting it from their spec
+(a Feral druid invited as healer becomes the tank 6 s after joining; a Protection warrior listed as tank and DPS,
+invited as DPS, the tank: seen 2026-11-17), so the leader sets it back at once, every time, as soon as WoW reports the change (two changes in a row, as Deadly
+Boss Mods makes them, both at once; a role WoW takes at once counts as set right away, and a sooner look is never held
+up by a later planned one). Only a loop pauses it: 6 set-backs of one player within 10 s (`LOOP_MAX`,
+`LOOP_WINDOW`) mean something keeps changing it, logged once ("X's role keeps changing; pausing N s"), and it is set
+back again once the oldest falls out of the window. This also holds when
+they offered that role in the Group Finder and after each of their /reloads (Deadly Boss Mods sets it from the spec
+again): the place they were taken for counts, not what they listed or their talents. Only the leader changing a
+member's role in WoW's party frames makes it their new role (the `hooksecurefunc("UnitSetRole")` hook sees it;
+Forever Groups' own calls are marked `setting` and left alone), and the filler then looks for the role that became
+free. A player who is not the leader (who cannot set others' roles) takes the member's role over at once, and so
+does the leader when WoW does not take the role it sets. The
 same goes for the player's own role when it is one they did not queue for:
 the spec decides it elsewhere: Deadly Boss Mods sets the role from the spec 2 s after joining a group or a /reload
 (`DBM:RoleCheck`, first DAMAGER, then the spec's role; found with the probe's role watch, which logs every
@@ -595,9 +607,11 @@ the spec decides it elsewhere: Deadly Boss Mods sets the role from the spec 2 s 
 nothing (in Forever's client it only sets the role; outside such groups DBM works as always), and the check DBM
 already planned while loading (before Forever Groups loads) is called off with `DBM:Unschedule`; the saved roles
 count from the moment the addon loads. Any other change is
-set back: right away from a `hooksecurefunc("UnitSetRole")` hook, else when WoW reports it (at most once per 5 s);
+set back: right away from a `hooksecurefunc("UnitSetRole")` hook, else when WoW reports it;
 only with several roles ticked may it change between them. In a group Forever Groups follows the player's role is
-always held: the current one if ticked, else the first ticked one. The agreed roles are kept in `charDb.roleSync`, so they still hold after a /reload; and in a group
+always held: the current one if ticked, else the first ticked one. In any other party (one formed with a friend,
+before or without a queue) a single ticked role is held the same way (`claimTicked`, `tickHeld`; a tick that
+changes moves it, `RoleSync.ticked()` from the role tiles); with several ticked the role is left to the player. The agreed roles are kept in `charDb.roleSync`, so they still hold after a /reload; and in a group
 Forever Groups follows (`GroupView.isTracking`) with nothing agreed for the player, a role outside the ticked ones
 gives way to the first ticked one. Groups the addon does not follow are left alone. The group's places
 show each member in their own role (two tanks as two tanks) and as open places what a group of one tank, one
@@ -882,9 +896,19 @@ the tabs Groups, Messages and Display.
 
 ### In the group
 
+- **Specs with the addon:** party members send their points per tree on PARTY, `v1|SP|<class>|<a>/<b>/<c>`
+  (`Spec.shareSoon`: 2 s after the roster or the talents change, again for a newcomer), so the places show
+  everyone's own trees ("Protection" for a Protection warrior in a DPS place). The player's own points are the last
+  ones WoW gave (`Spec.points` keeps them: WoW does not always give them, e.g. inside a dungeon).
 - **Specs without the addon:** `wow/inspectspec.lua` inspects one party member at a time out of combat
   (`NotifyInspect`, `INSPECT_READY`, the talent config `-1`) and reads their tree like `wow/spec.lua`; again after
-  10 minutes.
+  10 minutes. Members close by first (`CheckInteractDistance`), then those further away: on Forever a member outside
+  the dungeon can be inspected from inside (the player's own inspect does it, 2026-11-17); one that gives no answer
+  within 5 s is logged ("inspecting X: no answer") and tried again a minute later. A member without talent points
+  (low level) reads as nothing. The log says what WoW gave ("inspected X: ROGUE2 (1 trees, 31 nodes, 12 ranks)").
+- **Kept over a /reload:** every spec learned this way, from a proposal (`Spec.remember`) or a party message, is
+  saved per character (`charDb.knownSpecs`, name → spec, points, class, when) and kept for 4 hours after it was
+  last learned (`KEEP_SPECS`), so a /reload with the group far away keeps showing their trees.
 - **Where everyone is:** members send `v1|GP|<dungeon>|<in|far|yards>` on PARTY (`wow/groupplaces.lua`), so the places
   show "inside" or the distance to the entrance even when the player is already inside.
 - **Secret values:** during boss fights Midnight makes chat event arguments secret (strings that error on any string

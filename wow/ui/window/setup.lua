@@ -99,7 +99,11 @@ end
 -- locked: the tiles can't be changed (W.locked).
 function W.refreshRoles(locked)
     local myClass = Party.playerClass()
+    local before = ns.charDb.lastRoles
     ns.charDb.lastRoles = Classes.filter(W.selectedRoles(), myClass)
+    if ns.charDb.lastRoles ~= before then
+        ns.RoleSync.ticked()
+    end
     local current = ns.Spec.current()
     for role, tile in pairs(roleToggles) do
         local allowed = Classes.canPlay(myClass, role)
@@ -523,6 +527,7 @@ function W.buildRoles()
         roleToggles[role] = Widgets.roleTile(W.frame, role, TILE_WIDTH, function(self)
             ns.charDb.lastRoles = Widgets.toggleRole(W.selectedRoles(), role, self:GetChecked())
             ns.LfgList.syncRoles(ns.charDb.lastRoles)
+            ns.RoleSync.ticked()
             W.setHint("")
             ns.Window.refresh()
         end)

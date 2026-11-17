@@ -48,22 +48,32 @@ local function playerInspecting()
     return InspectFrame ~= nil and InspectFrame:IsShown()
 end
 
+-- The next member to inspect: one close by first, else one further away
+-- (on Forever a member outside the dungeon can be inspected from inside:
+-- the player's own inspect does it, 2026-11-17).
 local function nextUnit()
     local now = GetTime()
+    local far
     for i = 1, 4 do
         local unit = "party" .. i
         local name = ns.Party.unitName(unit)
         local due = not ns.Spec.treeOf(name) or (inspectedAt[name] and now - inspectedAt[name] >= REFRESH)
-        if name and due and now - (tried[name] or -math.huge) >= RETRY
-            and call(CanInspect, unit) == true and call(CheckInteractDistance, unit, 1) == true then
-            return unit, name
+        if name and due and now - (tried[name] or -math.huge) >= RETRY and call(CanInspect, unit) == true then
+            if call(CheckInteractDistance, unit, 1) == true then
+                return unit, name
+            end
+            far = far or { unit, name }
         end
+    end
+    if far then
+        return far[1], far[2]
     end
 end
 
 function InspectSpec.tick()
     local now = GetTime()
     if pending and now - pending.at > TIMEOUT then
+        Log.debug("inspecting %s: no answer within %d s", pending.name, TIMEOUT)
         pending = nil
     end
     if pending or not IsInGroup() or now - lastAt < SPACING or InCombatLockdown() or playerInspecting()
@@ -96,9 +106,10 @@ local function onReady(guid)
     end
     if ns.Party.unitName(asked.unit) == asked.name then
         local _, classToken = UnitClass(asked.unit)
-        local code = ns.Spec.learn(asked.name, classToken, ns.Spec.pointsOf(inspectConfig()))
+        local points, detail = ns.Spec.pointsOf(inspectConfig())
+        local code = ns.Spec.learn(asked.name, classToken, points)
         inspectedAt[asked.name] = GetTime()
-        Log.debug("inspected %s: %s", asked.name, tostring(code))
+        Log.debug("inspected %s: %s (%s)", asked.name, tostring(code), tostring(detail))
     end
     call(ClearInspectPlayer)
 end
