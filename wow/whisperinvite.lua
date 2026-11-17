@@ -270,6 +270,16 @@ function WhisperInvite.onWhisper(text, sender, ...)
         return
     end
     local question = asked[sender]
+    -- A class that plays one role only (a Rogue: DPS) asking to join needs
+    -- no question: it is invited for that role when a place takes it.
+    local only = class and ns.Classes.allowed(class)
+    if only and #only == 1 and string.find(needed, only, 1, true) and not (question and question.told)
+        and (question or WhisperInvite.asksToJoin(text)) then
+        if goal.invite(sender, only, class, only) then
+            asked[sender] = nil
+        end
+        return
+    end
     if not question then
         if WhisperInvite.asksToJoin(text) then
             asked[sender] = { needed = needed, count = 1, at = GetTime() }

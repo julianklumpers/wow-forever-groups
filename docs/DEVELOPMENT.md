@@ -124,7 +124,8 @@ How the addon works inside, for anyone reading or changing the code. The player-
   12th argument), and only gets a place open to any class when neither tells. With the class known, the answers name
   only the roles that class can take (`openFor`: it plays the role and a free place takes it); a class no open place
   takes gets the `whisperClass` answer once ("Sorry, we are not looking for a Hunter right now.") and no role
-  question. Who is looking fades solo players who don't fit the places left. The
+  question. A class that plays one role only (Rogue, Mage, Hunter, Warlock) asking to join is invited for it at once
+  when a place takes it, without the role question. Who is looking fades solo players who don't fit the places left. The
   block
   sits under the join/lead buttons on the Dungeons tab: the switch, and while it is on the five places side by side
   as place cards (below): the wished classes as their round `classicon-<class>` icons in a grid of up to three by
@@ -225,6 +226,7 @@ Lua 5.1, luacheck and busted are installed locally in `.lua51/`
 .lua51/bin/luacheck .             # lint
 .lua51/bin/busted --coverage && .lua51/bin/luacov   # coverage report in luacov.report.out
 SOAK_SEED=7 SOAK_STEPS=2000 .lua51/bin/busted tests/soak_spec.lua   # a longer random session
+REALISTIC_SEEDS=60 REALISTIC_STEPS=300 .lua51/bin/busted tests/realistic_spec.lua   # more realistic groups
 LOAD=1 .lua51/bin/busted tests/load_spec.lua   # channel load measurement (left out of the normal run)
 LOAD_CLIENTS=150 LOAD_SECONDS=300 .lua51/bin/busted tests/load_spec.lua   # a bigger one
 .lua51/bin/lua tools/simulate.lua busy 60 1 5 grace   # matchmaking variants (scenario, minutes, seed, runs, set)
@@ -235,6 +237,15 @@ python3 scripts/package.py        # dist/ForeverGroups-<version>.zip with only w
 proposals, logging out) and checks after every step that nobody is stuck: no queue held without a proposal in the
 other, no proposal open past its deadline, no popup without a proposal or proposal without a popup. The mock keeps
 Group Finder results secret during chat-messaging lockdown (`World.SECRET`), as Midnight does.
+
+`tests/realistic_spec.lua` has a leader build a group from the Group Finder among players who behave as seen in the
+game: invitees who accept, decline, are already in a group or never answer; members whose Deadly Boss Mods sets
+their role from their spec after joining and after their /reloads (first DAMAGER, then the spec's role); whisperers
+of a fixed class who chat ("got ya", ":)"); and the leader's own /reloads. After every second rules must hold: every
+member plays the role they were invited for (once the changes have been answered), no invite goes into a full
+party, nobody is asked their role after being told it is not needed, at most three times per session, and a
+member's agreed role survives the leader's /reload. A rule found broken in the game gets a behaviour here, so the
+test looks for it in combinations nobody wrote down. (Seeded; REALISTIC_SEEDS and REALISTIC_STEPS search longer.)
 
 `tools/simulate.lua` compares matchmaking variants without the game, second by second: Forever Groups players arrive
 (roles, classes, 1-3 of 6 dungeons, some duos) and others see their entry 1-2 s later, the real

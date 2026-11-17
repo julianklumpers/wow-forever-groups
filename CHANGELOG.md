@@ -11,6 +11,8 @@
   not looking for their class (Settings → Messages), instead of being asked their role for nothing; a class that
   fits is asked only about the roles it can take.
 - A queue update the queue refuses (a party of two tanks) is logged once, not at every roster change.
+- A Rogue, Mage, Hunter or Warlock who whispers to join is invited as DPS right away when a DPS place takes their
+  class, instead of being asked their role.
 - After telling a whisperer their role is not needed ("Sorry, we only need Healer right now."), Forever Groups no
   longer asks for their role when they just reply "got ya" or ":)"; naming a needed role still gets an invite.
 - In a party with a friend, a single ticked role becomes your role in WoW's party frames, and is set back when

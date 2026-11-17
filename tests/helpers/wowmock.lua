@@ -530,8 +530,11 @@ function Client:joins(name)
     self:fire("GROUP_ROSTER_UPDATE")
 end
 
+-- A declined invite, or one to a player already in a group (WoW never sends
+-- it), holds no party place any more.
 function Client:system(text)
-    local declined = type(text) == "string" and string.match(text, "^(.-) declines your group invitation%.$")
+    local declined = type(text) == "string" and (string.match(text, "^(.-) declines your group invitation%.$")
+        or string.match(text, "^(.-) is already in a group%.$"))
     if declined then
         self.answeredInvites[declined] = true
     end
