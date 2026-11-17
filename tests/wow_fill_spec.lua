@@ -1052,3 +1052,85 @@ describe("Filling with classes the group lacks first", function()
         assert.is_nil(Filler.avoidClasses())
     end)
 end)
+
+describe("A player who did not join", function()
+    local function filling(world)
+        local tank = world:addClient("Tanky Mctank", { level = 20 })
+        world:list("Good Heal", "H", 799, 20, 300)
+        world:advance(30)
+        tank:slash("/dq join tank dm")
+        world:advance(5)
+        return tank
+    end
+
+    local function invites(tank, name)
+        local count = 0
+        for _, other in ipairs(tank.invites) do
+            count = count + (other == name and 1 or 0)
+        end
+        return count
+    end
+
+    local function relist(world, tank, name)
+        world:advance(20)
+        for _, listing in ipairs(world.listings) do
+            if listing.leaderName == name then
+                listing.age = 5
+            end
+        end
+        tank:slash("/dq fill")
+        world:advance(2)
+    end
+
+    it("shows why in Who is looking, and is invited again once in a group no more", function()
+        local world = World.new()
+        local tank = filling(world)
+        assert.are.equal(1, invites(tank, "Good Heal"))
+        tank:system("Good Heal is already in a group.")
+        tank:slash("/dq")
+        tank.ns.db.queueFold = { players = false, groups = false }
+        tank.ns.QueueWindow.refresh()
+        local text = tank:findText("^%[in a group%]")
+        assert.is_not_nil(text)
+        assert.are.equal(0.4, text.parent.alpha)
+        tank:slash("/dq fill")
+        world:advance(2)
+        assert.are.equal(1, invites(tank, "Good Heal"))
+        relist(world, tank, "Good Heal")
+        assert.are.equal(2, invites(tank, "Good Heal"))
+        assert.is_true(tank:logged("Good Heal is looking again"))
+    end)
+
+    it("who declined is invited once more after listing again, not after a second no", function()
+        local world = World.new()
+        local tank = filling(world)
+        tank:system("Good Heal declines your group invitation.")
+        tank:slash("/dq fill")
+        world:advance(2)
+        assert.are.equal(1, invites(tank, "Good Heal"))
+        relist(world, tank, "Good Heal")
+        assert.are.equal(2, invites(tank, "Good Heal"))
+        tank:system("Good Heal declines your group invitation.")
+        relist(world, tank, "Good Heal")
+        assert.are.equal(2, invites(tank, "Good Heal"))
+    end)
+
+    it("who did not answer is invited once more when still listed five minutes later", function()
+        local world = World.new()
+        local tank = filling(world)
+        world:advance(35)
+        assert.is_true(tank:logged("Good Heal did not answer"))
+        tank:slash("/dq fill")
+        world:advance(2)
+        assert.are.equal(1, invites(tank, "Good Heal"))
+        world:advance(300)
+        tank:slash("/dq fill")
+        world:advance(2)
+        assert.are.equal(2, invites(tank, "Good Heal"))
+        world:advance(35)
+        world:advance(300)
+        tank:slash("/dq fill")
+        world:advance(2)
+        assert.are.equal(2, invites(tank, "Good Heal"))
+    end)
+end)

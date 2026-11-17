@@ -569,7 +569,14 @@ single-role players; the matchmaker sorts an anchor's candidates by how far thei
 (`Matchmaker.levelPreference`, `averageLevel`), whoever waited `VARIETY_TIME` counting as near, then by queue order. A whisperer held back waits in `wow/whisperinvite.lua` until then; the log counts
 them per role ("of a class your group has in that role or twice, for 95 s more"). The test mock turns it off unless a client
 is made with `classVariety` (its listed players are mostly Paladins). Anyone who declines or does not
-join within 30 s is replaced (a player who joins later is kept while a spot is open). The invite follows the whisper
+join within 30 s is replaced (a player who joins later is kept while a spot is open). What became of each invite is
+kept (`state.outcomes`: declined, grouped for WoW's "is already in a group", missing for "Cannot find player",
+noanswer, away; from WoW's own system text) and the player is passed over until they look again (`reopen`, before
+each pick): one who was in a group or not found once they list again (a listing newer than the outcome:
+`seenAt - age`, so a kept older listing never counts), one who declined once more after listing again, one who did
+not answer once more when still listed 5 minutes after (`REOPEN_WAIT`); a second no is final for the fill. Who is
+looking shows it before their dungeons ("[declined]", "[in a group]", "[no answer]", "[invited]"), dimmed while
+passed over, with why and when they are tried again in the tooltip (`Filler.status`). The invite follows the whisper
 after 1.5 s, so an away player's automatic reply (`CHAT_MSG_AFK`/`CHAT_MSG_DND`) comes first and they are passed over
 uninvited. Every open invite takes a place in the party, also one given up on: WoW keeps an unanswered invite open
 for exactly 60 s. Every invite the addon sends goes through `wow/invites.lua` (the filler, the battleground and quest

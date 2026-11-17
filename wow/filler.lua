@@ -31,6 +31,12 @@ local ADDON_GRACE = 20
 -- reports it, only new listings need a search (which needs player input).
 local STALE_RESULTS = 300
 local DECLINE_MESSAGES = { "ERR_DECLINE_GROUP_S", "ERR_ALREADY_IN_GROUP_S", "ERR_BAD_PLAYER_NAME_S" }
+-- What each of those messages means for the player invited.
+local DECLINE_KINDS = { ERR_DECLINE_GROUP_S = "declined", ERR_ALREADY_IN_GROUP_S = "grouped",
+    ERR_BAD_PLAYER_NAME_S = "missing" }
+-- A player who did not answer (or was away) is tried once more when still
+-- listed this long after.
+local REOPEN_WAIT = 300
 
 local state
 local changeListeners = {}
@@ -155,8 +161,44 @@ local function freePlaces()
     return PARTY_SIZE - taken - ns.Invites.held()
 end
 
+-- What became of a player invited this fill: { kind, at, again } with kind
+-- "invited", "declined", "grouped" (already in a group), "missing" (WoW knows
+-- no such player), "noanswer" or "away"; again: let back in once already.
+local function setOutcome(name, kind)
+    local old = state.outcomes[name]
+    state.outcomes[name] = { kind = kind, at = GetTime(), again = old and old.again }
+end
+
+-- Players passed over after an invite who are looking again: one who was in a
+-- group or not found once they list again (a listing newer than the invite),
+-- one who declined once more after listing again, one who did not answer once
+-- more when still listed REOPEN_WAIT later.
+local function reopen(listings)
+    local listedAt = {}
+    for _, listing in ipairs(listings) do
+        listedAt[listing.name] = (listing.seenAt or GetTime()) - (listing.age or 0)
+    end
+    local now = GetTime()
+    for name, out in pairs(state.outcomes) do
+        local since = listedAt[name]
+        if since and state.exclude[name] and not state.pending[name] then
+            local relisted = since > out.at + 1
+            local kind = out.kind
+            local back = ((kind == "grouped" or kind == "missing") and relisted)
+                or (kind == "declined" and relisted and not out.again)
+                or ((kind == "noanswer" or kind == "away") and now - out.at >= REOPEN_WAIT and not out.again)
+            if back then
+                state.exclude[name], state.late[name] = nil, nil
+                state.outcomes[name] = { kind = "back", at = now, again = true }
+                Log.detail("%s is looking again; they may be invited again.", name)
+            end
+        end
+    end
+end
+
 local function invite(pick)
     state.exclude[pick.name] = true
+    setOutcome(pick.name, "invited")
     local role = Widgets.ROLE_NAMES[pick.role]
     state.pending[pick.name] = { role = pick.role, at = GetTime(), class = pick.class }
     state.invited[pick.name] = pick.role
@@ -280,6 +322,7 @@ function Filler.step()
         state.needSearch = true
         return
     end
+    reopen(listings)
     local picks, open
     local places, avoid, prefer = Filler.freePlaces(), Filler.avoidClasses(), Filler.preferClasses()
     local near = Filler.groupLevel()
@@ -353,7 +396,7 @@ function Filler.start(opts)
     local dungeon = opts.dungeon or (#dungeons == 1 and dungeons[1] or nil)
     state = {
         open = opts.missing, dungeon = dungeon, dungeons = dungeons,
-        pending = {}, late = {}, exclude = exclude, invited = {},
+        pending = {}, late = {}, exclude = exclude, invited = {}, outcomes = {},
         startedAt = GetServerTime(), variety = not opts.replacement or nil,
     }
     if dungeon then
@@ -420,6 +463,23 @@ end
 
 function Filler.excluded()
     return state and state.exclude or {}
+end
+
+-- What became of a listed player this fill, for Who is looking: "invited"
+-- while the invite is out, else the outcome while they stay passed over
+-- ("declined", "grouped", "missing", "noanswer", "away"); nil otherwise.
+function Filler.status(name)
+    if not state then
+        return nil
+    end
+    if state.pending[name] then
+        return "invited"
+    end
+    local out = state.outcomes[name]
+    if out and state.exclude[name] and out.kind ~= "invited" and out.kind ~= "back" then
+        return out.kind
+    end
+    return nil
 end
 
 -- An invite sent another way (an applicant to our listing) counts like one of
@@ -641,8 +701,13 @@ function Filler.saved()
     for name in pairs(state.exclude) do
         exclude[#exclude + 1] = name
     end
+    local outcomes = {}
+    for name, out in pairs(state.outcomes) do
+        outcomes[name] = { kind = out.kind, age = now - out.at, again = out.again }
+    end
     return { open = state.open, dungeon = state.dungeon, dungeons = state.dungeons, pending = pending,
-        exclude = exclude, invited = state.invited, startedAt = state.startedAt, variety = state.variety }
+        exclude = exclude, invited = state.invited, startedAt = state.startedAt, variety = state.variety,
+        outcomes = outcomes }
 end
 
 -- Fills on after a /reload from Filler.saved(), `away` seconds later; the
@@ -660,6 +725,12 @@ function Filler.restore(saved, away)
     for _, name in ipairs(type(saved.exclude) == "table" and saved.exclude or {}) do
         exclude[name] = true
     end
+    local outcomes = {}
+    for name, out in pairs(type(saved.outcomes) == "table" and saved.outcomes or {}) do
+        if type(out) == "table" and type(out.kind) == "string" then
+            outcomes[name] = { kind = out.kind, at = now - (tonumber(out.age) or 0) - away, again = out.again }
+        end
+    end
     for name, out in pairs(type(saved.pending) == "table" and saved.pending or {}) do
         local sent = (tonumber(out.sent) or INVITE_LIFETIME) + away
         if Widgets.ROLE_NAMES[out.role] and sent < INVITE_LIFETIME then
@@ -671,7 +742,7 @@ function Filler.restore(saved, away)
     end
     state = {
         open = saved.open, dungeon = saved.dungeon, dungeons = saved.dungeons,
-        pending = pending, late = {}, exclude = exclude, invited = invited,
+        pending = pending, late = {}, exclude = exclude, invited = invited, outcomes = outcomes,
         startedAt = tonumber(saved.startedAt) or GetServerTime(), variety = saved.variety == true or nil,
     }
     if state.dungeon then
@@ -787,16 +858,17 @@ local function onRosterUpdate()
     end
 end
 
-local declinePatterns
+local declinePatterns, declineKinds
 local function patterns()
     if not declinePatterns then
-        declinePatterns = {}
+        declinePatterns, declineKinds = {}, {}
         for _, key in ipairs(DECLINE_MESSAGES) do
             local format = _G[key]
             if type(format) == "string" then
                 local pattern = string.gsub(format, "([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
                 pattern = string.gsub(pattern, "%%s", "(.+)")
                 declinePatterns[#declinePatterns + 1] = "^" .. pattern .. "$"
+                declineKinds[#declinePatterns] = DECLINE_KINDS[key]
             end
         end
     end
@@ -842,10 +914,11 @@ local function onSystemMessage(text)
         onPartyFull()
         return
     end
-    for _, pattern in ipairs(patterns()) do
+    for i, pattern in ipairs(patterns()) do
         local name = string.match(text, pattern)
         if name and state.pending[name] then
             state.pending[name] = nil
+            setOutcome(name, declineKinds[i])
             ns.RoleSync.forget(name)
             Log.detail("%s did not join; trying someone else.", name)
             Log.debug("WoW said: %s", text)
@@ -865,6 +938,7 @@ local function onAway(_, sender)
     end
     local pending = state.pending[name]
     state.pending[name] = nil
+    setOutcome(name, "away")
     ns.RoleSync.forget(name)
     if pending.sentAt then
         state.late[name] = { role = pending.role, at = pending.sentAt }
@@ -897,6 +971,7 @@ function Filler.tick()
         if now - pending.at > INVITE_TIMEOUT then
             state.pending[name] = nil
             state.late[name] = { role = pending.role, at = pending.sentAt or pending.at }
+            setOutcome(name, "noanswer")
             ns.RoleSync.forget(name)
             expired = true
             Log.detail("%s did not answer the invite; trying someone else.", name)
