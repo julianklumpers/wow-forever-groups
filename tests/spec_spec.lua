@@ -302,6 +302,103 @@ describe("trees told over the party channel", function()
         assert.are.same({ "Retribution", "Holy" }, lay.ns.Spec.treesOf("Lay Ohands"))
     end)
 
+    it("sends its points again for a newcomer only, not at every roster update", function()
+        local world = World.new()
+        local lay = world:addClient("Lay Ohands", { level = 22, class = "PALADIN",
+            talents = { { 1000, 5 }, { 9000, 8 } } })
+        world:advance(12)
+        lay.party, lay.isLeader = { "Swole Mcg" }, true
+        lay:fire("GROUP_ROSTER_UPDATE")
+        world:advance(3)
+        local function sent()
+            local count = 0
+            for _, text in ipairs(lay.sent) do
+                count = count + (text:find("^v1|SP|") and 1 or 0)
+            end
+            return count
+        end
+        assert.are.equal(1, sent())
+        for _ = 1, 3 do
+            lay:fire("GROUP_ROSTER_UPDATE")
+            world:advance(3)
+        end
+        assert.are.equal(1, sent())
+        local fullName = lay.env.UnitFullName
+        lay.env.UnitFullName = function(unit)
+            if unit == "party1" then
+                return nil
+            end
+            return fullName(unit)
+        end
+        lay:fire("GROUP_ROSTER_UPDATE")
+        world:advance(3)
+        lay.env.UnitFullName = fullName
+        lay:fire("GROUP_ROSTER_UPDATE")
+        world:advance(3)
+        assert.are.equal(1, sent())
+        lay.party = { "Swole Mcg", "New Friend" }
+        lay:fire("GROUP_ROSTER_UPDATE")
+        world:advance(3)
+        assert.are.equal(2, sent())
+    end)
+
+    local function trio()
+        local world = World.new()
+        local lay = world:addClient("Lay Ohands", { level = 22, class = "PALADIN",
+            talents = { { 1000, 5 }, { 9000, 8 } } })
+        local swole = world:addClient("Swole Mcg", { level = 22, class = "WARRIOR",
+            talents = { { 1000, 6 }, { 5000, 2 } } })
+        local heally = world:addClient("Heally Mcheal", { level = 22, class = "PRIEST",
+            talents = { { 5000, 9 } } })
+        world:advance(12)
+        lay.party, lay.isLeader = { "Swole Mcg" }, true
+        swole.party = { "Lay Ohands" }
+        lay.partyClasses["Swole Mcg"], swole.partyClasses["Lay Ohands"] = "WARRIOR", "PALADIN"
+        lay:fire("GROUP_ROSTER_UPDATE")
+        swole:fire("GROUP_ROSTER_UPDATE")
+        world:advance(3)
+        local function join()
+            lay.party = { "Swole Mcg", "Heally Mcheal" }
+            swole.party = { "Lay Ohands", "Heally Mcheal" }
+            heally.party = { "Lay Ohands", "Swole Mcg" }
+            lay.partyClasses["Heally Mcheal"], swole.partyClasses["Heally Mcheal"] = "PRIEST", "PRIEST"
+            heally.partyClasses["Lay Ohands"], heally.partyClasses["Swole Mcg"] = "PALADIN", "WARRIOR"
+            lay:fire("GROUP_ROSTER_UPDATE")
+            swole:fire("GROUP_ROSTER_UPDATE")
+            heally:fire("GROUP_ROSTER_UPDATE")
+        end
+        return world, lay, heally, join
+    end
+
+    it("sends its points to a newcomer who joins during a boss fight once the fight is over", function()
+        local world, lay, heally, join = trio()
+        lay.lockdown = true
+        join()
+        world:advance(3)
+        lay.lockdown = false
+        world:advance(5)
+        assert.are.same({ "Arms" }, heally.ns.Spec.treesOf("Swole Mcg"))
+        assert.are.same({ "Retribution", "Holy" }, heally.ns.Spec.treesOf("Lay Ohands"))
+    end)
+
+    it("sends its points again when WoW refused the first send", function()
+        local world, lay, heally, join = trio()
+        lay.sendResults = { 3 }
+        join()
+        world:advance(8)
+        assert.are.same({ "Retribution", "Holy" }, heally.ns.Spec.treesOf("Lay Ohands"))
+    end)
+
+    it("shows a member's tied trees, like the player's own", function()
+        local world = World.new()
+        local client = world:addClient("Lay Ohands", { level = 22, class = "PALADIN" })
+        world:advance(12)
+        client.ns.Spec.onMessage("Winzi Winz", "v1|SP|PRIEST|6/6/0")
+        assert.are.same({ "Discipline", "Holy" }, client.ns.Spec.treesOf("Winzi Winz"))
+        client.ns.Spec.learn("Winzi Winz", "PRIEST", { 0, 0, 0 })
+        assert.are.same({ "Discipline", "Holy" }, client.ns.Spec.treesOf("Winzi Winz"))
+    end)
+
     it("keeps the specs it learned over a /reload, for four hours", function()
         local world = World.new()
         local client = world:addClient("Lay Ohands", { level = 22, class = "PALADIN" })

@@ -21,18 +21,37 @@ local ROLE_LETTERS = { TANK = "T", HEALER = "H", DAMAGER = "D" }
 local ROLE_KEYS = { TANK = "T", HEALER = "H", DAMAGER = "D", DPS = "D" }
 
 local listings = {}
-local resultIds = {}
-local coveredActivities
 local KEEP_LISTINGS = 120
--- The dungeon search on its way, to undo when the server refuses it, and the
--- part to search again after a refusal.
-local pending
+-- Every search WoW was asked for, ours or another addon's (or Blizzard's own
+-- window), not answered yet, oldest first: { at, mine, kind, languages,
+-- generation, ... }. A refusal ("throttled") comes at once and is for the
+-- newest. Only an answer while our own search is the only one out replaces
+-- listings; any other answer is merged in: nothing is removed and it does
+-- not count as a fresh search.
+local open = {}
+-- Our own search while it is being sent, so the hook knows it is ours.
+local issuing
+-- GetTime() of the last search seen: WoW allows one search per click or key
+-- press, so a second one within the same frame is blocked and never sent.
+local searchFrame = -math.huge
+-- Our last dungeon search, so a late undo leaves a newer one alone.
+local lastDungeonSearch
+-- Goes up when the languages change: an answer to a search sent before
+-- that is no fresh search for the new languages.
+local generation = 0
+local languagesChangedAt = -math.huge
+-- The result set WoW has now (the last answer, whoever searched): its ids,
+-- the kind of its listings, and whether it may bring in new leaders.
+local resultSet = { ids = {}, newOk = false }
+local languageFilter, undoOwn
+-- The part to search again after a refusal.
 local retryPart
 local failures = 0
 local totalResults = 0
 local updatedAt
 local searchedAt = -math.huge
 local failedAt = -math.huge
+local ownFailedAt = -math.huge
 local listeners = {}
 
 -- One failing listener must not keep the others from the new results.
@@ -45,19 +64,17 @@ local function notify()
     end
 end
 local loggedRoleKeys = false
--- Results go to the dungeon or the zone cache, so a zone search never
--- replaces the dungeon listings. Which one is told by the results' activities
--- (searches from Blizzard's own window included); an empty result goes by
--- the kind of our last search.
-local lastKind = "dungeons"
+-- Results go to the dungeon, zone or battleground cache, so a zone search
+-- never replaces the dungeon listings. Which one is told by the results'
+-- activities; an empty result goes by the kind of our own search.
 local anySearchAt = -math.huge
 -- Goes up whenever the cached listings change.
 local version = 0
 local zoneCategory = CATEGORY_ZONES
 local zoneByActivity, activityByZone = {}, {}
 local zoneListings = {}
--- The zones of the last zone search, and of the results we have.
-local searchingZones, resultZones = {}, {}
+-- The zones of the results we have from our own zone search.
+local resultZones = {}
 -- Each zone's level range as the Group Finder suggests it: name => { min, max }.
 local zoneLevels = {}
 local zoneUpdatedAt
@@ -232,54 +249,125 @@ local function unreadable(id)
     return type(info) == "table" and (isSecret(info.numMembers) or isSecret(info.leaderName))
 end
 
-local function refreshZones(ids)
-    local result, secret = {}, 0
+-- How a result of each kind is read. A battleground listing's open places
+-- are the battleground's size less its members (roles hardly matter there).
+local READERS = {
+    dungeons = function(id)
+        return readResult(id)
+    end,
+    zones = function(id)
+        return readResult(id, zonesOf, "zones")
+    end,
+    battlegrounds = function(id)
+        local listing = readResult(id, battlegroundsOf, "battlegrounds")
+        if listing then
+            local battleground = ns.Battlegrounds.get(listing.battlegrounds[1])
+            listing.remaining = nil
+            listing.open = math.max(0, (battleground and battleground.size or 10) - listing.members)
+        end
+        return listing
+    end,
+}
+
+local KINDS = { "dungeons", "zones", "battlegrounds" }
+
+local function listOf(kind)
+    if kind == "zones" then
+        return zoneListings
+    elseif kind == "battlegrounds" then
+        return battlegroundListings
+    end
+    return listings
+end
+
+local function setList(kind, list)
+    if kind == "zones" then
+        zoneListings = list
+    elseif kind == "battlegrounds" then
+        battlegroundListings = list
+    else
+        listings = list
+    end
+end
+
+-- The usable listings among these results, one per leader (a leader has one
+-- listing; should a name come twice, the newest counts), and how many could
+-- not be read (secret during a boss fight).
+local function readAll(kind, ids)
+    local result, byName, secret = {}, {}, 0
+    local now = GetTime()
     for _, id in ipairs(ids) do
-        local ok, listing = pcall(readResult, id, zonesOf, "zones")
+        local ok, listing = pcall(READERS[kind], id)
         if ok and listing then
-            result[#result + 1] = listing
+            listing.seenAt = now
+            local index = byName[listing.name]
+            if not index then
+                result[#result + 1] = listing
+                byName[listing.name] = #result
+            elseif (listing.age or 0) < (result[index].age or 0) then
+                result[index] = listing
+            end
         elseif unreadable(id) then
             secret = secret + 1
         end
     end
+    return result, secret
+end
+
+-- A leader lists for one kind at a time: placed in one list, the same name
+-- leaves the other two.
+local function dropElsewhere(kind, placed)
+    local names = {}
+    for _, listing in ipairs(placed) do
+        names[listing.name] = true
+    end
+    for _, other in ipairs(KINDS) do
+        if other ~= kind then
+            local kept, dropped = {}, 0
+            for _, listing in ipairs(listOf(other)) do
+                if names[listing.name] then
+                    dropped = dropped + 1
+                else
+                    kept[#kept + 1] = listing
+                end
+            end
+            if dropped > 0 then
+                setList(other, kept)
+                Log.debug("group finder: %d leaders moved from %s to %s", dropped, other, kind)
+            end
+        end
+    end
+end
+
+local function refreshZones(ids, record)
+    local result, secret = readAll("zones", ids)
     if #result == 0 and secret > 0 then
         return
     end
-    pending = nil
     zoneListings = result
     zoneUpdatedAt = GetTime()
-    resultZones = searchingZones
+    resultZones = record.zones or {}
+    dropElsewhere("zones", result)
     version = version + 1
     Log.debug("group finder zones: %d usable listings of %d results", #result, #ids)
     notify()
 end
 
--- A battleground listing's open places: the battleground's size less its
--- members (roles hardly matter there).
 local function refreshBattlegrounds(ids)
-    local result, secret = {}, 0
-    for _, id in ipairs(ids) do
-        local ok, listing = pcall(readResult, id, battlegroundsOf, "battlegrounds")
-        if ok and listing then
-            local battleground = ns.Battlegrounds.get(listing.battlegrounds[1])
-            listing.remaining = nil
-            listing.open = math.max(0, (battleground and battleground.size or 10) - listing.members)
-            result[#result + 1] = listing
-        elseif unreadable(id) then
-            secret = secret + 1
-        end
-    end
+    local result, secret = readAll("battlegrounds", ids)
     if #result == 0 and secret > 0 then
         return
     end
-    pending = nil
     battlegroundListings = result
     battlegroundsUpdatedAt = GetTime()
+    dropElsewhere("battlegrounds", result)
     version = version + 1
     Log.debug("group finder battlegrounds: %d usable listings of %d results", #result, #ids)
     notify()
 end
 
+-- The kind of these results by their activities; nil for results we can't
+-- place (another category of WoW's window, or none at all).
 local function kindOf(ids)
     local zones, dungeons, battlegrounds = 0, 0, 0
     for _, id in ipairs(ids) do
@@ -302,10 +390,7 @@ local function kindOf(ids)
     elseif battlegrounds > 0 then
         return "battlegrounds"
     end
-    -- Nothing we can place: our own search tells its kind (no results is
-    -- news too); results of a search in another category of WoW's window
-    -- are not ours to read.
-    return pending and pending.kind or nil
+    return nil
 end
 
 local function coversListing(covered, listing)
@@ -318,52 +403,201 @@ local function coversListing(covered, listing)
     return false
 end
 
+-- The languages of a search as a set: nil is the player's own language
+-- (what the server answers then); false when they could not be read.
+local function languageSet(languages)
+    if languages == nil then
+        return { [ns.MatchLanguages.own()] = true }
+    end
+    return languages
+end
+
+-- An empty set may be all languages to the server: not within.
+local function within(languages, allowed)
+    if languages == false or (type(languages) == "table" and next(languages) == nil) then
+        return false
+    end
+    local ok = languageSet(allowed)
+    for code in pairs(languageSet(languages)) do
+        if not ok[code] then
+            return false
+        end
+    end
+    return true
+end
+
+-- Whether an answer may bring in leaders we don't know yet: only when every
+-- search it could be the answer to asked for languages the player groups
+-- with, and the list was not cleared meanwhile.
+local function mayAddLeaders(records)
+    if #records == 0 then
+        return false
+    end
+    local allowed = languageFilter()
+    for _, record in ipairs(records) do
+        if record.cleared or not within(record.languages, allowed) then
+            return false
+        end
+    end
+    return true
+end
+
+local function remember(ids, kind, newOk)
+    local set = {}
+    for _, id in ipairs(ids) do
+        set[id] = true
+    end
+    resultSet = { ids = set, kind = kind, newOk = newOk }
+end
+
+-- An answer that is not to our own search (another addon's, Blizzard's
+-- window, or ours overtaken by one of those): known leaders are updated and
+-- new ones added when the languages allow it. Nothing is removed, and no
+-- search time changes: these results may be filtered (one language, one
+-- role) and say nothing about the listings they leave out.
+local function merge(kind, ids, newOk, whose)
+    local result, secret = readAll(kind, ids)
+    if #result == 0 then
+        if secret > 0 then
+            Log.debug("group finder: %d results of %s unreadable right now", secret, whose)
+        end
+        return
+    end
+    local list = listOf(kind)
+    local index = {}
+    for i, listing in ipairs(list) do
+        index[listing.name] = i
+    end
+    local placed, updated, added, skipped = {}, 0, 0, 0
+    for _, listing in ipairs(result) do
+        local i = index[listing.name]
+        if i then
+            list[i] = listing
+            placed[#placed + 1] = listing
+            updated = updated + 1
+        elseif newOk then
+            list[#list + 1] = listing
+            index[listing.name] = #list
+            placed[#placed + 1] = listing
+            added = added + 1
+        else
+            skipped = skipped + 1
+        end
+    end
+    dropElsewhere(kind, placed)
+    version = version + 1
+    Log.debug("group finder: %s results of %s merged in: %d new, %d updated, nothing removed%s", kind, whose,
+        added, updated, skipped > 0 and string.format("; %d new leaders left out, as a search out asked for "
+            .. "other languages than yours", skipped) or "")
+    notify()
+end
+
+local function expireOpen()
+    local now, kept = GetTime(), {}
+    for _, record in ipairs(open) do
+        if now - record.at < SEARCH_TIMEOUT then
+            kept[#kept + 1] = record
+        end
+    end
+    open = kept
+end
+
+-- Whether these results can be the answer to this search: the same kind,
+-- and most listings have an activity the search asked for (a dungeon search
+-- of the main part does not bring the rest's listings). Most, not all: it is
+-- not known whether the server, with a role filter, keeps strictly to the
+-- activities asked for.
+local function fits(record, kind, ids)
+    if kind and record.kind and record.kind ~= kind then
+        return false
+    end
+    local wanted = record.activities
+    if not wanted then
+        return true
+    end
+    local readable, fitting = 0, 0
+    for _, id in ipairs(ids) do
+        local info = call("GetSearchResultInfo", id)
+        local activities = type(info) == "table" and not isSecret(info.activityIDs) and info.activityIDs
+        if type(activities) == "table" and #activities > 0 then
+            readable = readable + 1
+            for _, activity in ipairs(activities) do
+                if wanted[activity] == true then
+                    fitting = fitting + 1
+                    break
+                end
+            end
+        end
+    end
+    return fitting * 2 > readable or readable == 0
+end
+
+-- An answer belongs to the searches out that its results fit. One search of
+-- ours alone replaces listings; anything else is merged in. With several
+-- fitting (whether WoW answers each search or only the newest is not
+-- known), all of them are settled and ours go again on a later input.
 function LfgList.refresh()
+    expireOpen()
     local found, ids = call("GetSearchResults")
     if type(ids) ~= "table" then
         return
     end
     local kind = kindOf(ids)
-    if not kind then
-        Log.debug("group finder: %d results of another search, left alone", #ids)
+    local settled, rest = {}, {}
+    for _, record in ipairs(open) do
+        if fits(record, kind, ids) then
+            settled[#settled + 1] = record
+        else
+            rest[#rest + 1] = record
+        end
+    end
+    open = rest
+    local record = #settled == 1 and settled[1] or nil
+    local own = record ~= nil and record.mine and not record.undone and not record.cleared
+        and record.generation == generation
+    if not own then
+        local whose = #settled == 0 and "a search not seen"
+            or #settled > 1 and "one of " .. #settled .. " searches out at once"
+            or not record.mine and "another addon's search"
+            or record.cleared and "our search, after the list was cleared"
+            or record.generation ~= generation and "our search from before the languages changed"
+            or "our search, already undone"
+        for _, other in ipairs(settled) do
+            if other.mine then
+                undoOwn(other, false)
+            end
+        end
+        local newOk = mayAddLeaders(settled)
+        remember(ids, kind, newOk)
+        if not kind then
+            Log.debug("group finder: %d results of %s, left alone", #ids, whose)
+            return
+        end
+        merge(kind, ids, newOk, whose)
         return
     end
-    -- Dungeon results of a search that was not ours (WoW's own window)
-    -- replace every listing.
-    if kind == "dungeons" and not (pending and pending.kind == "dungeons") then
-        coveredActivities = nil
-    end
+    -- Empty results of our own search are news too: that kind has nothing.
+    kind = record.kind
+    remember(ids, kind, true)
     if kind == "zones" then
-        refreshZones(ids)
+        refreshZones(ids, record)
         return
     elseif kind == "battlegrounds" then
         refreshBattlegrounds(ids)
         return
     end
-    local result, secret = {}, 0
-    for _, id in ipairs(ids) do
-        local ok, listing = pcall(readResult, id)
-        if ok and listing then
-            result[#result + 1] = listing
-        elseif unreadable(id) then
-            secret = secret + 1
-        end
-    end
+    local result, secret = readAll("dungeons", ids)
     if #result == 0 and secret > 0 then
         Log.debug("group finder: %d results unreadable right now; keeping the last ones", secret)
         return
     end
     -- Our searches cover part of the dungeons; the other part's listings
-    -- stay (a search from Blizzard's window replaces them all). A listing
-    -- for dungeons of both parts comes back in each search under a new id:
-    -- one per leader, the newest.
+    -- stay. A listing for dungeons of both parts comes back in each search
+    -- under a new id: one per leader, the newest.
     -- They are kept for KEEP_LISTINGS s, not forever: the other part may not
     -- be searched again (once queued, only the queued dungeons are).
-    local covered = coveredActivities
+    local covered = record.covered
     local now = GetTime()
-    for _, listing in ipairs(result) do
-        listing.seenAt = now
-    end
     if covered then
         local fresh = {}
         for _, listing in ipairs(result) do
@@ -377,16 +611,13 @@ function LfgList.refresh()
         end
     end
     listings = result
-    pending, retryPart, failures = nil, nil, 0
+    dropElsewhere("dungeons", result)
+    retryPart, failures = nil, 0
     version = version + 1
-    resultIds = {}
-    for _, id in ipairs(ids) do
-        resultIds[id] = true
-    end
     totalResults = #ids
     updatedAt = GetTime()
     Log.debug("group finder: %d results (%s found), %d listings kept, %.1f s after the search", #ids,
-        tostring(found), #listings, updatedAt - searchedAt)
+        tostring(found), #listings, updatedAt - record.at)
     notify()
 end
 
@@ -409,6 +640,33 @@ local function notifySoon()
     end)
 end
 
+-- Whether a result id is still this listing's: a listing keeps the id of
+-- the search it was last seen in, and that id must not update or remove
+-- another leader's listing.
+local function sameLeader(id, listing)
+    local info = call("GetSearchResultInfo", id)
+    local name = type(info) == "table" and info.leaderName
+    return type(name) ~= "string" or isSecret(name) or name == "" or name == listing.name
+end
+
+local function updateIn(kind, id)
+    local list = listOf(kind)
+    for i, listing in ipairs(list) do
+        if listing.id == id and sameLeader(id, listing) then
+            local ok, fresh = pcall(READERS[kind], id)
+            if ok and fresh then
+                fresh.seenAt = GetTime()
+                list[i] = fresh
+            else
+                table.remove(list, i)
+                Log.debug("group finder: %s is no longer listed", listing.name)
+            end
+            return true
+        end
+    end
+    return false
+end
+
 local function onResultUpdated(id)
     if unreadable(id) then
         return
@@ -417,50 +675,28 @@ local function onResultUpdated(id)
     if LfgList.isDelisted(id) then
         notifySoon()
     end
-    for i, listing in ipairs(zoneListings) do
-        if listing.id == id then
-            local ok, fresh = pcall(readResult, id, zonesOf, "zones")
-            if ok and fresh then
-                zoneListings[i] = fresh
-            else
-                table.remove(zoneListings, i)
-            end
-            return
-        end
-    end
-    for i, listing in ipairs(battlegroundListings) do
-        if listing.id == id then
-            local ok, fresh = pcall(readResult, id, battlegroundsOf, "battlegrounds")
-            if ok and fresh then
-                fresh.remaining, fresh.open = nil, math.max(0, listing.open + listing.members - fresh.members)
-                battlegroundListings[i] = fresh
-            else
-                table.remove(battlegroundListings, i)
-            end
-            return
-        end
-    end
-    if lastKind == "zones" or lastKind == "battlegrounds" then
+    if updateIn("zones", id) or updateIn("battlegrounds", id) or updateIn("dungeons", id) then
         return
     end
-    local ok, fresh = pcall(readResult, id)
-    fresh = ok and fresh or nil
-    if fresh then
-        fresh.seenAt = GetTime()
+    -- A result of the current set not placed yet: its leader's name came
+    -- after the results did. It comes in like the rest of its set did.
+    if not resultSet.ids[id] or resultSet.kind ~= "dungeons" then
+        return
     end
+    local ok, fresh = pcall(READERS.dungeons, id)
+    if not (ok and fresh) then
+        return
+    end
+    fresh.seenAt = GetTime()
     for i, listing in ipairs(listings) do
-        if listing.id == id then
-            if fresh then
-                listings[i] = fresh
-            else
-                table.remove(listings, i)
-                Log.debug("group finder: %s is no longer listed", listing.name)
-            end
+        if listing.name == fresh.name then
+            listings[i] = fresh
             return
         end
     end
-    if fresh and resultIds[id] then
+    if resultSet.newOk then
         listings[#listings + 1] = fresh
+        dropElsewhere("dungeons", { fresh })
     end
 end
 
@@ -558,7 +794,7 @@ end
 -- The languages the player is grouped with (wow/matchlanguages.lua) that
 -- the Group Finder offers. Without a filter it returns only the player's
 -- own language.
-local function languageFilter()
+languageFilter = function()
     local offered = call("GetAvailableLanguageSearchFilter")
     if type(offered) ~= "table" or #offered == 0 then
         return nil
@@ -600,11 +836,13 @@ end
 
 local lastPart
 
--- The server allows about two searches (of any kind) per five seconds and
--- refuses a third as "throttled"; refused tries don't count (/fgp lfgapi gap).
--- So the rest follows a main search quickly, a search waits while two went
--- out in the last BURST_WINDOW s, and a refused one is tried again on input
--- at least RETRY_GAP s later, at most MAX_RETRIES times in a row.
+-- The server allows about two searches (of any kind, from any addon) per
+-- five seconds and refuses a third as "throttled"; refused tries don't count
+-- (/fgp lfgapi gap). So the rest follows a main search quickly, a search
+-- waits while two went out in the last BURST_WINDOW s, and a refused one is
+-- tried again on input at least RETRY_GAP s later, at most MAX_RETRIES times
+-- in a row. The times of every search come from the hook on
+-- C_LFGList.Search below.
 local REST_GAP = 1.5
 local BURST, BURST_WINDOW = 2, 5.5
 local RETRY_GAP, MAX_RETRIES = 3, 3
@@ -618,13 +856,191 @@ local function roomToSearch()
         end
     end
     sentAt = recent
-    return #recent < BURST and now - failedAt >= RETRY_GAP
+    return #recent < BURST and now - failedAt >= RETRY_GAP and searchFrame ~= now
 end
 
-local function noteSearch()
-    sentAt[#sentAt + 1] = GetTime()
+-- A search of ours that is not going to be answered as ours (refused by the
+-- server, or overtaken by another search) counts as not done: its part
+-- keeps its turn and goes again on a later input. Search times go back only
+-- when no newer search of ours set them since.
+undoOwn = function(record, refused)
+    if record.undone then
+        return
+    end
+    record.undone = true
+    local undo = record.undo
+    if anySearchAt == record.at then
+        anySearchAt = undo.anySearchAt
+    end
+    if record.kind == "zones" then
+        if zoneSearchedAt == record.at then
+            zoneSearchedAt = undo.searchedAt
+        end
+        return
+    elseif record.kind == "battlegrounds" then
+        if battlegroundsSearchedAt == record.at then
+            battlegroundsSearchedAt = undo.searchedAt
+        end
+        return
+    end
+    if lastDungeonSearch == record then
+        for _, activity in ipairs(undo.new) do
+            searchedActivities[activity] = nil
+        end
+        lastPart = undo.lastPart
+        if searchedAt == record.at then
+            searchedAt = undo.searchedAt
+        end
+    end
+    local part = undo.part == "rest" and "rest" or "main"
+    if refused then
+        failures = failures + 1
+        retryPart = failures < MAX_RETRIES and part or nil
+    else
+        retryPart = retryPart or part
+    end
 end
 
+-- A copy of a search's languages, the ones set to true; nil stays nil (the
+-- player's own language), false when they can't be read.
+local function copyLanguages(languages)
+    if languages == nil then
+        return nil
+    end
+    local ok, set = pcall(function()
+        if isSecret(languages) or type(languages) ~= "table" then
+            return false
+        end
+        local copy = {}
+        for code, on in pairs(languages) do
+            if isSecret(code) or isSecret(on) then
+                return false
+            end
+            if on == true and type(code) == "string" then
+                copy[code] = true
+            end
+        end
+        return copy
+    end)
+    return ok and set or false
+end
+
+local function languageText(languages)
+    if languages == nil then
+        return "own"
+    elseif languages == false then
+        return "unreadable"
+    end
+    local codes = {}
+    for code in pairs(languages) do
+        codes[#codes + 1] = code
+    end
+    table.sort(codes)
+    return #codes > 0 and table.concat(codes, ",") or "none"
+end
+
+-- The kind of a search by its category; "other" for a category we don't
+-- read, nil when it can't be read.
+local function categoryKind(category)
+    if isSecret(category) or type(category) ~= "number" then
+        return nil
+    elseif category == CATEGORY_DUNGEONS then
+        return "dungeons"
+    elseif category == zoneCategory then
+        return "zones"
+    elseif category == CATEGORY_BATTLEGROUNDS then
+        return "battlegrounds"
+    end
+    return "other"
+end
+
+-- A set of a search's activities; nil for all of its category, or when they
+-- can't be read.
+local function activitySet(activities)
+    local ok, set = pcall(function()
+        if isSecret(activities) or type(activities) ~= "table" or #activities == 0 then
+            return nil
+        end
+        local copy = {}
+        for _, activity in ipairs(activities) do
+            if isSecret(activity) then
+                return nil
+            end
+            copy[activity] = true
+        end
+        return copy
+    end)
+    return ok and set or nil
+end
+
+-- Runs after every C_LFGList.Search, whoever calls it: our own searches
+-- (issuing), another addon's, Blizzard's window.
+local function onSearch(category, _, _, languages, _, _, activities)
+    local now = GetTime()
+    local record = issuing
+    if record then
+        record.seen = true
+    end
+    if now == searchFrame then
+        if record then
+            record.blocked = true
+        end
+        Log.debug("group finder: a second search in one input (%s), which WoW blocks; not counted",
+            record and "ours" or "another addon's")
+        return
+    end
+    searchFrame = now
+    expireOpen()
+    if record then
+        -- A newer search of ours of the same kind takes the place of one
+        -- still out: an answer to the older one is no longer awaited. One
+        -- from before the languages changed stays, so its answer is not
+        -- taken for the new search's.
+        local kept = {}
+        for _, other in ipairs(open) do
+            if not (other.mine and other.kind == record.kind and other.generation == generation) then
+                kept[#kept + 1] = other
+            end
+        end
+        open = kept
+    else
+        record = { mine = false, kind = categoryKind(category), activities = activitySet(activities) }
+    end
+    record.at, record.generation = now, generation
+    record.languages = copyLanguages(languages)
+    open[#open + 1] = record
+    sentAt[#sentAt + 1] = now
+    if not record.mine then
+        local count = type(activities) == "table" and not isSecret(activities) and #activities or "all"
+        Log.debug("group finder: another addon or WoW's window searched (category %s, %s activities, languages %s)",
+            isSecret(category) and "?" or tostring(category), tostring(count), languageText(record.languages))
+    end
+end
+
+-- Another addon (or WoW's window) emptied the result list: answers to the
+-- searches still out may be empty for that, not for an empty Group Finder.
+local function onClear()
+    for _, record in ipairs(open) do
+        record.cleared = true
+    end
+    resultSet = { ids = {}, newOk = false }
+    Log.debug("group finder: the result list was cleared by another addon or WoW's window")
+end
+
+-- Sends one search of ours. The hook notes it (or here, should the hook be
+-- missing); a search WoW would block as the second of this input is not sent.
+local function send(fn, record, ...)
+    issuing = record
+    local ok, err = pcall(fn, ...)
+    if ok and not record.seen then
+        pcall(onSearch, ...)
+    end
+    issuing = nil
+    if ok and record.blocked then
+        return false, "blocked"
+    end
+    return ok, err
+end
 
 local function restNeverSearched(rest)
     for _, activity in ipairs(rest) do
@@ -692,44 +1108,45 @@ function LfgList.search(part)
         -- search of everything would only bring 100 other results.
         return false
     end
-    pending = { kind = "dungeons", part = part, lastPart = lastPart, covered = coveredActivities,
-        searchedAt = searchedAt, anySearchAt = anySearchAt, new = {} }
+    local now = GetTime()
+    local record = { mine = true, kind = "dungeons", covered = {},
+        undo = { part = part, lastPart = lastPart, searchedAt = searchedAt, anySearchAt = anySearchAt, new = {} } }
+    record.activities = record.covered
     for _, activity in ipairs(activities) do
+        record.covered[activity] = true
         if not searchedActivities[activity] then
-            pending.new[#pending.new + 1] = activity
+            record.undo.new[#record.undo.new + 1] = activity
         end
     end
-    anySearchAt = GetTime()
+    anySearchAt = now
     if part ~= "rest" then
-        searchedAt = GetTime()
+        searchedAt = now
     end
-    lastKind = "dungeons"
-    local ok, err
-    if #activities > 0 then
-        local filter = part ~= "rest" and roleFilter(activities) or nil
-        ok, err = pcall(fn, CATEGORY_DUNGEONS, 0, 0, languageFilter(), false, filter, activities)
-        noteSearch()
-        if not ok and filter then
-            Log.debug("group finder search with a role filter failed (%s); without it", tostring(err))
-            ok, err = pcall(fn, CATEGORY_DUNGEONS, 0, 0, languageFilter(), false, nil, activities)
-            noteSearch()
-        end
-        Log.debug("group finder: searching %d dungeons (%s%s)", #activities, part, filter and ", role filter" or "")
-        coveredActivities = {}
-        for _, activity in ipairs(activities) do
-            searchedActivities[activity] = true
-            coveredActivities[activity] = true
-        end
-        lastPart = part
+    lastDungeonSearch = record
+    local filter = part ~= "rest" and roleFilter(activities) or nil
+    local ok, err = send(fn, record, CATEGORY_DUNGEONS, 0, 0, languageFilter(), false, filter, activities)
+    if err == "blocked" then
+        record.at = now
+        undoOwn(record, false)
+        return false, "wait"
     end
+    if not ok and filter then
+        Log.debug("group finder search with a role filter failed (%s); without it", tostring(err))
+        ok, err = send(fn, record, CATEGORY_DUNGEONS, 0, 0, languageFilter(), false, nil, activities)
+    end
+    Log.debug("group finder: searching %d dungeons (%s%s)", #activities, part, filter and ", role filter" or "")
+    for _, activity in ipairs(activities) do
+        searchedActivities[activity] = true
+    end
+    lastPart = part
     if not ok then
         if err then
             Log.debug("filtered group finder search failed (%s); searching everything", tostring(err))
         end
-        ok, err = pcall(fn, CATEGORY_DUNGEONS)
-        noteSearch()
         -- Capped at 100 results: no dungeon counts as covered.
-        searchedActivities, coveredActivities = {}, nil
+        record.covered, record.activities = nil, nil
+        ok, err = send(fn, record, CATEGORY_DUNGEONS)
+        searchedActivities = {}
     end
     if not ok then
         Log.debug("group finder search failed: %s", tostring(err))
@@ -753,16 +1170,17 @@ function LfgList.searchZones(zones)
     if type(fn) ~= "function" or #activities == 0 or not ns.Features.groupFinder() or not roomToSearch() then
         return false
     end
-    pending = { kind = "zones", searchedAt = zoneSearchedAt, anySearchAt = anySearchAt }
-    zoneSearchedAt, anySearchAt = GetTime(), GetTime()
-    lastKind = "zones"
-    searchingZones = {}
+    local record = { mine = true, kind = "zones", zones = {}, activities = activitySet(activities),
+        undo = { searchedAt = zoneSearchedAt, anySearchAt = anySearchAt } }
     for _, zone in ipairs(zones) do
-        searchingZones[zone] = true
+        record.zones[zone] = true
     end
-    local ok, err = pcall(fn, zoneCategory, 0, 0, languageFilter(), false, nil, activities)
-    noteSearch()
-    if not ok then
+    zoneSearchedAt, anySearchAt = GetTime(), GetTime()
+    local ok, err = send(fn, record, zoneCategory, 0, 0, languageFilter(), false, nil, activities)
+    if err == "blocked" then
+        record.at = GetTime()
+        undoOwn(record, false)
+    elseif not ok then
         Log.debug("zone search failed: %s", tostring(err))
     end
     return ok
@@ -781,12 +1199,14 @@ function LfgList.searchBattlegrounds()
     for _, battleground in ipairs(ns.Battlegrounds.list) do
         activities[#activities + 1] = battleground.lfg
     end
-    pending = { kind = "battlegrounds", searchedAt = battlegroundsSearchedAt, anySearchAt = anySearchAt }
+    local record = { mine = true, kind = "battlegrounds", activities = activitySet(activities),
+        undo = { searchedAt = battlegroundsSearchedAt, anySearchAt = anySearchAt } }
     battlegroundsSearchedAt, anySearchAt = GetTime(), GetTime()
-    lastKind = "battlegrounds"
-    local ok, err = pcall(fn, CATEGORY_BATTLEGROUNDS, 0, 0, languageFilter(), false, nil, activities)
-    noteSearch()
-    if not ok then
+    local ok, err = send(fn, record, CATEGORY_BATTLEGROUNDS, 0, 0, languageFilter(), false, nil, activities)
+    if err == "blocked" then
+        record.at = GetTime()
+        undoOwn(record, false)
+    elseif not ok then
         Log.debug("battleground search failed: %s", tostring(err))
     end
     return ok
@@ -908,7 +1328,7 @@ end
 
 -- A search was sent and its results have not arrived yet.
 function LfgList.isSearching()
-    return searchedAt > (updatedAt or -math.huge) and searchedAt > failedAt
+    return searchedAt > (updatedAt or -math.huge) and searchedAt > ownFailedAt
         and GetTime() - searchedAt < SEARCH_TIMEOUT
 end
 
@@ -1040,32 +1460,71 @@ function LfgList.init()
     end)
     ns.on("LFG_LIST_SEARCH_FAILED", function(reason)
         failedAt = GetTime()
-        sentAt[#sentAt] = nil
-        Log.debug("group finder search failed: %s", tostring(reason))
-        local undo = pending
-        pending = nil
-        if not undo then
-            return
+        expireOpen()
+        -- A refusal comes at once, so it is for the newest search; refused
+        -- tries don't count against the server's limit.
+        local record = table.remove(open)
+        for i = #sentAt, 1, -1 do
+            if record and sentAt[i] == record.at then
+                table.remove(sentAt, i)
+                break
+            end
         end
-        -- A refused zone or battleground search counts as not done, so the
-        -- next input asks again instead of waiting on old results.
-        if undo.kind == "zones" then
-            zoneSearchedAt, anySearchAt = undo.searchedAt, undo.anySearchAt
-            return
-        elseif undo.kind == "battlegrounds" then
-            battlegroundsSearchedAt, anySearchAt = undo.searchedAt, undo.anySearchAt
-            return
+        Log.debug("group finder search failed: %s (%s)", tostring(reason),
+            record and (record.mine and "ours" or "another addon's") or "a search not seen")
+        if record and record.mine then
+            ownFailedAt = failedAt
+            undoOwn(record, true)
         end
-        -- Not searched after all: its part keeps its turn and goes again on
-        -- input a little later.
-        for _, activity in ipairs(undo.new) do
-            searchedActivities[activity] = nil
-        end
-        coveredActivities, lastPart = undo.covered, undo.lastPart
-        searchedAt, anySearchAt = undo.searchedAt, undo.anySearchAt
-        failures = failures + 1
-        retryPart = failures < MAX_RETRIES and (undo.part == "rest" and "rest" or "main") or nil
     end)
+end
+
+-- The player changed the languages they group with. Answers to searches
+-- sent before no longer count as fresh. A language taken off: its groups
+-- may be in the lists, which can't tell a listing's language, so the lists
+-- go and the next input searches again. A language added: the lists are
+-- still right, only incomplete, so they stay; the next input searches again
+-- and an ask waits for that search before giving up on finding a group.
+function LfgList.languagesChanged(removed)
+    generation = generation + 1
+    languagesChangedAt = GetTime()
+    searchedAt, zoneSearchedAt, battlegroundsSearchedAt, anySearchAt = -math.huge, -math.huge, -math.huge, -math.huge
+    if removed then
+        listings, zoneListings, battlegroundListings = {}, {}, {}
+        updatedAt, zoneUpdatedAt, battlegroundsUpdatedAt = nil, nil, nil
+        searchedActivities, resultZones = {}, {}
+        lastPart, lastDungeonSearch, retryPart, failures = nil, nil, nil, 0
+        totalResults = 0
+        resultSet = { ids = {}, newOk = false }
+    end
+    version = version + 1
+    Log.debug("group finder: languages %s; searching again on the next input%s", removed and "taken off" or "added",
+        removed and ", the listings found before are dropped" or "")
+    notify()
+end
+
+function LfgList.languagesChangedAt()
+    return languagesChangedAt
+end
+
+-- Every search and clear goes through these hooks, whichever addon calls
+-- them. Installed when this file loads, before addons that load later keep
+-- their own reference to the function. A hook never lets an error out:
+-- that would land in the caller's search, Blizzard's window included.
+if type(hooksecurefunc) == "function" and type(C_LFGList) == "table" then
+    if type(C_LFGList.Search) == "function" then
+        pcall(hooksecurefunc, C_LFGList, "Search", function(...)
+            local ok, err = pcall(onSearch, ...)
+            if not ok then
+                Log.debug("group finder: noting a search failed: %s", tostring(err))
+            end
+        end)
+    end
+    if type(C_LFGList.ClearSearchResults) == "function" then
+        pcall(hooksecurefunc, C_LFGList, "ClearSearchResults", function()
+            pcall(onClear)
+        end)
+    end
 end
 
 ns.LfgList = LfgList

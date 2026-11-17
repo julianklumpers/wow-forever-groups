@@ -289,6 +289,7 @@ function Client:click(kind, text, root)
         widget.checked = not widget.checked
     end
     self.inClick = true
+    self.inputs = (self.inputs or 0) + 1
     self.clickSearched = false
     widget.scripts.OnClick(widget)
     self.inClick = false
@@ -398,6 +399,7 @@ function Client:slash(text)
         for i = 1, 5 do
             if self.env["SLASH_" .. key .. i] == command then
                 self.inClick = true
+                self.inputs = (self.inputs or 0) + 1
                 self.clickSearched = false
                 fn(rest)
                 self.inClick = false
@@ -442,6 +444,7 @@ end
 function Client:clickWorld(button)
     local frame = self.env.WorldFrame
     self.inClick = true
+    self.inputs = (self.inputs or 0) + 1
     self.clickSearched = false
     for _, fn in ipairs(frame.hooks and frame.hooks.OnMouseDown or {}) do
         fn(frame, button or "LeftButton")
@@ -453,6 +456,7 @@ function Client:press(key)
     local frame = self.env.ForeverGroupsKeySearchFrame
     if frame and frame.keyboard and frame.scripts.OnKeyDown then
         self.inClick = true
+        self.inputs = (self.inputs or 0) + 1
         self.clickSearched = false
         frame.scripts.OnKeyDown(frame, key)
         self.inClick = false
@@ -462,6 +466,7 @@ end
 -- The player moves the mouse onto a window: WoW counts that as input.
 function Client:hover(frame)
     self.inClick = true
+    self.inputs = (self.inputs or 0) + 1
     self.clickSearched = false
     for _, fn in ipairs(frame.hooks and frame.hooks.OnEnter or {}) do
         fn(frame)
@@ -473,6 +478,7 @@ end
 function Client:acceptStaticPopup()
     local which = assert(self.popups[#self.popups], self.name .. " has no popup")
     self.inClick = true
+    self.inputs = (self.inputs or 0) + 1
     self.clickSearched = false
     self.env.StaticPopupDialogs[which].OnAccept()
     self.inClick = false
@@ -584,8 +590,10 @@ local function buildEnv(world, client)
     env.time = function()
         return world:serverTime()
     end
+    -- Each player input is a frame of its own, as in WoW; GetTime() is
+    -- the same within a frame.
     env.GetTime = function()
-        return world.time
+        return world.time + (client.inputs or 0) * 1e-6
     end
     env.GetServerTime = function()
         return world:serverTime()
@@ -1292,7 +1300,8 @@ local function buildEnv(world, client)
         end,
         InviteUnit = function(name)
             -- An invite holds a party place until it is answered or expires
-            -- after 60 s; a party with no place left refuses it.
+            -- 60 s after the server got it (0.2 s after it was sent); a party
+            -- with no place left refuses it.
             local joined, held = {}, 0
             for _, member in ipairs(client.party) do
                 joined[member] = true
@@ -1311,7 +1320,7 @@ local function buildEnv(world, client)
                 end)
                 return
             end
-            client.heldInvites[name] = world.time
+            client.heldInvites[name] = world.time + 0.2
             client.invites[#client.invites + 1] = name
             local target = world:findClient(name)
             if target then
@@ -1338,7 +1347,6 @@ local function buildEnv(world, client)
     end
     env.C_LFGList = {
         Search = function(_, _, _, languages, _, advanced, activities)
-            client.searchLanguages = languages
             -- WoW allows one search per input event; a second one is blocked.
             if not client.inClick or client.clickSearched then
                 client.blockedSearches = client.blockedSearches + 1
@@ -1350,14 +1358,6 @@ local function buildEnv(world, client)
             end
             client.clickSearched = true
             client.searches = client.searches + 1
-            client.advancedFilter = advanced
-            client.searchFilter = nil
-            if activities then
-                client.searchFilter = {}
-                for _, id in ipairs(activities) do
-                    client.searchFilter[id] = true
-                end
-            end
             -- The server's own limit: about 2 searches per 5 s; a refused
             -- search does not count.
             local recent = {}
@@ -1380,9 +1380,23 @@ local function buildEnv(world, client)
                 end)
                 return
             end
+            -- Only a search the server takes changes the result list.
+            client.searchLanguages = languages
+            client.advancedFilter = advanced
+            client.searchFilter = nil
+            client.resultsCleared = false
+            if activities then
+                client.searchFilter = {}
+                for _, id in ipairs(activities) do
+                    client.searchFilter[id] = true
+                end
+            end
             world:schedule(client, 0.5, function()
                 client:fire("LFG_LIST_SEARCH_RESULTS_RECEIVED")
             end)
+        end,
+        ClearSearchResults = function()
+            client.resultsCleared = true
         end,
         HasActiveEntryInfo = function()
             return client.listed == true
@@ -1469,12 +1483,19 @@ local function buildEnv(world, client)
             local needs = client.advancedFilter
             local needed = needs and ((needs.needsTank and "T") or (needs.needsHealer and "H")
                 or (needs.needsDamage and "D"))
-            for _, listing in ipairs(world.listings) do
-                local wanted = not client.searchFilter
+            -- A listing with a language comes only for a search in that
+            -- language; no languages is the player's own.
+            local languages = client.searchLanguages or { [client.locale or "enUS"] = true }
+            for _, listing in ipairs(client.resultsCleared and {} or world.listings) do
+                -- listing.stray: returned whatever activities were asked for.
+                local wanted = not client.searchFilter or listing.stray == true
                 for _, activity in ipairs(listing.activityIDs) do
                     wanted = wanted or client.searchFilter[activity]
                 end
                 if needed and listing.remaining and (listing.remaining[needed] or 0) == 0 then
+                    wanted = false
+                end
+                if listing.language and languages[listing.language] ~= true then
                     wanted = false
                 end
                 if wanted then

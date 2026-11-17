@@ -57,7 +57,8 @@ local function nextUnit()
     for i = 1, 4 do
         local unit = "party" .. i
         local name = ns.Party.unitName(unit)
-        local due = not ns.Spec.treeOf(name) or (inspectedAt[name] and now - inspectedAt[name] >= REFRESH)
+        local due = not ns.Spec.learnedThisSession(name)
+            or (inspectedAt[name] ~= nil and now - inspectedAt[name] >= REFRESH)
         if name and due and now - (tried[name] or -math.huge) >= RETRY and call(CanInspect, unit) == true then
             if call(CheckInteractDistance, unit, 1) == true then
                 return unit, name

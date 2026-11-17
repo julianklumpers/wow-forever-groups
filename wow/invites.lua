@@ -10,6 +10,9 @@ local Log = ns.Log
 local Invites = {}
 
 Invites.LIFETIME = 60
+-- WoW counts the 60 s from when its server gets the invite, a moment after
+-- it is sent here: a place is counted free only a little after that.
+Invites.HOLD = Invites.LIFETIME + 2
 local FULL_WINDOW = 1
 
 local open = {}
@@ -38,7 +41,7 @@ local function prune()
     end
     local now, names = GetTime(), groupNames()
     for name, invite in pairs(open) do
-        if ns.Whispers.find(names, name) or now - invite.at >= Invites.LIFETIME then
+        if ns.Whispers.find(names, name) or now - invite.at >= Invites.HOLD then
             open[name] = nil
         end
     end
@@ -80,7 +83,7 @@ end
 function Invites.left(name)
     prune()
     local invite = open[name]
-    return invite and Invites.LIFETIME - (GetTime() - invite.at) or nil
+    return invite and Invites.HOLD - (GetTime() - invite.at) or nil
 end
 
 function Invites.onRefused(owner, handler)
@@ -143,7 +146,7 @@ local function restore()
     local now = GetTime()
     for name, invite in pairs(saved.list) do
         local age = type(invite) == "table" and tonumber(invite.age)
-        if type(name) == "string" and age and age + away < Invites.LIFETIME then
+        if type(name) == "string" and age and age + away < Invites.HOLD then
             count = count + 1
             open[name] = { at = now - age - away, owner = invite.owner, order = count }
         end

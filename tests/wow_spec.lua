@@ -994,6 +994,26 @@ describe("A queue update the queue refuses", function()
             count = count + (line:find("queue update refused: role composition", 1, true) and 1 or 0)
         end
         assert.are.equal(1, count)
+        leader:slash("/dq leave")
+        world:advance(1)
+        leader.rolesIgnored = {}
+        leader.roles["Friend Person"] = "DAMAGER"
+        leader.ns.RoleSync.forget("Friend Person")
+        leader:click("Button", "Find group")
+        world:advance(2)
+        assert.is_not_nil(leader.ns.engine.myEntry)
+        leader.rolesIgnored = { ["Friend Person"] = true }
+        leader.roles["Friend Person"] = "TANK"
+        for _ = 1, 4 do
+            leader:fire("ROLE_CHANGED_INFORM")
+            leader:fire("GROUP_ROSTER_UPDATE")
+            world:advance(5)
+        end
+        count = 0
+        for _, line in ipairs(leader.ns.db.log) do
+            count = count + (line:find("queue update refused: role composition", 1, true) and 1 or 0)
+        end
+        assert.are.equal(2, count)
     end)
 end)
 

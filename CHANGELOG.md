@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- Fixed: other addons (ForeverLFG, LFGForever) and WoW's own Group Finder window no longer upset Forever Groups'
+  Group Finder results. Their searches count against the server's limit, so ours are no longer refused after
+  theirs; their results are added to ours without removing any, never count as a fresh search, and bring in new
+  players only when they searched in languages you group with, so a search in all languages elsewhere can't put
+  players of other languages between yours. A player listed for a zone after a dungeon (or the other
+  way round) is in one list only.
+- Taking a language off in the settings drops the Group Finder results found with it and searches again on your
+  next key press; adding one searches with it on your next key press, and joining a listed group waits for that
+  search before building a group of your own.
+- Fixed: a member whose role you set as leader in WoW's party frames no longer has their own Forever Groups set it
+  back, also in a friend's party with one role ticked; the "not looking for a {class}" answer only goes to a whisper
+  about joining (or an answer to the role question), not to other chat; your ticked role is not forced on you in a
+  raid, also when the party becomes one; a member whose spec was kept over a /reload is inspected once more, one
+  whose addon told their points is not inspected; party members send their talent points again only when someone
+  joins, not at every roster update.
+- Fixed: your talent points reach a player who joins during a boss fight (they are sent again once WoW lets them
+  through), and a member's tied trees (6/6/0) show like your own.
+- Fixed: the role held for your one ticked role in a friend's party still follows your tick and lets go in a raid
+  after a /reload; the leader's change of your role holds whichever way WoW reports it; a role agreed with a group is
+  not moved by your ticks.
+- Fixed: a whisperer waiting for a place held by an open invite is still invited when it frees; someone told "we
+  only need …" is asked their role again in a later group; a player who declines after the filler gave up waiting
+  frees the place at once and is not invited again until they list again.
+- Fixed: our own Group Finder search counts even when the server adds a listing for another dungeon, and a search
+  still out from before a language change is not taken for the new one.
+- Fixed: an unanswered invite's party place counts as free 2 s after WoW's 60 s (also over a /reload, and the window
+  shows it held until then), so the next invite no longer gets "Your party is full" right at the end.
+- Fixed: another addon's refused Group Finder search no longer hides that ours is still on its way, and a search
+  without languages (which may be all of them) brings in no new players.
 - Who is looking leaves out a player Forever Groups invited who turned out to be in a group already (or not found),
   until a newer search still lists them; one who declined or did not answer stays, so you can still invite them
   yourself.

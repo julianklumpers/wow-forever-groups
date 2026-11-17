@@ -1,12 +1,5 @@
 local World = require("tests.helpers.wowmock")
 
--- A leader builds a group from WoW's Group Finder among players who behave as
--- seen in the game: invitees who accept, decline, are already in a group or
--- never answer; members whose Deadly Boss Mods sets their role from their
--- spec after joining and after their /reloads (first DAMAGER, then the
--- spec's role); whisperers of any class who chat ("got ya", ":)"); and the
--- leader's own /reloads. After every second a set of rules must hold.
--- Seeded, so a failure repeats; REALISTIC_SEEDS and REALISTIC_STEPS run more.
 local LEADER = "Lay Ohands"
 local WOW = { T = "TANK", H = "HEALER", D = "DAMAGER" }
 -- Per class: the roles it can list and the role its spec makes it.
@@ -29,8 +22,6 @@ local function newLeader(world, saved)
     return world:addClient(LEADER, { level = 22, class = "PALADIN", classVariety = true, saved = saved })
 end
 
--- What a reply to a whisperer is: "invite", "no" (role not needed), "class"
--- (class not wanted) or "which" (asks the role).
 local function replyKind(text)
     if text:find("Which role do you play", 1, true) then
         return "which"
@@ -66,10 +57,6 @@ local function run(seed, steps)
     for i = 1, 6 do
         whisperers[i] = CLASSES[roll(#CLASSES)][1]
     end
-    -- Whoever the filler's own rules (Fill.pick) pick from the newest results
-    -- is invited within 2 s (the whisper, then the invite 1.5 s later), as
-    -- far as places are free; unless it waits on purpose, for a queue
-    -- proposal. due: since when each pick has been waiting.
     local due = {}
     local function checkPrompt(where)
         local now = world.time
@@ -112,9 +99,6 @@ local function run(seed, steps)
                     .. " but plays " .. tostring(leader.roles[name]))
             end
         end
-        -- Per session: a /reload forgets the conversations, and may ask again.
-        -- Who is looking leaves out only a player invited before the search
-        -- it shows: never one a newer search still lists.
         for _, listing in ipairs((leader.ns.LfgList.listings())) do
             if leader.ns.Filler.hidden(listing) then
                 local since = invitedAt[listing.name]
@@ -139,8 +123,6 @@ local function run(seed, steps)
                 elseif kind == "no" then
                     told = true
                 elseif kind == "class" then
-                    -- A place may open for their class later: then they are
-                    -- talked to again.
                     class = class + 1
                 end
             end
@@ -203,8 +185,6 @@ local function run(seed, steps)
                 end)
             end
         elseif event == 6 then
-            -- A listed player lists again (after leaving a group, or to look
-            -- again): newer than any invite so far.
             local listing = world.listings[roll(#world.listings)]
             local inParty = false
             for _, member in ipairs(leader.party) do
@@ -230,7 +210,6 @@ local function run(seed, steps)
             end
         end
         if step % 20 == 0 then
-            -- The player's key presses search the Group Finder again.
             leader:slash("/dq fill")
         end
         world:advance(1)

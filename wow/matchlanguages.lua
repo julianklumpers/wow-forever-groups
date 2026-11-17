@@ -44,9 +44,16 @@ function MatchLanguages.set(code, on)
         return
     end
     local set = ns.db.languages or {}
+    local was = set[code] == true
+    if was == (on == true) then
+        return
+    end
     set[code] = on and true or nil
     ns.db.languages = next(set) and set or nil
     MatchLanguages.apply()
+    if ns.LfgList then
+        ns.LfgList.languagesChanged(was)
+    end
 end
 
 -- The languages WoW's Group Finder can search that Forever Groups knows

@@ -87,7 +87,7 @@ function ns.join(members, dungeons, joinedAt)
     end
     if ok then
         chosenDungeons = dungeons
-        parked = nil
+        parked, lastRefusal = nil, nil
         if not joinedAt then
             ns.Spec.checkRoles(members[1].roles)
         end

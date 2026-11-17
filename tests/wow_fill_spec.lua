@@ -232,7 +232,7 @@ describe("Filling from WoW's Group Finder", function()
         for _, name in ipairs(client.invites) do
             assert.are_not.equal("Quick Heal", name)
         end
-        world:advance(30)
+        world:advance(32)
         invitedOnly(client, { "Quick Heal" })
     end)
 
@@ -255,6 +255,31 @@ describe("Filling from WoW's Group Finder", function()
         end
         assert.is_true(tank:logged("Away Dps is away"))
         invitedOnly(tank, { "Listed Heal", "Dps A", "Dps B", "Dps C" })
+    end)
+
+    it("counts a decline after it gave up waiting: the place is free and the player is not asked again", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        world:list("Dps 1", "D", 799, 20, 300)
+        world:advance(30)
+        tank:slash("/dq join tank dm")
+        world:advance(35)
+        assert.are.equal("noanswer", tank.ns.Filler.saved().outcomes["Dps 1"].kind)
+        tank:system("Dps 1 declines your group invitation.")
+        for _, invite in ipairs(tank.ns.Filler.invites()) do
+            assert.are_not.equal("Dps 1", invite.name)
+        end
+        world:advance(300)
+        world.listings[1].age = 300 + world.time - 30
+        tank.inClick, tank.clickSearched = true, false
+        tank.ns.Filler.searchAgain()
+        tank.inClick = false
+        world:advance(10)
+        local count = 0
+        for _, name in ipairs(tank.invites) do
+            count = count + (name == "Dps 1" and 1 or 0)
+        end
+        assert.are.equal(1, count)
     end)
 
     it("shows the invited players in the open places, with the time left", function()
@@ -285,6 +310,8 @@ describe("Filling from WoW's Group Finder", function()
         slot = slotOf("Dps A")
         assert.is_truthy(slot.lines[2].text:match("^frees in 0:%d%d$"))
         world:advance(30)
+        assert.is_truthy(slotOf("Dps A").lines[2].text:match("^frees in 0:0%d$"))
+        world:advance(2)
         assert.is_nil(slotOf("Dps A"))
     end)
 
@@ -677,6 +704,157 @@ describe("A player who switches roles after joining", function()
         assert.is_true(leader:logged("Feral Heal's role keeps changing; pausing %d+ s"))
         world:advance(11)
         assert.are.equal("HEALER", leader.roles["Feral Heal"])
+    end)
+end)
+
+describe("A member's own role", function()
+    it("follows what the party leader sets in WoW, not what their boss mod sets", function()
+        local world = World.new()
+        world:addClient("Tanky Mctank", { level = 20 }).isLeader = true
+        local member = world:addClient("Heally Mcheal", { level = 20, class = "DRUID" })
+        world:advance(CONNECT)
+        member.party, member.isLeader = { "Tanky Mctank" }, false
+        member.ns.charDb.lastRoles = "H"
+        member.ns.GroupView.track("5")
+        member.ns.RoleSync.expect("Heally Mcheal", "H")
+        member:fire("GROUP_ROSTER_UPDATE")
+        world:advance(2)
+        assert.are.equal("HEALER", member.roles["Heally Mcheal"])
+        member.roles["Heally Mcheal"] = "TANK"
+        member:fire("ROLE_CHANGED_INFORM", "Heally", "Heally", "HEALER", "TANK")
+        world:advance(1)
+        assert.are.equal("HEALER", member.roles["Heally Mcheal"])
+        member.roles["Heally Mcheal"] = "DAMAGER"
+        member:fire("ROLE_CHANGED_INFORM", "Heally", "Tanky", "HEALER", "DAMAGER")
+        world:advance(3)
+        assert.are.equal("DAMAGER", member.roles["Heally Mcheal"])
+        assert.are.equal("D", member.ns.RoleSync.expected("Heally Mcheal"))
+    end)
+
+    it("is not set from the ticked role in a raid", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 20, class = "PALADIN" })
+        world:advance(CONNECT)
+        client.ns.charDb.lastRoles = "H"
+        client.party, client.inRaid, client.isLeader = { "Raid Lead" }, true, false
+        client.roles["Solo Player"] = "DAMAGER"
+        client:fire("GROUP_ROSTER_UPDATE")
+        world:advance(3)
+        assert.are.equal("DAMAGER", client.roles["Solo Player"])
+    end)
+
+    it("follows the leader in a friend's party over the one role ticked", function()
+        local world = World.new()
+        world:addClient("Tanky Mctank", { level = 20 }).isLeader = true
+        local member = world:addClient("Heally Mcheal", { level = 20, class = "DRUID" })
+        world:advance(CONNECT)
+        member.party, member.isLeader = { "Tanky Mctank" }, false
+        member.ns.charDb.lastRoles = "H"
+        member:fire("GROUP_ROSTER_UPDATE")
+        world:advance(2)
+        assert.are.equal("HEALER", member.roles["Heally Mcheal"])
+        member.roles["Heally Mcheal"] = "TANK"
+        member:fire("ROLE_CHANGED_INFORM", "Heally", "Tanky", "HEALER", "TANK")
+        world:advance(3)
+        member:fire("GROUP_ROSTER_UPDATE")
+        world:advance(3)
+        assert.are.equal("TANK", member.roles["Heally Mcheal"])
+    end)
+
+    local function friendsParty()
+        local world = World.new()
+        world:addClient("Tanky Mctank", { level = 20 }).isLeader = true
+        local member = world:addClient("Heally Mcheal", { level = 20, class = "DRUID" })
+        world:advance(CONNECT)
+        member.party, member.isLeader = { "Tanky Mctank" }, false
+        member.ns.charDb.lastRoles = "H"
+        member:fire("GROUP_ROSTER_UPDATE")
+        world:advance(2)
+        assert.are.equal("HEALER", member.roles["Heally Mcheal"])
+        return world, member
+    end
+
+    local function reload(world, member)
+        local roles = member.roles
+        local saved = member:logout()
+        local again = world:addClient("Heally Mcheal", { level = 20, class = "DRUID", saved = saved,
+            beforeLogin = function(c)
+                c.party, c.isLeader = { "Tanky Mctank" }, false
+                c.roles = roles
+            end })
+        again:fire("PLAYER_ENTERING_WORLD")
+        again:fire("GROUP_ROSTER_UPDATE")
+        world:advance(2)
+        return again
+    end
+
+    it("moves with the tick in a friend's party also after a /reload", function()
+        local world, member = friendsParty()
+        local again = reload(world, member)
+        assert.are.equal("HEALER", again.roles["Heally Mcheal"])
+        again.ns.charDb.lastRoles = "D"
+        again.ns.RoleSync.ticked()
+        world:advance(3)
+        assert.are.equal("DAMAGER", again.roles["Heally Mcheal"])
+    end)
+
+    it("is let go when a friend's party becomes a raid also after a /reload", function()
+        local world, member = friendsParty()
+        local again = reload(world, member)
+        again.inRaid = true
+        again:fire("GROUP_ROSTER_UPDATE")
+        again.roles["Heally Mcheal"] = "DAMAGER"
+        again:fire("ROLE_CHANGED_INFORM", "Heally", "Heally", "HEALER", "DAMAGER")
+        world:advance(3)
+        assert.are.equal("DAMAGER", again.roles["Heally Mcheal"])
+    end)
+
+    it("follows the leader when WoW tells the change before its role data shows it", function()
+        local world, member = friendsParty()
+        member:fire("ROLE_CHANGED_INFORM", "Heally", "Tanky", "HEALER", "DAMAGER")
+        member.roles["Heally Mcheal"] = "DAMAGER"
+        member:fire("PLAYER_ROLES_ASSIGNED")
+        member:fire("GROUP_ROSTER_UPDATE")
+        world:advance(3)
+        assert.are.equal("DAMAGER", member.roles["Heally Mcheal"])
+    end)
+
+    it("follows the leader when WoW tells the change after its role data shows it", function()
+        local world, member = friendsParty()
+        member.roles["Heally Mcheal"] = "DAMAGER"
+        member:fire("PLAYER_ROLES_ASSIGNED")
+        member:fire("ROLE_CHANGED_INFORM", "Heally", "Tanky", "HEALER", "DAMAGER")
+        world:advance(3)
+        assert.are.equal("DAMAGER", member.roles["Heally Mcheal"])
+    end)
+
+    it("keeps a role agreed in a group formed later, whatever is ticked after", function()
+        local world, member = friendsParty()
+        member.ns.RoleSync.expect("Heally Mcheal", "D")
+        member.ns.RoleSync.apply()
+        world:advance(3)
+        assert.are.equal("DAMAGER", member.roles["Heally Mcheal"])
+        member.ns.charDb.lastRoles = "T"
+        member.ns.RoleSync.ticked()
+        world:advance(3)
+        assert.are.equal("DAMAGER", member.roles["Heally Mcheal"])
+    end)
+
+    it("lets go of the ticked role when the party becomes a raid", function()
+        local world = World.new()
+        local client = world:addClient("Solo Player", { level = 20, class = "PALADIN" })
+        world:advance(CONNECT)
+        client.ns.charDb.lastRoles = "H"
+        client.party, client.isLeader = { "Raid Lead" }, false
+        client:fire("GROUP_ROSTER_UPDATE")
+        world:advance(2)
+        assert.are.equal("HEALER", client.roles["Solo Player"])
+        client.inRaid = true
+        client:fire("GROUP_ROSTER_UPDATE")
+        client.roles["Solo Player"] = "DAMAGER"
+        client:fire("ROLE_CHANGED_INFORM", "Solo", "Solo", "HEALER", "DAMAGER")
+        world:advance(3)
+        assert.are.equal("DAMAGER", client.roles["Solo Player"])
     end)
 end)
 
@@ -1082,8 +1260,6 @@ describe("A player who did not join", function()
         world:advance(2)
     end
 
-    -- Whether Who is looking has a row for Good Heal (the main window may
-    -- name them too).
     local function shown(tank)
         tank.ns.QueueWindow.refresh()
         local window = tank:frame("ForeverGroupsQueueFrame")

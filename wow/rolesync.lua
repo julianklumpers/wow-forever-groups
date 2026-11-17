@@ -35,8 +35,11 @@ local settled = {}
 local resets = {}
 local paused = {}
 local listeners = {}
+local onRoleChanged
 -- While Forever Groups itself sets a role (onRoleSet leaves that alone).
 local setting = false
+-- The player's role is held for their single tick, not agreed (claimTicked).
+local tickHeld = false
 
 -- The player's name, also before the channel told it (right after a
 -- /reload, when WoW may already have changed the role).
@@ -46,6 +49,7 @@ end
 
 local function save()
     ns.charDb.roleSync = next(expected) and RoleSync.all() or nil
+    ns.charDb.roleSyncTick = tickHeld or nil
     ns.charDb.roleSyncOffered = nil
 end
 
@@ -98,6 +102,9 @@ function RoleSync.expect(name, role)
         cancelBossModsCheck()
     end
     if name and WOW_ROLES[role] then
+        if name == self then
+            tickHeld = false
+        end
         expected[name] = role
         attempts[name] = 0
         attemptedAt[name] = nil
@@ -176,11 +183,17 @@ end
 -- In any other party (a friend's, before or without a queue) a single
 -- ticked role is the player's role in WoW too; with several ticked their
 -- role is left alone. tickHeld: the hold is the tick's, not an agreed one.
-local tickHeld = false
 
 local function claimTicked()
     local name = me()
     if not name or ns.GroupView.isTracking() or (ns.Demo and ns.Demo.isOn()) then
+        return
+    end
+    if IsInRaid() then
+        if tickHeld then
+            tickHeld = false
+            RoleSync.forget(name)
+        end
         return
     end
     local roles = ns.charDb.lastRoles
@@ -189,7 +202,10 @@ local function claimTicked()
         if expected[name] ~= single then
             RoleSync.expect(name, single)
         end
-        tickHeld = true
+        if not tickHeld then
+            tickHeld = true
+            save()
+        end
     elseif not single and tickHeld then
         tickHeld = false
         RoleSync.forget(name)
@@ -310,17 +326,54 @@ local function quietBossMods()
     end
 end
 
+-- Whether a name (as WoW's role event gives it, maybe the first part only)
+-- is the party's leader.
+local function isLeaderName(name)
+    if type(name) ~= "string" then
+        return false
+    end
+    for i = 1, 4 do
+        local unit = "party" .. i
+        local full = Party.unitName(unit)
+        if full and UnitIsGroupLeader(unit) and (full == name or string.match(full, "^(%S+)") == name) then
+            return true
+        end
+    end
+    return false
+end
+
+-- The party's leader setting the player's role (WoW's party frames) makes it
+-- the player's own: the leader's client holds it from then on, so this one
+-- must not set it back (ROLE_CHANGED_INFORM: changed, changed by, old, new).
+function onRoleChanged(who, changedBy, _, newRole)
+    local name = me()
+    local letter = LETTERS[newRole]
+    if name and letter and expected[name] and expected[name] ~= letter and changedBy ~= who
+        and (who == name or (type(who) == "string" and string.match(name, "^(%S+)") == who))
+        and isLeaderName(changedBy) then
+        tickHeld = false
+        changed(name, letter)
+        -- WoW's role data may still show the old role: set the new one
+        -- rather than take the old one over.
+        settled[name], attempts[name], attemptedAt[name] = false, 0, nil
+        Log.debug("your leader made you %s", newRole)
+    end
+    RoleSync.apply()
+end
+
 -- After a /reload the roles agreed before still count, from the moment the
 -- addon loads (the roster comes later; not being in a group then clears
 -- them).
 local function restore()
-    local saved = ns.charDb.roleSync
+    local saved, tick = ns.charDb.roleSync, ns.charDb.roleSyncTick == true
     if next(expected) or type(saved) ~= "table" then
         return
     end
     for name, role in pairs(saved) do
         RoleSync.expect(name, role)
     end
+    tickHeld = tick and expected[me()] ~= nil
+    save()
 end
 
 -- The roles ticked in the window changed.
@@ -332,7 +385,7 @@ local function onRosterUpdate()
     if not IsInGroup() then
         expected, attempts, settled, attemptedAt, resets, paused = {}, {}, {}, {}, {}, {}
         tickHeld = false
-        ns.charDb.roleSync, ns.charDb.roleSyncOffered = nil, nil
+        ns.charDb.roleSync, ns.charDb.roleSyncOffered, ns.charDb.roleSyncTick = nil, nil, nil
         return
     end
     restore()
@@ -350,7 +403,7 @@ function RoleSync.init()
     ns.on("PLAYER_ENTERING_WORLD", onRosterUpdate)
     ns.on("GROUP_ROSTER_UPDATE", onRosterUpdate)
     ns.on("PLAYER_ROLES_ASSIGNED", RoleSync.apply)
-    ns.on("ROLE_CHANGED_INFORM", RoleSync.apply)
+    ns.on("ROLE_CHANGED_INFORM", onRoleChanged)
 end
 
 ns.RoleSync = RoleSync

@@ -15,6 +15,9 @@ local dirty = true
 local known = {}
 -- Their points per tree, where inspecting told them.
 local pointsKnown = {}
+-- Who this session learned a spec of (inspected or shared), not kept over a
+-- /reload.
+local learnedNow = {}
 -- Next to the tree with the most points, another counts in a hybrid spec
 -- ("Shadow/Holy") with at least this share of all points: a level 20 player
 -- has only 11 points.
@@ -126,8 +129,12 @@ function Spec.learn(name, classToken, points)
     load()
     local index = points and Specs.dominant(points)
     local code = index and Specs.encode(classToken, index)
-    if name and code then
+    local spent = type(points) == "table" and ((points[1] or 0) + (points[2] or 0) + (points[3] or 0)) or 0
+    if name and type(classToken) == "string" and spent > 0 then
+        -- A tie (6/6/0) has no single spec but still its trees. No points
+        -- at all is also what an inspect gives before WoW has the data.
         known[name] = code
+        learnedNow[name] = true
         pointsKnown[name] = { classToken = classToken, points = { points[1] or 0, points[2] or 0, points[3] or 0 } }
         save(name)
     end
@@ -300,6 +307,10 @@ function Spec.englishClass(token)
     return englishClass(token)
 end
 
+function Spec.learnedThisSession(name)
+    return learnedNow[name] == true
+end
+
 -- The tree name for one of the group's places ("Enhancement"), or nil.
 function Spec.treeOf(name)
     if name == ns.selfName then
@@ -375,8 +386,11 @@ function Spec.shareSoon(force)
         shareScheduled = false
         local text = IsInGroup() and shareText()
         if text and text ~= sharedText then
-            sharedText = text
-            ns.Comm.sendParty(text)
+            if ns.Comm.sendParty(text) then
+                sharedText = text
+            else
+                Spec.shareSoon(false)
+            end
         end
     end)
 end
@@ -398,8 +412,22 @@ function Spec.onMessage(sender, text)
 end
 
 function Spec.init()
+    -- Again for a newcomer only: roster updates also come with every role
+    -- change and member going offline.
+    local members
     ns.on("GROUP_ROSTER_UPDATE", function()
-        Spec.shareSoon(true)
+        local list = ns.Party.members()
+        if not list and IsInGroup() then
+            return
+        end
+        local names = {}
+        for _, member in ipairs(list or {}) do
+            names[#names + 1] = member.name
+        end
+        table.sort(names)
+        local now = table.concat(names, ",")
+        Spec.shareSoon(now ~= members)
+        members = now
     end)
     for _, event in ipairs({ "PLAYER_LOGIN", "TRAIT_CONFIG_UPDATED", "PLAYER_TALENT_UPDATE",
         "ACTIVE_PLAYER_SPECIALIZATION_CHANGED", "PLAYER_LEVEL_UP" }) do

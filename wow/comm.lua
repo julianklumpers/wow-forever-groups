@@ -328,18 +328,20 @@ function Comm.connection()
 end
 
 -- Small, rare party status messages; sent directly instead of queued.
+-- Returns whether WoW took the message.
 function Comm.sendParty(text)
     if ns.Demo.isOn() then
-        return
+        return false
     end
     if not IsInGroup() or (C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()) then
-        return
+        return false
     end
     local ok, code = pcall(C_ChatInfo.SendAddonMessage, Comm.PREFIX, text, "PARTY")
     local line = text .. " [" .. (ok and tostring(code) or "error") .. "]"
     if not (dev.skipPartyLog and dev.skipPartyLog(line)) then
         Log.debug("-> party %s", line)
     end
+    return ok and result(code) == "ok"
 end
 
 function Comm.init(onReady, onMessage, onParty, onFlood)

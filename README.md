@@ -31,7 +31,8 @@ in the group, with roles set for you.
   Competitive or Carry Offered in the dropdown under the role tiles to be grouped with
   like-minded players only.
 - **Your language** — like WoW's Group Finder, you're grouped with players whose game is in your
-  language; tick more languages in Settings → Groups to be grouped with those players too.
+  language; tick more languages in Settings → Groups to be grouped with those players too. That
+  holds while other Group Finder addons search too: their results in other languages stay out.
 - **Uses WoW's Group Finder too** — invites solo players listed for your dungeon, asks listed
   groups to invite you (and joins when they do, as the role they still need), lists your own
   group, and invites players who whisper a needed role. The first 5 minutes of building a group

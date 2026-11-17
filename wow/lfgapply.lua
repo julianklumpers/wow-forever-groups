@@ -42,10 +42,12 @@ local seekingStartedAt
 local lastAskAt = -math.huge
 
 -- Group Finder results from a search made after this search started; older
--- ones may be for other dungeons or about groups that have filled since.
+-- ones may be for other dungeons or about groups that have filled since,
+-- and ones from before a language was added lack that language's groups.
 local function freshResults()
     local _, updatedAt = ns.LfgList.listings()
     return updatedAt ~= nil and seekingStartedAt ~= nil and updatedAt >= seekingStartedAt
+        and updatedAt >= ns.LfgList.languagesChangedAt()
 end
 
 -- The automatic asks; the player's own requests (Who is looking) do not

@@ -123,7 +123,8 @@ How the addon works inside, for anyone reading or changing the code. The player-
   Group Finder listing (`classToken`), else from the whisper's GUID (`GetPlayerInfoByGUID`, `CHAT_MSG_WHISPER`'s
   12th argument), and only gets a place open to any class when neither tells. With the class known, the answers name
   only the roles that class can take (`openFor`: it plays the role and a free place takes it); a class no open place
-  takes gets the `whisperClass` answer once ("Sorry, we are not looking for a Hunter right now.") and no role
+  takes gets the `whisperClass` answer once when they ask to join, name a role or answer the role question asked
+  them ("Sorry, we are not looking for a Hunter right now."; other chat is left alone) and no role
   question. A class that plays one role only (Rogue, Mage, Hunter, Warlock) asking to join is invited for it at once
   when a place takes it, without the role question. Who is looking fades solo players who don't fit the places left. The
   block
@@ -161,7 +162,13 @@ How the addon works inside, for anyone reading or changing the code. The player-
   and reorder messages (`Sim:drop`, `Sim:lossy` with a seed, `Sim:releaseHeld`); `tests/helpers/wowmock.lua` loads
   the full addon (per the .toc) into mocked WoW clients, with WoW's limits: one Group Finder search per click or key
   press, about two per 5 s on the server (`LFG_LIST_SEARCH_FAILED` "throttled"), and an invite holding a party
-  place for 60 s (`ERR_GROUP_FULL` past five)
+  place for 60 s from 0.2 s after it is sent (`ERR_GROUP_FULL` past five). Each input is a frame of its own (`GetTime()` moves by 1e-6 per input),
+  a search only changes the result list when the server takes it, listings can have a `language` that only a search
+  in that language returns (a `stray` one comes for any search), and `C_LFGList.ClearSearchResults` empties the
+  list; `tests/outside_searches_spec.lua` searches as another addon would, and `tests/search_fuzz_spec.lua` plays
+  random runs of our searches, other addons' searches, cleared lists, language changes and new listings, and checks
+  after every step that no other language comes in, no one is listed twice, none of our searches is refused or
+  blocked, and that the lists catch up (`FUZZ_SEEDS`, `FUZZ_STEPS`)
 
 ## How the network behaves
 
@@ -573,7 +580,8 @@ them per role ("of a class your group has in that role or twice, for 95 s more")
 is made with `classVariety` (its listed players are mostly Paladins). Anyone who declines or does not
 join within 30 s is replaced (a player who joins later is kept while a spot is open). What became of each invite is
 kept (`state.outcomes`: declined, grouped for WoW's "is already in a group", missing for "Cannot find player",
-noanswer, away; from WoW's own system text) and the player is passed over until they look again (`reopen`, before
+noanswer, away; from WoW's own system text, also for an answer that comes after the 30 s, which frees the
+place it held) and the player is passed over until they look again (`reopen`, before
 each pick): one who was in a group or not found once they list again (a listing newer than the outcome:
 `seenAt - age`, so a kept older listing never counts), one who declined once more after listing again, one who did
 not answer once more when still listed 5 minutes after (`REOPEN_WAIT`); a second no is final for the fill. Who is
@@ -589,7 +597,8 @@ after 1.5 s, so an away player's automatic reply (`CHAT_MSG_AFK`/`CHAT_MSG_DND`)
 uninvited. Every open invite takes a place in the party, also one given up on: WoW keeps an unanswered invite open
 for exactly 60 s. Every invite the addon sends goes through `wow/invites.lua` (the filler, the battleground and quest
 finders, a formed queue group, whisper invites and the player menu), which counts the places open invites hold until
-they are answered, joined or 60 s old. A /reload keeps them (`charDb.invites`, with their ages). The queue entry
+they are answered, joined or 62 s old (WoW's 60 s start when its server gets the invite, a moment after it is sent,
+so a place counted free at 60 s could still be taken: "Your party is full"). A /reload keeps them (`charDb.invites`, with their ages). The queue entry
 saved for a /reload (`charDb.queue`) carries the filler (`Filler.saved`, `Filler.restore`: the roles sought, the
 invites still out, who not to invite again), so it fills on without whispering and inviting the same players twice.
 When members and invites take all five places the party leaves the queue for the moment (`parked` in
@@ -623,7 +632,8 @@ back again once the oldest falls out of the window. This also holds when
 they offered that role in the Group Finder and after each of their /reloads (Deadly Boss Mods sets it from the spec
 again): the place they were taken for counts, not what they listed or their talents. Only the leader changing a
 member's role in WoW's party frames makes it their new role (the `hooksecurefunc("UnitSetRole")` hook sees it;
-Forever Groups' own calls are marked `setting` and left alone), and the filler then looks for the role that became
+Forever Groups' own calls are marked `setting` and left alone; on the member's own client `ROLE_CHANGED_INFORM`
+names the leader as the one who changed it, `onRoleChanged`, so it is not set back there either), and the filler then looks for the role that became
 free. A player who is not the leader (who cannot set others' roles) takes the member's role over at once, and so
 does the leader when WoW does not take the role it sets. The
 same goes for the player's own role when it is one they did not queue for:
@@ -636,8 +646,11 @@ count from the moment the addon loads. Any other change is
 set back: right away from a `hooksecurefunc("UnitSetRole")` hook, else when WoW reports it;
 only with several roles ticked may it change between them. In a group Forever Groups follows the player's role is
 always held: the current one if ticked, else the first ticked one. In any other party (one formed with a friend,
-before or without a queue) a single ticked role is held the same way (`claimTicked`, `tickHeld`; a tick that
-changes moves it, `RoleSync.ticked()` from the role tiles); with several ticked the role is left to the player. The agreed roles are kept in `charDb.roleSync`, so they still hold after a /reload; and in a group
+before or without a queue; not a raid, and a party that becomes one lets it go) a single ticked role is held the
+same way (`claimTicked`, `tickHeld`; a tick that changes moves it, `RoleSync.ticked()` from the role tiles; when
+the leader sets the player's role, that role is held instead and a tick no longer moves it, `onRoleChanged`, which
+sets it itself as WoW's role data may still show the old one; a role agreed with a group ends the tick's hold too;
+`tickHeld` is saved, `charDb.roleSyncTick`, so it holds over a /reload); with several ticked the role is left to the player. The agreed roles are kept in `charDb.roleSync`, so they still hold after a /reload; and in a group
 Forever Groups follows (`GroupView.isTracking`) with nothing agreed for the player, a role outside the ticked ones
 gives way to the first ticked one. Groups the addon does not follow are left alone. The group's places
 show each member in their own role (two tanks as two tanks) and as open places what a group of one tank, one
@@ -702,14 +715,35 @@ player's input for a search (`/fgp clicksearch`): key presses (a frame that lets
 `ADDON_ACTION_BLOCKED` (`/fgp lfgapi twice`), so the parts can't be searched at once. The server answers in about
 0.2 s and allows about two searches (of any kind) per five seconds; a third is refused (`LFG_LIST_SEARCH_FAILED`
 "throttled"), refused tries don't count (`/fgp lfgapi gap 1.5`, with the addon's own searches off: two in a row always
-worked, the third within ~5 s always failed). So `LfgList` keeps the times of its searches (dungeons, zones and
-battlegrounds alike, `roomToSearch`): with two in the last 5.5 s a search waits and goes out on a later input
-(`retryPart`; `Filler.searchAgain` then says so instead of warning). A refused search is undone (its dungeons count
-as not searched, the part keeps its turn, the search times go back) and tried again on input at least 3 s later, at
-most 3 times in a row. A refused zone or battleground search gets its search time back too, so the next input asks
-again instead of waiting on the old results. Wailing Caverns alone already gives 100 results at a busy time. Results replace only the listings of the dungeons searched
-(`coveredActivities`), and a listing for dungeons of both parts (it comes back in each search under a new id) is
-kept once per leader, the newest; listings of a part not searched again are dropped after 2 minutes; a dungeon search from Blizzard's window replaces them all. Results the addon can't place (no dungeon, zone or battleground among them) count only when its own search is waiting for an answer (`pending.kind`); otherwise they are another category searched in WoW's window and left alone. A dungeon search with no activity to search (The Stockade alone) is not sent. Alone and looking with one role, the main
+worked, the third within ~5 s always failed). Other addons and Blizzard's window search too (ForeverLFG,
+LFGForever), so `LfgList` hooks `C_LFGList.Search` with `hooksecurefunc` when its file loads, before addons loading
+later keep their own reference, and sees every search, whoever sends it; the hook runs in a `pcall` so no error reaches
+the caller's search. It keeps the times of every search (`roomToSearch`): with two in the last 5.5 s a search waits
+and goes out on a later input (`retryPart`; `Filler.searchAgain` then says so instead of warning). A second search in the same frame (`GetTime()` is the same within a frame) is one WoW
+blocks: it is not counted, and the addon does not search itself after another search in that input. A refusal comes at once, so it is for the newest
+search out; when that is ours it is undone (its dungeons count as not searched, the part keeps its turn, the search
+times go back, `undoOwn`) and tried again on input at least 3 s later, at most 3 times in a row. A refused zone or battleground search gets its search time back too, so the next input asks
+again instead of waiting on the old results. Wailing Caverns alone already gives 100 results at a busy time. Each search out is kept in `open` (ours or not, its kind by category, its activities and a copy of its
+languages, the `true` ones; nil is the own language) for 15 s. An answer belongs to the searches its results fit (same
+kind, most listings with an activity the search asked for: whether the server keeps strictly to them with a role
+filter is not known). A newer search of ours of the same kind replaces an older one still out, unless that one is
+from before the languages changed: then both fit and the answer is only merged. Only when that is one search of ours alone, sent with the
+current languages and not followed by `ClearSearchResults`, do the results replace listings, only those of the
+dungeons it searched (`record.covered`), and count as fresh (`updatedAt`, `zoneUpdatedAt`, `resultZones`,
+`battlegroundsUpdatedAt`). Every other answer (another addon's search, several fitting at once, none seen) is merged
+in: known leaders are updated, new ones added only when every fitting search asked for languages within the player's
+(`languageFilter`), nothing is removed and no search time changes, since such results may be filtered to one language
+or role. Ours among several fitting go again on a later input (whether WoW answers each search or only the newest is
+not known). A leader is in one list only: placed in the dungeon, zone or battleground list, the same name leaves the
+other two, and within one answer the newest listing per leader counts. A result update changes a listing only while
+the id still has that leader's name; a late leader name is added like the rest of its answer
+(`resultSet.newOk`). A listing for dungeons of both parts (it comes back in each search under a new id) is kept once
+per leader, the newest; listings of a part not searched again are dropped after 2 minutes. Results the addon can't
+place (no dungeon, zone or battleground among them) count only for its own search waiting alone; otherwise they are
+another category searched in WoW's window and left alone. Taking a language off (`MatchLanguages.set` →
+`LfgList.languagesChanged`) drops all three lists and their search state, as a listing does not say its language;
+adding one keeps them, but the search times go back so the next input searches with it, and `freshResults` in
+`wow/lfgapply.lua` waits for results from after the change before building a group instead of joining one. A dungeon search with no activity to search (The Stockade alone) is not sent. Alone and looking with one role, the main
 search uses WoW's advanced filter (`Search`'s sixth argument, built from `C_LFGList.GetAdvancedFilter` with the
 activities' `groupFinderActivityGroupID`s, which Forever requires, and one of `needsTank`/`needsHealer`/
 `needsDamage`): the server then leaves out groups without a place for that role, solo players stay. With several
@@ -726,7 +760,8 @@ An answer that names no role ("i can tnak") is asked again, at most three questi
 within 3 s of the question ("inv?") is not taken as the answer. Role words are matched exactly, never guessed. Each
 step goes to the saved log with the whisper's first 80 characters.
 When open invites hold every party place (`Filler.room`), a whisperer gets no answer yet and is invited (with the
-usual answer) as soon as a place frees, within an invite's 60 s (`WhisperInvite.tick`).
+usual answer) as soon as a place frees, kept waiting just past `Invites.HOLD` (`WhisperInvite.tick`). What was
+asked and told (`asked`) holds for the group being built only: forgotten once no group is being built.
 Asking groups happens out of sight: no status, window or chat line says how many were asked (only the saved log
 does). With `/fg debug on` the status shows "Building your own group: inviting …" once the filler runs.
 
@@ -923,12 +958,16 @@ the tabs Groups, Messages and Display.
 ### In the group
 
 - **Specs with the addon:** party members send their points per tree on PARTY, `v1|SP|<class>|<a>/<b>/<c>`
-  (`Spec.shareSoon`: 2 s after the roster or the talents change, again for a newcomer), so the places show
+  (`Spec.shareSoon`: 2 s after the talents change, and again when the party's members change, not at every roster
+  update, nor when a member's name is briefly unknown; a send WoW does not take, as in a boss fight's chat lockdown,
+  goes again 2 s later, `Comm.sendParty` says whether it went), so the places show
   everyone's own trees ("Protection" for a Protection warrior in a DPS place). The player's own points are the last
-  ones WoW gave (`Spec.points` keeps them: WoW does not always give them, e.g. inside a dungeon).
+  ones WoW gave (`Spec.points` keeps them: WoW does not always give them, e.g. inside a dungeon). Tied points
+  (6/6/0) are kept too and show both trees; all zero is ignored (an inspect gives that before WoW has the data).
 - **Specs without the addon:** `wow/inspectspec.lua` inspects one party member at a time out of combat
   (`NotifyInspect`, `INSPECT_READY`, the talent config `-1`) and reads their tree like `wow/spec.lua`; again after
-  10 minutes. Members close by first (`CheckInteractDistance`), then those further away: on Forever a member outside
+  10 minutes. A spec kept over a /reload is inspected once more (it may be old), unless the member's addon told
+  their points this session (`Spec.learnedThisSession`). Members close by first (`CheckInteractDistance`), then those further away: on Forever a member outside
   the dungeon can be inspected from inside (the player's own inspect does it, 2026-11-17); one that gives no answer
   within 5 s is logged ("inspecting X: no answer") and tried again a minute later. A member without talent points
   (low level) reads as nothing. The log says what WoW gave ("inspected X: ROGUE2 (1 trees, 31 nodes, 12 ranks)").

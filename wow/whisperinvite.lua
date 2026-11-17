@@ -239,10 +239,14 @@ function WhisperInvite.onWhisper(text, sender, ...)
     end
     local class = goal.invite == inviteForDungeon and classOf(sender, guid) or nil
     -- A class no open place takes (the class wishes, or what it can play):
-    -- told so once, as nothing it says would get an invite.
+    -- told so once when they ask to join, name a role or answer our role
+    -- question, as nothing they say would get an invite; other chat is left
+    -- alone.
     local needed = openFor(goal.needed, class)
     if needed == "" then
-        if not (asked[sender] and asked[sender].silent) then
+        local aboutJoining = WhisperInvite.rolesIn(text) ~= "" or WhisperInvite.asksToJoin(text)
+            or (asked[sender] ~= nil and not asked[sender].silent and not asked[sender].told)
+        if aboutJoining and not (asked[sender] and asked[sender].silent) then
             asked[sender] = { needed = needed, count = MAX_ASKS, at = GetTime(), silent = true }
             Log.detail("%s whispered you, but no open place takes a %s; told them so.", sender,
                 ns.Spec.className(class))
@@ -306,7 +310,12 @@ function WhisperInvite.onWhisper(text, sender, ...)
 end
 
 -- Invites a waiting whisperer once a place is free, for a role still needed.
+-- What was asked and told is for this group only: forgotten once no group
+-- is being built.
 function WhisperInvite.tick()
+    if next(asked) ~= nil and not ns.Filler.isActive() and ns.Listing.listedFor() ~= "quest" then
+        asked = {}
+    end
     if next(waiting) == nil then
         return
     end
@@ -314,7 +323,7 @@ function WhisperInvite.tick()
     local now = GetTime()
     for name, wait in pairs(waiting) do
         if not goal or goal.invite ~= inviteForDungeon or goal.excluded[name]
-            or (not wait.variety and now - wait.at >= ns.Invites.LIFETIME) then
+            or (not wait.variety and now - wait.at > ns.Invites.HOLD + 1) then
             waiting[name] = nil
         elseif ns.Filler.room() > 0 then
             local role = pickRole(wait.roles, goal.needed, wait.class)

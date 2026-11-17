@@ -761,6 +761,39 @@ describe("the group card", function()
         assert.are.same({ "Vaielia Poisonblade", "Far Mage" }, leader.inspects)
     end)
 
+    it("inspects a member once more after a /reload, also one whose spec it kept", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        world:advance(12)
+        leader.ns.Spec.learn("Vaielia Poisonblade", "ROGUE", { 4, 8, 0 })
+        local saved = leader:logout()
+        local again = world:addClient("Tanky Mctank", { level = 20, saved = saved })
+        again.party, again.isLeader = { "Vaielia Poisonblade" }, true
+        again.partyClasses = { ["Vaielia Poisonblade"] = "ROGUE" }
+        again.inspectTalents["Vaielia Poisonblade"] = { { 9000, 12 } }
+        world:advance(12)
+        again.ns.GroupView.track("5")
+        again:fire("GROUP_ROSTER_UPDATE")
+        world:advance(5)
+        assert.are.same({ "Vaielia Poisonblade" }, again.inspects)
+        assert.are.same({ "Subtlety" }, again.ns.Spec.treesOf("Vaielia Poisonblade"))
+    end)
+
+    it("does not inspect a member who told their points over the party channel", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        world:advance(12)
+        leader.party, leader.isLeader = { "Swole Mcg" }, true
+        leader.partyClasses = { ["Swole Mcg"] = "WARRIOR" }
+        leader.inspectTalents["Swole Mcg"] = { { 9000, 12 } }
+        leader.ns.Spec.onMessage("Swole Mcg", "v1|SP|WARRIOR|0/12/0")
+        leader.ns.GroupView.track("5")
+        leader:fire("GROUP_ROSTER_UPDATE")
+        world:advance(5)
+        assert.are.same({}, leader.inspects)
+        assert.are.same({ "Fury" }, leader.ns.Spec.treesOf("Swole Mcg"))
+    end)
+
     it("shows where the others are once you are inside", function()
         local world = World.new()
         local leader = world:addClient("Tanky Mctank", { level = 20 })

@@ -446,7 +446,7 @@ function Filler.invites()
             left = math.max(0, INVITE_TIMEOUT - (now - pending.at)) }
     end
     for name, late in pairs(state.late) do
-        local left = INVITE_LIFETIME - (now - late.at)
+        local left = ns.Invites.HOLD - (now - late.at)
         if left > 0 then
             list[#list + 1] = { name = name, role = late.role, at = late.at, held = true, left = left }
         end
@@ -920,6 +920,15 @@ local function onSystemMessage(text)
             setOutcome(name, declineKinds[i])
             ns.RoleSync.forget(name)
             Log.detail("%s did not join; trying someone else.", name)
+            Log.debug("WoW said: %s", text)
+            changed()
+            Filler.step()
+            return
+        elseif name and state.late[name] then
+            -- Given up on already, but WoW still held the invite: its place
+            -- is free now, and the answer counts.
+            state.late[name] = nil
+            setOutcome(name, declineKinds[i])
             Log.debug("WoW said: %s", text)
             changed()
             Filler.step()
