@@ -59,14 +59,49 @@ local function run(seed, steps)
     leader:slash("/dq join tank wc")
     world:advance(2)
 
-    local seen, invitedAs, flips, chats = {}, {}, {}, {}
+    local invitedAs, flips, chats = {}, {}, {}
+    local invitedAt, handled = {}, 0
     local sessionStart = 0
     local whisperers = {}
     for i = 1, 6 do
         whisperers[i] = CLASSES[roll(#CLASSES)][1]
     end
+    -- Whoever the filler's own rules (Fill.pick) pick from the newest results
+    -- is invited within 2 s (the whisper, then the invite 1.5 s later), as
+    -- far as places are free; unless it waits on purpose, for a queue
+    -- proposal. due: since when each pick has been waiting.
+    local due = {}
+    local function checkPrompt(where)
+        local now = world.time
+        local ns = leader.ns
+        local F = ns.Filler
+        local dungeon = F.dungeon()
+        local listings, updatedAt = ns.LfgList.listings()
+        local proposal = ns.Queues.anyProposalOpen() or ns.engine.held == true
+        if not F.isActive() or not dungeon or proposal or not updatedAt or now - updatedAt > 300 then
+            due = {}
+            return
+        end
+        local entry = ns.Dungeons.get(dungeon)
+        local picks = ns.Fill.pick(ns.Playstyle.filter(listings, ns.Playstyle.forGroup()), {
+            missing = F.stillNeeded(), dungeon = dungeon, exclude = F.excluded(),
+            range = entry and entry.min and { min = entry.min, max = entry.max } or nil, places = F.freePlaces(),
+            levels = ns.PartyLevels.rules("dungeons"), avoid = F.avoidClasses(), prefer = F.preferClasses(),
+            near = F.groupLevel(),
+        })
+        local still = {}
+        for i = 1, math.min(#picks, F.room()) do
+            local name = picks[i].name
+            still[name] = due[name] or now
+            assert(now - still[name] <= 3, where .. name .. " could be invited as " .. picks[i].role .. " for "
+                .. (now - still[name]) .. " s but was not")
+        end
+        due = still
+    end
+
     local function check(step)
         local where = "seed " .. seed .. ", step " .. step .. ": "
+        checkPrompt(where)
         assert(#leader.refusedInvites == 0,
             where .. "invited into a full party: " .. tostring(leader.refusedInvites[1]))
         local now = world.time
@@ -78,6 +113,15 @@ local function run(seed, steps)
             end
         end
         -- Per session: a /reload forgets the conversations, and may ask again.
+        -- Who is looking leaves out only a player invited before the search
+        -- it shows: never one a newer search still lists.
+        for _, listing in ipairs((leader.ns.LfgList.listings())) do
+            if leader.ns.Filler.hidden(listing) then
+                local since = invitedAt[listing.name]
+                assert(since and (listing.seenAt or now) <= since + 35,
+                    where .. listing.name .. " is in a newer search but is left out")
+            end
+        end
         local byTarget = {}
         for i = sessionStart + 1, #leader.whispers do
             local w = leader.whispers[i]
@@ -106,11 +150,13 @@ local function run(seed, steps)
     end
 
     for step = 1, steps do
-        for _, name in ipairs(leader.invites) do
+        for index = handled + 1, #leader.invites do
+            local name = leader.invites[index]
             local player = listed[name]
-            if player and not seen[name] then
-                seen[name] = true
+            handled = index
+            if player then
                 invitedAs[name] = leader.ns.Filler.roleOf(name)
+                invitedAt[name] = world.time
                 local fate = roll(20)
                 local at = 1 + roll(4)
                 world:schedule(leader, at, function()
@@ -156,6 +202,17 @@ local function run(seed, steps)
                     leader:fire("ROLE_CHANGED_INFORM")
                 end)
             end
+        elseif event == 6 then
+            -- A listed player lists again (after leaving a group, or to look
+            -- again): newer than any invite so far.
+            local listing = world.listings[roll(#world.listings)]
+            local inParty = false
+            for _, member in ipairs(leader.party) do
+                inParty = inParty or member == listing.leaderName
+            end
+            if not inParty then
+                listing.age = 1
+            end
         elseif event == 5 and roll(4) == 1 then
             local saved = leader:logout()
             local old = leader
@@ -172,7 +229,14 @@ local function run(seed, steps)
                     "seed " .. seed .. ": " .. name .. "'s role was lost over the leader's /reload")
             end
         end
+        if step % 20 == 0 then
+            -- The player's key presses search the Group Finder again.
+            leader:slash("/dq fill")
+        end
         world:advance(1)
+        for _, listing in ipairs(world.listings) do
+            listing.age = listing.age + 1
+        end
         check(step)
     end
 end

@@ -760,7 +760,7 @@ end
 
 local function paintRow(row, item)
     row.item = item
-    row:SetAlpha((item.unwanted or item.passed) and 0.4 or 1)
+    row:SetAlpha(item.unwanted and 0.4 or 1)
     local name, color = item.name, item.color
     paintIcons(row.icons, item.roles)
     if item.wishes then
@@ -1307,34 +1307,19 @@ local function groupRoles(listing)
 end
 
 
--- What became of a listed player Forever Groups invited while building the
--- group (Filler.status): the word before their dungeons, and for one passed
--- over (dimmed) why and when they are tried again.
-local STATUS_WORDS = ns.Locale.mark({
-    invited = "invited", declined = "declined", grouped = "in a group", missing = "not found",
-    noanswer = "no answer", away = "away",
-})
-local STATUS_TIPS = ns.Locale.mark({
-    declined = "Declined the invite. Invited once more if they list again.",
-    grouped = "Was already in a group. Invited again once they list again.",
-    missing = "WoW found no player by this name. Invited again once they list again.",
-    noanswer = "Did not answer the invite. Invited once more if still listed in 5 minutes.",
-    away = "Was away. Invited once more if still listed in 5 minutes.",
-})
-
 local function groupFinderItems(rules)
     local items = {}
     for _, listing in ipairs(QueueWindow.groupFinderPlayers(mode)) do
-        local status = mode == "dungeons" and ns.Filler.status(listing.name) or nil
-        local area = areaText(listing.dungeons, listing.zones, listing.battlegrounds)
-        items[#items + 1] = { roles = listing.roles, needs = "", name = listing.name, listing = listing,
-            source = "finder",
-            dungeonText = status and ("[" .. L[STATUS_WORDS[status]] .. "]  " .. area) or area,
-            player = listing.name,
-            time = Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
-            level = listing.level, unwanted = unwanted(listing.roles, listing.classToken, listing.level, rules),
-            passed = STATUS_TIPS[status] and L[STATUS_TIPS[status]] or nil,
-            classes = { listing.classToken }, color = { Widgets.classColor(listing.classToken) } }
+        -- One the group's filling passed over is left out for a while
+        -- (Filler.hidden); how a group comes about stays out of sight.
+        if not (mode == "dungeons" and ns.Filler.hidden(listing)) then
+            items[#items + 1] = { roles = listing.roles, needs = "", name = listing.name, listing = listing,
+                source = "finder",
+                dungeonText = areaText(listing.dungeons, listing.zones, listing.battlegrounds), player = listing.name,
+                time = Widgets.formatTime(listing.age or 0), waited = listing.age or 0,
+                level = listing.level, unwanted = unwanted(listing.roles, listing.classToken, listing.level, rules),
+                classes = { listing.classToken }, color = { Widgets.classColor(listing.classToken) } }
+        end
     end
     return items
 end
@@ -1439,9 +1424,6 @@ function QueueWindow.showRowTooltip(row, item)
         GameTooltip:SetText(item.name, unpack(item.color))
         if comment then
             GameTooltip:AddLine("\"" .. comment .. "\"", 1, 1, 1, true)
-        end
-        if item.passed then
-            GameTooltip:AddLine(item.passed, 1, 0.6, 0.2, true)
         end
         if item.unwanted then
             GameTooltip:AddLine(item.unwanted, 1, 0.6, 0.2, true)

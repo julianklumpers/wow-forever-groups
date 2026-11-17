@@ -1082,23 +1082,102 @@ describe("A player who did not join", function()
         world:advance(2)
     end
 
-    it("shows why in Who is looking, and is invited again once in a group no more", function()
+    -- Whether Who is looking has a row for Good Heal (the main window may
+    -- name them too).
+    local function shown(tank)
+        tank.ns.QueueWindow.refresh()
+        local window = tank:frame("ForeverGroupsQueueFrame")
+        for _, widget in ipairs(tank.widgets) do
+            if widget.kind == "FontString" and widget.text == "Good Heal" and widget.shown then
+                local node, inside, visible = widget, false, true
+                while node do
+                    visible = visible and node.shown ~= false
+                    inside = inside or node == window
+                    node = node.parent
+                end
+                if inside and visible then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
+    it("leaves Who is looking while passed over, and is back and invited again once listed again", function()
         local world = World.new()
         local tank = filling(world)
-        assert.are.equal(1, invites(tank, "Good Heal"))
-        tank:system("Good Heal is already in a group.")
         tank:slash("/dq")
         tank.ns.db.queueFold = { players = false, groups = false }
-        tank.ns.QueueWindow.refresh()
-        local text = tank:findText("^%[in a group%]")
-        assert.is_not_nil(text)
-        assert.are.equal(0.4, text.parent.alpha)
+        assert.are.equal(1, invites(tank, "Good Heal"))
+        assert.is_true(shown(tank))
+        tank:system("Good Heal is already in a group.")
+        assert.is_false(shown(tank))
         tank:slash("/dq fill")
         world:advance(2)
         assert.are.equal(1, invites(tank, "Good Heal"))
         relist(world, tank, "Good Heal")
+        assert.is_true(shown(tank))
         assert.are.equal(2, invites(tank, "Good Heal"))
         assert.is_true(tank:logged("Good Heal is looking again"))
+    end)
+
+    it("is back in Who is looking once a newer search still lists them, without being invited again", function()
+        local world = World.new()
+        local tank = filling(world)
+        tank:slash("/dq")
+        tank.ns.db.queueFold = { players = false, groups = false }
+        tank:system("Good Heal is already in a group.")
+        assert.is_false(shown(tank))
+        world:advance(10)
+        tank:slash("/dq fill")
+        world:advance(2)
+        assert.is_true(shown(tank))
+        assert.are.equal(1, invites(tank, "Good Heal"))
+    end)
+
+    it("who started a group of their own shows as that group, and is not invited as a solo player", function()
+        local world = World.new()
+        local tank = filling(world)
+        tank:slash("/dq")
+        tank.ns.db.queueFold = { players = false, groups = false }
+        tank:system("Good Heal is already in a group.")
+        for _, listing in ipairs(world.listings) do
+            if listing.leaderName == "Good Heal" then
+                listing.numMembers, listing.remaining, listing.age = 2, { T = 1, H = 0, D = 2 }, 5
+            end
+        end
+        world:advance(10)
+        tank:slash("/dq fill")
+        world:advance(2)
+        tank.ns.QueueWindow.refresh()
+        assert.is_false(shown(tank))
+        assert.is_not_nil(tank:findText("^Good Heal %+1$"))
+        assert.are.equal(1, invites(tank, "Good Heal"))
+    end)
+
+    it("stays in Who is looking after declining; in a group, is left out until a newer search lists them", function()
+        local world = World.new()
+        local tank = filling(world)
+        tank:slash("/dq")
+        tank.ns.db.queueFold = { players = false, groups = false }
+        tank:system("Good Heal declines your group invitation.")
+        assert.is_true(shown(tank))
+        relist(world, tank, "Good Heal")
+        assert.are.equal(2, invites(tank, "Good Heal"))
+        tank:system("Good Heal is already in a group.")
+        assert.is_false(shown(tank))
+        world:advance(360)
+        assert.is_false(shown(tank))
+        tank:slash("/dq fill")
+        world:advance(2)
+        assert.is_true(shown(tank))
+        relist(world, tank, "Good Heal")
+        assert.are.equal(3, invites(tank, "Good Heal"))
+        tank:system("Good Heal is already in a group.")
+        assert.is_false(shown(tank))
+        tank:slash("/dq leave")
+        world:advance(1)
+        assert.is_true(shown(tank))
     end)
 
     it("who declined is invited once more after listing again, not after a second no", function()

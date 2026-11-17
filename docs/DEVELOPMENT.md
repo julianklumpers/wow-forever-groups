@@ -243,8 +243,10 @@ game: invitees who accept, decline, are already in a group or never answer; memb
 their role from their spec after joining and after their /reloads (first DAMAGER, then the spec's role); whisperers
 of a fixed class who chat ("got ya", ":)"); and the leader's own /reloads. After every second rules must hold: every
 member plays the role they were invited for (once the changes have been answered), no invite goes into a full
-party, nobody is asked their role after being told it is not needed, at most three times per session, and a
-member's agreed role survives the leader's /reload. A rule found broken in the game gets a behaviour here, so the
+party, nobody is asked their role after being told it is not needed, at most three times per session, a
+member's agreed role survives the leader's /reload, and whoever the filler's own rules (`Fill.pick` on the newest
+results, with the filler's open roles, exclusions, places and class rules) would pick is invited within 2 s, as far
+as places are free and no queue proposal is open (so a filler that skips someone or stalls fails it). A rule found broken in the game gets a behaviour here, so the
 test looks for it in combinations nobody wrote down. (Seeded; REALISTIC_SEEDS and REALISTIC_STEPS search longer.)
 
 `tools/simulate.lua` compares matchmaking variants without the game, second by second: Forever Groups players arrive
@@ -575,8 +577,14 @@ noanswer, away; from WoW's own system text) and the player is passed over until 
 each pick): one who was in a group or not found once they list again (a listing newer than the outcome:
 `seenAt - age`, so a kept older listing never counts), one who declined once more after listing again, one who did
 not answer once more when still listed 5 minutes after (`REOPEN_WAIT`); a second no is final for the fill. Who is
-looking shows it before their dungeons ("[declined]", "[in a group]", "[no answer]", "[invited]"), dimmed while
-passed over, with why and when they are tried again in the tooltip (`Filler.status`). The invite follows the whisper
+looking shows none of this (how a group comes about stays out of sight): only a player who is not available after
+all (already in a group, or not found) is left out of it (`Filler.hidden`) while the listing shown is from a search
+before that: a newer search that still lists them (WoW drops a player who joins a group from its Group Finder)
+brings them back, and nothing once the fill is over; time alone does not, as the list only shows what a search said
+(after 6 minutes without one they stay out until the next). Being shown again does not invite them again: that still
+takes a new listing. One who declined or did not answer stays
+listed: they may have meant yes, and the player can still invite them. `tests/realistic_spec.lua` checks that one a
+newer search still lists is never left out. The invite follows the whisper
 after 1.5 s, so an away player's automatic reply (`CHAT_MSG_AFK`/`CHAT_MSG_DND`) comes first and they are passed over
 uninvited. Every open invite takes a place in the party, also one given up on: WoW keeps an unanswered invite open
 for exactly 60 s. Every invite the addon sends goes through `wow/invites.lua` (the filler, the battleground and quest

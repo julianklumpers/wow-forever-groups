@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-- Who is looking shows what became of a player Forever Groups invited ("[declined]", "[in a group]", "[no answer]",
-  "[invited]"), dimmed while they are passed over, with why in the tooltip, so a player still listed but not invited
-  no longer looks forgotten.
+- Who is looking leaves out a player Forever Groups invited who turned out to be in a group already (or not found),
+  until a newer search still lists them; one who declined or did not answer stays, so you can still invite them
+  yourself.
 - A player who was in a group is invited again once they list again; one who declined once more after listing
   again; one who did not answer once more when still listed five minutes later.
 - A player invited for a role keeps that role: when WoW or an addon makes them something else from their spec (a

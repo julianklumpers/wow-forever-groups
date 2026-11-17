@@ -465,21 +465,20 @@ function Filler.excluded()
     return state and state.exclude or {}
 end
 
--- What became of a listed player this fill, for Who is looking: "invited"
--- while the invite is out, else the outcome while they stay passed over
--- ("declined", "grouped", "missing", "noanswer", "away"); nil otherwise.
-function Filler.status(name)
-    if not state then
-        return nil
+-- Whether Who is looking leaves a listed player out: one who is not
+-- available after all (already in a group, or no such player), as long as
+-- the listing shown is from a search before that. A search after it that
+-- still lists them brings them back (WoW drops a player who joins a group
+-- from its Group Finder), and nothing once the fill is over (no state); time
+-- alone does not, as the list only ever shows what a search said. One who
+-- declined or did not answer stays: they may have meant yes, and the player
+-- can invite them.
+function Filler.hidden(listing)
+    local out = state and listing and state.outcomes[listing.name]
+    if not out or (out.kind ~= "grouped" and out.kind ~= "missing") or not state.exclude[listing.name] then
+        return false
     end
-    if state.pending[name] then
-        return "invited"
-    end
-    local out = state.outcomes[name]
-    if out and state.exclude[name] and out.kind ~= "invited" and out.kind ~= "back" then
-        return out.kind
-    end
-    return nil
+    return (listing.seenAt or GetTime()) <= out.at
 end
 
 -- An invite sent another way (an applicant to our listing) counts like one of
