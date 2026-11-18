@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.30.0 (2026-11-18)
 
 - The class menus (the class choices per place and the Classes box in Who is looking) group the classes under
   Plate, Mail, Leather and Cloth, by the armour they wear at your level: below 40 Warriors and Paladins are under

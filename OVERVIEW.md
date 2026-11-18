@@ -9,6 +9,7 @@
 - Tick your roles and dungeons, press **Find group**, accept the popup. That's it.
 - Players are invited for you and everyone's role is set.
 - Works with everyone in WoW's Group Finder, so other players don't need the addon.
+- Players close to the dungeon are invited first, so nobody waits for someone across the world.
 - Dungeons, group quests and battlegrounds, even all three at once.
 
 ## Lead your own group
