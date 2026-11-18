@@ -91,7 +91,8 @@ end
 local function copyMembers(members)
     local copy = {}
     for i, member in ipairs(members) do
-        copy[i] = { name = member.name, roles = Roles.normalize(member.roles) or member.roles, level = member.level }
+        copy[i] = { name = member.name, roles = Roles.normalize(member.roles) or member.roles, level = member.level,
+            class = member.class }
     end
     return copy
 end
@@ -102,7 +103,7 @@ local function heartbeatMessage(entry)
         kind = "queue", joinedAt = entry.joinedAt, dungeons = entry.dungeons, members = entry.members,
         reserved = entry.reserved, since = entry.since, playstyle = entry.playstyle, spec = entry.spec,
         lead = #entry.members == 1 and entry.lead or nil, compose = entry.compose, levels = entry.levels,
-        language = entry.language,
+        language = entry.language, zone = entry.zone,
     }
 end
 
@@ -127,6 +128,7 @@ function Engine:join(members, dungeons, joinedAt)
         compose = self.compose,
         levels = self.levels,
         language = self.language,
+        zone = self.zone,
     }
     if not entry.members[1] or entry.members[1].name ~= self.name then
         return false, "first member must be the player"
@@ -160,7 +162,7 @@ function Engine:updateEntry(members, reserved, dungeons)
         id = self.name, joinedAt = current.joinedAt, dungeons = dungeons or current.dungeons,
         members = copyMembers(members), reserved = reserved or "", since = current.since,
         playstyle = self.playstyle, spec = self.spec, lead = self.lead, compose = self.compose,
-        levels = self.levels, language = self.language,
+        levels = self.levels, language = self.language, zone = self.zone,
     }
     if not entry.members[1] or entry.members[1].name ~= self.name then
         return false, "first member must be the player"
@@ -254,6 +256,12 @@ function Engine:setLanguage(language)
             "Your languages do not fit in the queue message; tick fewer dungeons.")
     end
     return ok
+end
+
+-- The zone the player is in (a map id, wow/zonemap.lua), for the
+-- matchmaker to bring players close to the dungeon together first.
+function Engine:setZone(zone)
+    self:changeEntry("zone", zone)
 end
 
 -- Whether a queued entry may be grouped with the player, by language.
@@ -668,7 +676,7 @@ function handlers.queue(self, sender, msg)
     self.queue:upsert({
         id = sender, joinedAt = msg.joinedAt, dungeons = msg.dungeons, members = msg.members, reserved = msg.reserved,
         since = since, playstyle = msg.playstyle, spec = msg.spec, lead = msg.lead, compose = msg.compose,
-        levels = msg.levels, language = msg.language,
+        levels = msg.levels, language = msg.language, zone = msg.zone,
     }, self:now())
 end
 

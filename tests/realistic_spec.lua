@@ -18,8 +18,9 @@ local function rng(seed)
     end
 end
 
-local function newLeader(world, saved)
-    return world:addClient(LEADER, { level = 22, class = "PALADIN", classVariety = true, saved = saved })
+local function newLeader(world, saved, beforeLogin)
+    return world:addClient(LEADER, { level = 22, class = "PALADIN", classVariety = true, saved = saved,
+        beforeLogin = beforeLogin })
 end
 
 local function replyKind(text)
@@ -196,12 +197,13 @@ local function run(seed, steps)
         elseif event == 5 and roll(4) == 1 then
             local saved = leader:logout()
             local old = leader
-            leader = newLeader(world, saved)
-            for _, field in ipairs({ "party", "roles", "partyClasses", "invites", "heldInvites", "answeredInvites",
-                "refusedInvites", "whispers" }) do
-                leader[field] = old[field]
-            end
-            leader.isLeader = old.isLeader
+            leader = newLeader(world, saved, function(c)
+                for _, field in ipairs({ "party", "roles", "partyClasses", "invites", "heldInvites",
+                    "answeredInvites", "refusedInvites", "whispers" }) do
+                    c[field] = old[field]
+                end
+                c.isLeader = old.isLeader
+            end)
             sessionStart = #leader.whispers
             world:advance(8)
             for _, name in ipairs(leader.party) do

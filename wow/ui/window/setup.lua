@@ -474,7 +474,8 @@ function W.collectMembers()
             return nil, "Party member names are still loading; try again in a moment."
         end
         for _, member in ipairs(party) do
-            members[#members + 1] = { name = member.name, roles = ns.PartyRoles.rolesOf(member), level = member.level }
+            members[#members + 1] = { name = member.name, roles = ns.PartyRoles.rolesOf(member), level = member.level,
+                class = member.classToken }
         end
     end
     local ok, err = Protocol.validateParty(members)

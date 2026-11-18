@@ -45,7 +45,38 @@ describe("composing the party", function()
         for _, item in ipairs(client:dropdownItems(cards[2])) do
             names[#names + 1] = item.text
         end
-        assert.are.same({ "Any class", "Paladin", "Priest", "Shaman", "Druid" }, names)
+        assert.are.same({ "Any class", "Mail", "Paladin", "Leather", "Druid", "Shaman", "Cloth", "Priest" }, names)
+        client.level = 40
+        names = {}
+        for _, item in ipairs(client:dropdownItems(cards[2])) do
+            names[#names + 1] = item.text
+        end
+        assert.are.same({ "Any class", "Plate", "Paladin", "Mail", "Shaman", "Leather", "Druid", "Cloth", "Priest" },
+            names)
+    end)
+
+    it("ticks or clears all classes of an armour in a place with its header", function()
+        local world = World.new()
+        local client = leader(world)
+        client:click("Button", LEAD)
+        client:click("CheckButton", "Choose the classes in my party")
+        local card = client.ns.WindowParts.composeCards[3]
+        pick(client, card, { "Leather" })
+        local chosen = {}
+        for _, item in ipairs(client:dropdownItems(card)) do
+            if item.selected then
+                chosen[#chosen + 1] = item.text
+            end
+        end
+        assert.are.same({ "Leather", "Druid", "Hunter", "Rogue", "Shaman" }, chosen)
+        pick(client, card, { "Mage", "Leather" })
+        chosen = {}
+        for _, item in ipairs(client:dropdownItems(card)) do
+            if item.selected then
+                chosen[#chosen + 1] = item.text
+            end
+        end
+        assert.are.same({ "Mage" }, chosen)
     end)
 
     it("falls back to its own class list on a client without WoW's dropdown menu", function()

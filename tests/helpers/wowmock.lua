@@ -319,7 +319,18 @@ function Client:dropdownItems(button)
                 setSelected(data)
             end
             items[#items + 1] = item
-            return {}
+            return { AddInitializer = function(_, fn)
+                fn({
+                    fontString = {
+                        SetFontObject = function(_, font) item.font = font end,
+                        SetTextColor = function(_, ...) item.color = { ... } end,
+                        ClearAllPoints = function() end,
+                        SetPoint = function(_, ...) item.textPoint = { ... } end,
+                    },
+                    leftTexture1 = { Hide = function() item.boxHidden = true end },
+                    leftTexture2 = item.selected and { Hide = function() item.tickHidden = true end } or nil,
+                })
+            end }
         end
         function root.CreateRadio(_, text, isSelected, setSelected, data)
             local item = { text = text, selected = isSelected(data) and true or false, menu = menu }
@@ -338,7 +349,15 @@ function Client:dropdownItems(button)
             end }
         end
         function root.CreateTitle(_, text)
-            items[#items + 1] = { text = plainText(text), title = true, menu = menu }
+            local item = { text = plainText(text), title = true, menu = menu }
+            items[#items + 1] = item
+            return { AddInitializer = function(_, fn)
+                local label = { SetFontObject = function(_, font) item.font = font end }
+                fn({ fontString = label })
+            end }
+        end
+        function root.CreateSpacer(_, extent)
+            items[#items + 1] = { spacer = extent, menu = menu }
         end
         function root.CreateDivider()
             items[#items + 1] = { divider = true, menu = menu }
@@ -532,6 +551,7 @@ end
 
 function Client:joins(name)
     self.party[#self.party + 1] = name
+    self.heldInvites[name] = nil
     self.isLeader = true
     self:fire("GROUP_ROSTER_UPDATE")
 end
@@ -680,6 +700,9 @@ local function buildEnv(world, client)
         GetBestMapForUnit = function(unit)
             local p = client.positions[unit]
             return p and p[1]
+        end,
+        GetMapInfo = function(map)
+            return client.mapInfo[map]
         end,
         GetPlayerMapPosition = function(map, unit)
             local p = client.positions[unit]
@@ -1300,14 +1323,15 @@ local function buildEnv(world, client)
         end,
         InviteUnit = function(name)
             -- An invite holds a party place until it is answered or expires
-            -- 60 s after the server got it (0.2 s after it was sent); a party
-            -- with no place left refuses it.
+            -- (inviteLifetime, 60 s) after the server got it (0.2 s after it
+            -- was sent); a party with no place left refuses it.
             local joined, held = {}, 0
             for _, member in ipairs(client.party) do
                 joined[member] = true
             end
             for invited, at in pairs(client.heldInvites) do
-                if joined[invited] or world.time - at >= 60 or client.answeredInvites[invited] then
+                if joined[invited] or world.time - at >= (client.inviteLifetime or 60)
+                    or client.answeredInvites[invited] then
                     client.heldInvites[invited] = nil
                 else
                     held = held + 1
@@ -1320,8 +1344,23 @@ local function buildEnv(world, client)
                 end)
                 return
             end
-            client.heldInvites[name] = world.time + 0.2
+            local sentAt = world.time + 0.2
+            client.heldInvites[name] = sentAt
             client.invites[#client.invites + 1] = name
+            -- WoW confirms an invite that went out, and reports one left
+            -- unanswered as declined when it expires (/fgp invitewatch).
+            world:schedule(client, 0.1, function()
+                client:fire("CHAT_MSG_SYSTEM", string.format(env.ERR_INVITE_PLAYER_S, name))
+            end)
+            world:schedule(client, (client.inviteLifetime or 60) + 0.2, function()
+                local member = false
+                for _, other in ipairs(client.party) do
+                    member = member or other == name
+                end
+                if client.heldInvites[name] == sentAt and not client.answeredInvites[name] and not member then
+                    client:system(string.format(env.ERR_DECLINE_GROUP_S, name))
+                end
+            end)
             local target = world:findClient(name)
             if target then
                 world.inbox[#world.inbox + 1] = { to = target, event = "PARTY_INVITE_REQUEST",
@@ -1517,26 +1556,30 @@ local function buildEnv(world, client)
             local l = world.listings[id]
             local member = (l.memberList or {})[index - 1]
             if index == 1 then
-                member = { class = l.class or "PALADIN", role = l.assignedRole or "NONE", level = l.level }
+                member = { class = l.class or "PALADIN", role = l.assignedRole or "NONE", level = l.level,
+                    area = l.area }
             end
             if not member then
                 return nil
             end
-            local info = { classFilename = member.class, assignedRole = member.role, level = member.level }
+            local info = { classFilename = member.class, assignedRole = member.role, level = member.level,
+                areaName = member.area }
             return client.lockdown and secretCopy(info) or info
         end,
         GetSearchResultLeaderInfo = function(id)
             local l = world.listings[id]
             local info = { name = l.leaderName, level = l.level, lfgRoles = l.lfgRoles,
                 classFilename = l.class or "PALADIN",
-                assignedRole = l.assignedRole or "NONE" }
+                assignedRole = l.assignedRole or "NONE", areaName = l.area }
             return client.lockdown and secretCopy(info) or info
         end,
     }
     env.ERR_DECLINE_GROUP_S = "%s declines your group invitation."
+    env.ERR_INVITE_PLAYER_S = "You have invited %s to join your group."
     env.ERR_QUEST_PUSH_TOO_FAR_S = "%s is too far away to receive your quest"
     env.ERR_QUEST_PUSH_BUSY_S = "%s is busy"
     env.ERR_GROUP_FULL = "Your party is full."
+    env.GameFontNormalSmall = env.GameFontNormalSmall or { name = "GameFontNormalSmall" }
     env.ERR_ALREADY_IN_GROUP_S = "%s is already in a group."
     env.ERR_BAD_PLAYER_NAME_S = "Cannot find player '%s'."
     env.JoinTemporaryChannel = function(name)
@@ -1585,7 +1628,8 @@ function World:addClient(name, opts)
         noEyeTemplate = opts.noEyeTemplate, noDropdownButton = opts.noDropdownButton, chatFilters = {},
         version = opts.version, talents = opts.talents, trial = opts.trial, locale = opts.locale,
         inCombat = opts.inCombat,
-        questLog = opts.questLog or {}, positions = {}, visible = {}, popups = {}, pushed = {}, unitQuests = {},
+        questLog = opts.questLog or {}, positions = {}, mapInfo = {}, visible = {}, popups = {}, pushed = {},
+        unitQuests = {},
         inspectTalents = {}, inspects = {}, farAway = {},
         activityLevels = opts.activityLevels or World.ACTIVITY_LEVELS, journalEntrances = opts.journalEntrances or {},
         journalBosses = opts.journalBosses or {}, journalMaps = opts.journalMaps or {},
@@ -1622,6 +1666,11 @@ function World:addClient(name, opts)
     end
     client:fire("ADDON_LOADED", ADDON)
     client:fire("PLAYER_LOGIN")
+    -- opts.loading: the test fires PLAYER_ENTERING_WORLD itself, after what
+    -- WoW reports while still loading.
+    if not opts.loading then
+        client:fire("PLAYER_ENTERING_WORLD")
+    end
     return client
 end
 

@@ -81,8 +81,12 @@ local function classMenu(placeOf, change)
                 change(place, {})
                 return keep
             end)
-            for _, class in ipairs(Compose.classesFor(Compose.SLOT_ROLES[place])) do
-                root:CreateCheckbox(colored(class), function()
+            local classes = Compose.classesFor(Compose.SLOT_ROLES[place])
+            table.sort(classes, function(a, b)
+                return ns.Spec.className(a) < ns.Spec.className(b)
+            end)
+            Widgets.classesByArmor(root, classes, function(menu, class)
+                menu:CreateCheckbox(colored(class), function()
                     local mask = PartyCompose.masks()[place] or 0
                     return mask ~= 0 and Compose.allows(mask, class)
                 end, function()
@@ -100,7 +104,32 @@ local function classMenu(placeOf, change)
                     change(place, list)
                     return keep
                 end)
-            end
+            end, function(group)
+                local mask = PartyCompose.masks()[place] or 0
+                for _, class in ipairs(group) do
+                    if mask == 0 or not Compose.allows(mask, class) then
+                        return false
+                    end
+                end
+                return true
+            end, function(group, on)
+                local inGroup, list = {}, {}
+                for _, class in ipairs(group) do
+                    inGroup[class] = true
+                end
+                for _, other in ipairs(chosenIn(place)) do
+                    if not inGroup[other] then
+                        list[#list + 1] = other
+                    end
+                end
+                if on then
+                    for _, class in ipairs(group) do
+                        list[#list + 1] = class
+                    end
+                end
+                change(place, list)
+                return keep
+            end)
         end)
     end
 end

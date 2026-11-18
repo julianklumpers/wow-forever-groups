@@ -18,6 +18,8 @@ local FULL_WINDOW = 1
 local open = {}
 local count = 0
 local refusedHandlers = {}
+local sentListeners = {}
+local sentPattern
 
 -- The names in the player's party or raid.
 local function groupNames()
@@ -64,12 +66,14 @@ function Invites.send(name, owner)
     return ok, err
 end
 
--- Party places that invites still hold.
-function Invites.held()
+-- Party places that invites still hold; owner: only those it sent.
+function Invites.held(owner)
     prune()
     local held = 0
-    for _ in pairs(open) do
-        held = held + 1
+    for _, invite in pairs(open) do
+        if not owner or invite.owner == owner then
+            held = held + 1
+        end
     end
     return held
 end
@@ -90,6 +94,24 @@ function Invites.onRefused(owner, handler)
     refusedHandlers[owner] = handler
 end
 
+-- Whether WoW confirms an invite that went out ("You have invited X to join
+-- your group.", ERR_INVITE_PLAYER_S); handler(name) then hears of each one.
+function Invites.confirms()
+    return type(ERR_INVITE_PLAYER_S) == "string"
+end
+
+function Invites.onSent(handler)
+    sentListeners[#sentListeners + 1] = handler
+end
+
+local function sentName(text)
+    if not sentPattern then
+        local pattern = string.gsub(ERR_INVITE_PLAYER_S, "([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
+        sentPattern = "^" .. string.gsub(pattern, "%%s", "(.+)") .. "$"
+    end
+    return string.match(text, sentPattern)
+end
+
 local function refused(name, invite)
     open[name] = nil
     local handler = refusedHandlers[invite.owner]
@@ -102,7 +124,21 @@ local function onSystem(text)
     if type(text) ~= "string" then
         return
     end
+    local sent = Invites.confirms() and sentName(text)
+    if sent then
+        for _, listener in ipairs(sentListeners) do
+            listener(sent)
+        end
+        return
+    end
     if type(ERR_GROUP_FULL) == "string" and text == ERR_GROUP_FULL then
+        local known = {}
+        for name, invite in pairs(open) do
+            known[#known + 1] = string.format("%s %d s", name, GetTime() - invite.at)
+        end
+        table.sort(known)
+        Log.debug("party full: %d in the group, invites on record: %s", GetNumGroupMembers() or 0,
+            #known > 0 and table.concat(known, ", ") or "none")
         local lastName, last
         for name, invite in pairs(open) do
             if GetTime() - invite.at < FULL_WINDOW and (not last or invite.order > last.order) then

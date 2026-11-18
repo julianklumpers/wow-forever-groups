@@ -383,6 +383,9 @@ end
 
 local function onRosterUpdate()
     if not IsInGroup() then
+        if not ns.inWorld then
+            return
+        end
         expected, attempts, settled, attemptedAt, resets, paused = {}, {}, {}, {}, {}, {}
         tickHeld = false
         ns.charDb.roleSync, ns.charDb.roleSyncOffered, ns.charDb.roleSyncTick = nil, nil, nil

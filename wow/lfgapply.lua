@@ -1,7 +1,9 @@
 local _, ns = ...
 
 local Dungeons = ns.Dungeons
+local Fill = ns.Fill
 local LfgPick = ns.LfgPick
+local Roles = ns.Roles
 local Log = ns.Log
 local Widgets = ns.Widgets
 
@@ -40,6 +42,8 @@ local ASKED_COOLDOWN = 15 * 60
 local seekingSince
 local seekingStartedAt
 local lastAskAt = -math.huge
+-- Building our own group was found to suit better than any listed group.
+local buildChosen
 
 -- Group Finder results from a search made after this search started; older
 -- ones may be for other dungeons or about groups that have filled since,
@@ -118,7 +122,114 @@ local function invitedBy()
     end
 end
 
--- The next listed group to ask, or nil when none is left.
+-- A listed group's members as far as WoW tells them (memberInfo), else its
+-- leader: { classToken, role, level, area } each.
+local function membersOf(group)
+    if group.memberInfo and #group.memberInfo > 0 then
+        return group.memberInfo
+    end
+    return { { classToken = group.classToken, level = group.level, area = group.area } }
+end
+
+-- Zones between a listed group's furthest member and the dungeon
+-- (wow/zonemap.lua): everyone waits for that one. nil when no member's zone
+-- is known.
+function Apply.groupSteps(group, dungeon)
+    local worst
+    for _, member in ipairs(membersOf(group)) do
+        local steps, most = ns.ZoneMap.areaDistance(dungeon, member.area)
+        if most ~= nil then
+            worst = math.max(worst or 0, ns.Zones.rank(steps, most))
+        end
+    end
+    return worst
+end
+
+local function rangeOf(id)
+    local dungeon = Dungeons.get(id)
+    return dungeon and dungeon.min and { min = dungeon.min, max = dungeon.max } or nil
+end
+
+-- The solo players listed now who could fill places, for comparing.
+local function available(entry)
+    return (ns.Playstyle.filter(ns.LfgList.listings(), entry.playstyle))
+end
+
+-- Scores are worked out once per Group Finder results (LfgList.version).
+local scores = {}
+
+local function remembered(key, work)
+    local version = ns.LfgList.version()
+    if scores.version ~= version then
+        scores = { version = version }
+    end
+    if scores[key] == nil then
+        scores[key] = work()
+    end
+    return scores[key]
+end
+
+-- How joining a listed group would turn out (Fill.score), from who is
+-- available now: its places left after the player (role), filled from the
+-- solo players listed for the dungeon; its members and the player for the
+-- walk to the dungeon and the levels.
+function Apply.groupScore(entry, group, dungeon, role)
+    local avoid, levels = {}, { ns.Party.playerLevel() }
+    local steps = Apply.groupSteps(group, dungeon)
+    local mine = ns.Filler.groupSteps(dungeon)
+    if mine then
+        steps = math.max(steps or 0, mine)
+    end
+    local myClass = ns.Party.playerClass()
+    if myClass then
+        Fill.addClass(avoid, myClass, role)
+    end
+    for _, member in ipairs(membersOf(group)) do
+        if member.classToken then
+            Fill.addClass(avoid, member.classToken, member.role)
+        end
+        levels[#levels + 1] = member.level
+    end
+    local missing = ""
+    for _, letter in ipairs({ "T", "H", "D" }) do
+        local open = (group.remaining[letter] or 0) - (letter == role and 1 or 0)
+        missing = missing .. string.rep(letter, math.max(0, open))
+    end
+    return Fill.plan(available(entry), {
+        missing = missing, dungeons = { dungeon }, ranges = { [dungeon] = rangeOf(dungeon) },
+        exclude = { [ns.selfName] = true, [group.leader] = true }, avoid = avoid, steps = ns.Filler.zoneSteps,
+        groupSteps = function()
+            return steps
+        end, groupLevels = levels,
+    }).score
+end
+
+-- How building our own group would turn out (Fill.score of the dungeon that
+-- suits best), from who is available now.
+function Apply.buildScore(entry)
+    local missing, assignment = ns.Filler.missingFor(Roles.withReserved(entry.members, entry.reserved))
+    if not missing then
+        return nil
+    end
+    local avoid = {}
+    local myClass = ns.Party.playerClass()
+    if myClass then
+        Fill.addClass(avoid, myClass, assignment[1])
+    end
+    local ranges = {}
+    for _, id in ipairs(entry.dungeons) do
+        ranges[id] = rangeOf(id)
+    end
+    return Fill.plan(available(entry), {
+        missing = missing, dungeons = entry.dungeons, ranges = ranges, exclude = { [ns.selfName] = true },
+        levels = ns.PartyLevels.rules("dungeons"), avoid = avoid, steps = ns.Filler.zoneSteps,
+        groupSteps = ns.Filler.groupSteps, groupLevels = ns.Filler.groupLevels(),
+    }).score
+end
+
+-- The next listed group to ask, or nil when none is left or building our
+-- own group suits better than the best of them (Fill.better; a tie asks
+-- the group, as the player chose to join one).
 function nextPick(entry)
     local wanted, exclude = {}, {}
     for _, id in ipairs(entry.dungeons) do
@@ -130,9 +241,31 @@ function nextPick(entry)
             exclude[group.id] = true
         end
     end
-    return LfgPick.groupsToApply(groups, {
-        roles = entry.members[1].roles, dungeons = wanted, exclude = exclude, max = 1,
+    local pick = LfgPick.groupsToApply(groups, {
+        roles = entry.members[1].roles, dungeons = wanted, exclude = exclude, max = 1, steps = Apply.groupSteps,
+        score = function(group, dungeon, role)
+            return remembered(table.concat({ "group", group.id, dungeon, role, entry.playstyle or "" }, ":"),
+                function()
+                    return Apply.groupScore(entry, group, dungeon, role)
+                end)
+        end,
     })[1]
+    if not pick then
+        return nil
+    end
+    local build = remembered(table.concat({ "build", table.concat(entry.dungeons, ","), #entry.members,
+        entry.reserved or "", entry.members[1].roles, entry.playstyle or "" }, ":"), function()
+        return Apply.buildScore(entry) or false
+    end) or nil
+    if build and Fill.better(build, pick.score) then
+        if not buildChosen then
+            buildChosen = true
+            Log.detail("Building your own group: it suits better than asking %s (%s; asking: %s).", pick.leader,
+                ns.Filler.describeScore(build), ns.Filler.describeScore(pick.score))
+        end
+        return nil
+    end
+    return pick
 end
 
 -- A solo player in the queue who is not building a group yet. A player who
@@ -177,7 +310,7 @@ end
 
 function Apply.reset()
     asks = {}
-    seekingSince, seekingStartedAt = nil, nil
+    seekingSince, seekingStartedAt, buildChosen = nil, nil, nil
 end
 
 local function dropAutomaticAsks()
@@ -192,7 +325,7 @@ end
 -- for a while.
 function Apply.stopSeeking()
     dropAutomaticAsks()
-    seekingSince, seekingStartedAt = nil, nil
+    seekingSince, seekingStartedAt, buildChosen = nil, nil, nil
 end
 
 local function askText(pick)

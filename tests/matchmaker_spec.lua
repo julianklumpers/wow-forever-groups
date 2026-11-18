@@ -288,6 +288,16 @@ describe("Matchmaker", function()
             assert.are.equal(60, #Matchmaker.findGroups(entries, nil, 300 + 300))
         end)
 
+        it("knows the classes of a party's players", function()
+            local party = as("Lead", 1, "T", "WARRIOR")
+            party.members[2] = { name = "Friend", roles = "D", level = 60, class = "MAGE" }
+            local entries = {
+                party, as("Heal", 2, "H", "PRIEST"), as("Mage", 3, "D", "MAGE"), as("Rogue", 4, "D", "ROGUE"),
+                as("Lock", 5, "D", "WARLOCK"),
+            }
+            assert.are.same({ "Heal", "Lead", "Lock", "Rogue" }, ids(Matchmaker.findGroups(entries, nil, 60)[1]))
+        end)
+
         it("leaves a second of a class in one role out of a partial group too", function()
             local entries = {
                 as("War1", 1, "D", "WARRIOR"), as("War2", 2, "D", "WARRIOR"), as("Mage", 3, "D", "MAGE"),
@@ -320,6 +330,96 @@ describe("Matchmaker", function()
             }
             local group = Matchmaker.findGroups(entries, nil, 2 + 300)[1]
             assert.are.same({ "D15", "D20", "D21", "Heal", "Tank" }, ids(group))
+        end)
+    end)
+
+    describe("by zone", function()
+        local steps = { Westfall = 0, Duskwood = 1, Redridge = 2, Swamp = 3 }
+        local function zoned(id, joinedAt, role, zone)
+            local e = entry(id, joinedAt, role)
+            e.zone = zone
+            return e
+        end
+
+        before_each(function()
+            Matchmaker.zoneDistance = function(_, zone)
+                return steps[zone], 3
+            end
+        end)
+
+        after_each(function()
+            Matchmaker.zoneDistance = nil
+        end)
+
+        it("takes the players closest to the dungeon first", function()
+            local entries = {
+                zoned("Tank", 1, "T", "Westfall"), zoned("Heal", 2, "H", "Westfall"),
+                zoned("FarDps", 3, "D", "Redridge"), zoned("NearA", 4, "D", "Duskwood"),
+                zoned("NearB", 5, "D", "Westfall"), zoned("NearC", 6, "D", "Duskwood"),
+            }
+            local groups = Matchmaker.findGroups(entries, nil, 1000)
+            assert.are.same({ "Heal", "NearA", "NearB", "NearC", "Tank" }, ids(groups[1]))
+        end)
+
+        it("sends the same players to the dungeon with the shorter walk, then the better levels", function()
+            local function everywhere(id, joinedAt, role, zone, level)
+                local e = zoned(id, joinedAt, role, zone)
+                e.dungeons = { "DM", "SFK" }
+                e.members[1].level = level or 24
+                return e
+            end
+            local entries = {
+                everywhere("Tank", 1, "T", "Westfall"), everywhere("Heal", 2, "H", "Westfall"),
+                everywhere("DpsA", 3, "D", "Westfall"), everywhere("DpsB", 4, "D", "Westfall"),
+                everywhere("DpsC", 5, "D", "Swamp", 26),
+            }
+            Matchmaker.zoneDistance = function(dungeon, zone)
+                local near = dungeon == "SFK" and { Westfall = 1, Swamp = 1 } or steps
+                return near[zone], 3
+            end
+            assert.are.equal("SFK", Matchmaker.findGroups(entries, nil, 1000)[1].dungeon)
+            Matchmaker.zoneDistance = function(_, zone)
+                return steps[zone] and 0, 3
+            end
+            assert.are.equal("DM", Matchmaker.findGroups(entries, nil, 1000)[1].dungeon)
+            Matchmaker.levelRange = function(dungeon)
+                return dungeon == "SFK" and { min = 20, max = 30 } or { min = 15, max = 21 }
+            end
+            assert.are.equal("SFK", Matchmaker.findGroups(entries, nil, 1000)[1].dungeon)
+            Matchmaker.levelRange = nil
+        end)
+
+        it("compares the same players for two dungeons by who waited longest, whatever the order zones give", function()
+            local function both(id, joinedAt, role)
+                local e = zoned(id, joinedAt, role, id)
+                e.dungeons = { "DM", "SFK" }
+                return e
+            end
+            local away = { DM = { DpsA = 2 }, SFK = { DpsB = 3 } }
+            Matchmaker.zoneDistance = function(dungeon, zone)
+                return away[dungeon][zone] or 0, 3
+            end
+            local entries = {
+                both("Tank", 1, "T"), both("Heal", 2, "H"), both("DpsA", 3, "D"), both("DpsB", 4, "D"),
+                both("DpsC", 5, "D"),
+            }
+            assert.are.equal("DM", Matchmaker.findGroups(entries, nil, 1000)[1].dungeon)
+            away = { DM = { DpsB = 3 }, SFK = { DpsA = 2 } }
+            assert.are.equal("SFK", Matchmaker.findGroups(entries, nil, 1000)[1].dungeon)
+        end)
+
+        it("lets one further away wait 15 s a step from joining the queue, then takes them", function()
+            local entries = {
+                zoned("Tank", 1, "T", "Westfall"), zoned("Heal", 2, "H", "Westfall"),
+                zoned("NearA", 3, "D", "Duskwood"), zoned("NearB", 4, "D", "Westfall"),
+                zoned("FarDps", 100, "D", "Swamp"),
+            }
+            assert.are.equal(0, #Matchmaker.findGroups(entries, nil, 120))
+            local groups = Matchmaker.findGroups(entries, nil, 130)
+            assert.are.same({ "FarDps", "Heal", "NearA", "NearB", "Tank" }, ids(groups[1]))
+            entries[#entries + 1] = zoned("Unknown", 101, "D", nil)
+            local early = Matchmaker.findGroups(entries, nil, 101)
+            assert.are.same({ "Heal", "NearA", "NearB", "Tank", "Unknown" }, ids(early[1]))
         end)
     end)
 end)

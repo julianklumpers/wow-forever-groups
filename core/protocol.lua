@@ -49,6 +49,7 @@ local Specs = ns.Specs or require("core.specs")
 local Compose = ns.Compose or require("core.compose")
 local Levels = ns.Levels or require("core.levels")
 local Languages = ns.Languages or require("core.languages")
+local Classes = ns.Classes or require("core.classes")
 
 local Protocol = {}
 
@@ -215,19 +216,25 @@ function Protocol.validateEntry(entry, space)
     if entry.playstyle ~= nil and not Playstyles.isValid(entry.playstyle) then
         return false, "invalid playstyle"
     end
+    if entry.zone ~= nil and (toInteger(entry.zone) == nil or entry.zone <= 0) then
+        return false, "invalid zone"
+    end
     return true
 end
 
 local encoders = {}
 
-function encoders.queue(msg, space)
+-- withoutClasses: leaves the party members' classes out (a message that
+-- would be too long with them).
+function encoders.queue(msg, space, withoutClasses)
     local ok, err = Protocol.validateEntry(msg, space)
     if not ok then
         return nil, err
     end
     local members = {}
     for i, member in ipairs(msg.members) do
-        members[i] = member.name .. ":" .. member.roles .. ":" .. member.level
+        local code = not withoutClasses and Classes.code(member.class)
+        members[i] = member.name .. ":" .. member.roles .. ":" .. member.level .. (code and ":" .. code or "")
     end
     if msg.since ~= nil and toInteger(msg.since) == nil then
         return nil, "invalid since"
@@ -237,7 +244,8 @@ function encoders.queue(msg, space)
         msg.spec and Specs.decode(msg.spec) and msg.spec or "", msg.lead and "1" or "",
         msg.compose and Compose.isValid(msg.compose) and msg.compose or "",
         msg.levels and Levels.isValid(msg.levels) and msg.levels or "",
-        msg.language and Languages.isValid(msg.language) and msg.language or "" }
+        msg.language and Languages.isValid(msg.language) and msg.language or "",
+        msg.zone and tostring(msg.zone) or "" }
     while #optional > 0 and optional[#optional] == "" do
         optional[#optional] = nil
     end
@@ -330,6 +338,9 @@ function Protocol.encode(msg, space)
         return nil, err
     end
     local text = prefixOf(space) .. "|" .. body
+    if #text > Protocol.MAX_BYTES and msg.kind == "queue" then
+        text = prefixOf(space) .. "|" .. encoder(msg, space, true)
+    end
     if #text > Protocol.MAX_BYTES then
         return nil, "message too long"
     end
@@ -412,7 +423,9 @@ decoders.Q = function(fields, space)
     local members = {}
     for i, text in ipairs(split(fields[5], ",")) do
         local parts = split(text, ":")
-        members[i] = { name = parts[1], roles = parts[2], level = toInteger(parts[3]) }
+        members[i] = {
+            name = parts[1], roles = parts[2], level = toInteger(parts[3]), class = Classes.fromCode(parts[4]),
+        }
     end
     local msg = {
         kind = "queue", joinedAt = joinedAt, dungeons = split(fields[4], ","), members = members,
@@ -423,7 +436,11 @@ decoders.Q = function(fields, space)
         compose = Compose.isValid(fields[11]) and fields[11] or nil,
         levels = Levels.isValid(fields[12]) and fields[12] or nil,
         language = Languages.isValid(fields[13]) and fields[13] or nil,
+        zone = toInteger(fields[14]),
     }
+    if msg.zone and msg.zone <= 0 then
+        msg.zone = nil
+    end
     local ok, err = Protocol.validateEntry(msg, space)
     if not ok then
         return nil, err

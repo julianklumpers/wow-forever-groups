@@ -21,6 +21,10 @@ local journalChecked = {}
 local lastNames = {}
 local lastSize = 0
 local lastLeaver
+-- The run kept at entering until the party is known (right after a login
+-- WoW may not know it yet): then it goes on, or another group starts over.
+local pending
+local PENDING_WAIT = 10
 
 local function setRun(value)
     run = value
@@ -52,7 +56,10 @@ local function commitRun()
     end
 end
 
-local function endRun()
+local function endRun(reason)
+    if run and reason then
+        Log.debug("run ended: %s", reason)
+    end
     commitRun()
     setRun(nil)
 end
@@ -155,9 +162,24 @@ local function finished(info)
     return info.total ~= nil and info.total > 0 and info.kills >= info.total
 end
 
+-- Whether the player and every party member are inside the run's dungeon
+-- (GroupPlaces: in sight or on the dungeon's map); one whose place is not
+-- known counts as not inside.
+local function everyoneInside()
+    if not Run.isInside() then
+        return false
+    end
+    for _, member in ipairs(ns.Party.members() or {}) do
+        if ns.GroupPlaces.of(member.name, member.unit, run.dungeon) ~= "in" then
+            return false
+        end
+    end
+    return true
+end
+
 -- For the invite whisper of a replacement, in English: "1/6 bosses down,
 -- group is inside" ("2 bosses down" without a known total; the group part
--- while the player is inside). nil without a boss down in a run of that
+-- while everyone is inside). nil without a boss down in a run of that
 -- dungeon that goes on.
 function Run.replacementProgress(dungeon)
     if not run or run.ended or run.dungeon ~= dungeon or not IsInGroup() then
@@ -169,7 +191,7 @@ function Run.replacementProgress(dungeon)
     end
     local text = info.total and string.format("%d/%d bosses down", math.min(info.kills, info.total), info.total)
         or (info.kills == 1 and "1 boss down" or string.format("%d bosses down", info.kills))
-    if Run.isInside() then
+    if everyoneInside() then
         text = text .. ", group is inside"
     end
     return text
@@ -188,9 +210,13 @@ local function partyNames()
 end
 
 -- The same group: at least one of the run's party members is still here
--- (or the player was and is alone).
+-- (or the player was and is alone). nil while that can't be told: some
+-- name not loaded yet, or no party where the run had one.
 local function sameGroup(members)
-    local now = partyNames() or {}
+    local now = partyNames()
+    if not now then
+        return nil
+    end
     local any = false
     for name in pairs(members or {}) do
         any = true
@@ -198,11 +224,15 @@ local function sameGroup(members)
             return true
         end
     end
+    if any and next(now) == nil then
+        return nil
+    end
     return not any and next(now) == nil
 end
 
 local function startRun(dungeon, instanceId, ambiguous)
-    endRun()
+    pending = nil
+    endRun(run and "a new run of the dungeon" or nil)
     setRun({ dungeon = dungeon, instance = instanceId, kills = {}, startedAt = GetServerTime(),
         lastAt = GetServerTime(), members = partyNames() or {}, ambiguous = ambiguous or nil })
     Log.debug("run started: %s", Dungeons.name(dungeon))
@@ -210,12 +240,30 @@ end
 
 -- Entering another instance, or coming out without a group, ends the run;
 -- coming out with the group keeps it (they may go back in).
+-- The party, known some seconds after logging in, decides a run kept
+-- undecided: the same group goes on with it, another one or none (a player
+-- alone now) starts a new run; names still loading wait longer.
+local function settleAlone()
+    if not (pending and run) then
+        return
+    end
+    if not partyNames() then
+        C_Timer.After(PENDING_WAIT, settleAlone)
+    elseif sameGroup(run.members) then
+        pending = nil
+        run.lastAt = GetServerTime()
+    else
+        startRun(pending.dungeon, pending.instance, pending.ambiguous)
+    end
+end
+
 local function onEnteringWorld()
     journalChecked = {}
     local inInstance, kind = IsInInstance()
     if not inInstance then
+        pending = nil
         if run and not IsInGroup() then
-            endRun()
+            endRun("out of the dungeon without a group")
         end
         return
     end
@@ -223,7 +271,7 @@ local function onEnteringWorld()
     local ids = kind == "party" and Dungeons.forArea(name) or {}
     if #ids == 0 then
         if run then
-            endRun()
+            endRun("in another instance")
         end
         return
     end
@@ -234,12 +282,35 @@ local function onEnteringWorld()
             dungeon, known = id, known or id == tracked or not run.ambiguous
         end
     end
-    if run and run.dungeon == dungeon and run.instance == instanceId and sameGroup(run.members)
+    pending = nil
+    if run and run.dungeon == dungeon and run.instance == instanceId
         and GetServerTime() - (run.lastAt or run.startedAt) < SAME_RUN then
-        run.lastAt = GetServerTime()
-        return
+        local same = sameGroup(run.members)
+        if same then
+            run.lastAt = GetServerTime()
+            return
+        elseif same == nil then
+            pending = { dungeon = dungeon, instance = instanceId, ambiguous = not known }
+            Log.debug("run kept until the party is known")
+            C_Timer.After(PENDING_WAIT, settleAlone)
+            return
+        end
     end
     startRun(dungeon, instanceId, not known)
+end
+
+local function settlePending()
+    if not pending or not run then
+        pending = nil
+        return
+    end
+    local same = sameGroup(run.members)
+    if same then
+        pending = nil
+        run.lastAt = GetServerTime()
+    elseif same == false then
+        startRun(pending.dungeon, pending.instance, pending.ambiguous)
+    end
 end
 
 local function isSecret(value)
@@ -283,7 +354,8 @@ local function queueGroup(fromClick)
     local members, names = {}, {}
     for _, member in ipairs(composition.members) do
         names[#names + 1] = member.name
-        local entry = { name = member.name, roles = member.role or "D", level = UnitLevel(member.unit or "player") }
+        local entry = { name = member.name, roles = member.role or "D", level = UnitLevel(member.unit or "player"),
+            class = member.classToken }
         if member.name == ns.selfName then
             table.insert(members, 1, entry)
         else
@@ -374,6 +446,14 @@ local function onRosterUpdate()
     if not names then
         return
     end
+    -- Who joins inside belongs to the run too: a group formed in the dungeon
+    -- (the player waited there alone) is the same run after a /reload.
+    if run and insideOf(run.dungeon) then
+        for name in pairs(names) do
+            run.members[name] = true
+        end
+        ns.charDb.run = run
+    end
     local size = 1
     for _ in pairs(names) do
         size = size + 1
@@ -420,8 +500,8 @@ local function onRosterUpdate()
 end
 
 local function onLeavingInstance()
-    if run and not IsInInstance() and not IsInGroup() then
-        endRun()
+    if run and ns.inWorld and not IsInInstance() and not IsInGroup() then
+        endRun("left the group outside the dungeon")
     end
 end
 
@@ -434,6 +514,7 @@ function Run.init()
     end
     ns.on("PLAYER_ENTERING_WORLD", onEnteringWorld)
     ns.on("ENCOUNTER_END", onEncounterEnd)
+    ns.on("GROUP_ROSTER_UPDATE", settlePending)
     ns.on("GROUP_ROSTER_UPDATE", onRosterUpdate)
     ns.on("GROUP_ROSTER_UPDATE", onLeavingInstance)
 end

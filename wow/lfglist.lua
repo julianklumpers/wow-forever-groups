@@ -96,6 +96,11 @@ local function isSecret(value)
     return issecretvalue ~= nil and issecretvalue(value) == true
 end
 
+-- A zone name (areaName) that can be read, else nil.
+local function readableText(text)
+    return type(text) == "string" and not isSecret(text) and text ~= "" and text or nil
+end
+
 local function call(name, ...)
     local fn = C_LFGList and C_LFGList[name]
     if type(fn) ~= "function" then
@@ -223,7 +228,7 @@ local function readResult(id, areasOf, field)
                 and not isSecret(member.level) then
                 memberInfo[#memberInfo + 1] = { leader = i == 1, classToken = memberClass,
                     role = ROLE_LETTERS[member.assignedRole],
-                    level = tonumber(member.level) }
+                    level = tonumber(member.level), area = readableText(member.areaName) }
             end
         end
     end
@@ -239,6 +244,7 @@ local function readResult(id, areasOf, field)
         roles = roles, [field] = areas, age = tonumber(info.age) or 0, solo = info.numMembers == 1,
         members = tonumber(info.numMembers) or 1,
         remaining = remaining, playstyle = ns.Playstyle.fromWoW(info.generalPlaystyle), memberInfo = memberInfo,
+        area = readableText(leader.areaName),
     }
 end
 

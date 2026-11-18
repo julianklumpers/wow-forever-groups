@@ -55,6 +55,45 @@ describe("Protocol", function()
             assert.is_nil(plain.lead)
         end)
 
+        it("carries the zone the player is in as the last field, and drops one that is no map id", function()
+            local msg, text = roundtrip({
+                kind = "queue", joinedAt = 1, dungeons = { "5" }, members = { member("Dps-R", "D", 20) }, zone = 1436,
+            })
+            assert.are.equal("v2|Q|1|5|Dps-R:D:20|||||||||1436", text)
+            assert.are.equal(1436, msg.zone)
+            assert.is_nil(Protocol.decode("v2|Q|1|5|Dps-R:D:20|||||||||x").zone)
+            assert.is_nil(Protocol.encode({
+                kind = "queue", joinedAt = 1, dungeons = { "5" }, members = { member("Dps-R", "D", 20) }, zone = -3,
+            }))
+        end)
+
+        it("carries the classes of a party's players, and leaves them out of a message that would be too long",
+            function()
+            local friend = member("Friend-R", "D", 20)
+            friend.class = "MAGE"
+            local msg, text = roundtrip({
+                kind = "queue", joinedAt = 1, dungeons = { "5" }, members = { member("Tank-R", "T", 20), friend },
+            })
+            assert.are.equal("v2|Q|1|5|Tank-R:T:20,Friend-R:D:20:8", text)
+            assert.are.equal("MAGE", msg.members[2].class)
+            assert.is_nil(msg.members[1].class)
+            assert.is_nil(Protocol.decode("v2|Q|1|5|Tank-R:T:20,Friend-R:D:20:x").members[2].class)
+            local long = {
+                kind = "queue", joinedAt = 1, dungeons = {}, members = { member("Tank-R", "T", 20), friend },
+            }
+            for i = 1, 60 do
+                long.dungeons[i] = tostring(i)
+            end
+            local withClass = assert(Protocol.encode(long))
+            assert.is_truthy(withClass:find("Friend-R:D:20:8", 1, true))
+            for i = 61, 77 do
+                long.dungeons[i] = tostring(i)
+            end
+            local shortened = assert(Protocol.encode(long))
+            assert.are.equal(254, #shortened)
+            assert.are.equal("Friend-R:D:20", shortened:sub(-13))
+        end)
+
         it("encodes and decodes leave and sync", function()
             assert.are.same({ kind = "leave" }, (roundtrip({ kind = "leave" })))
             assert.are.same({ kind = "sync" }, (roundtrip({ kind = "sync" })))

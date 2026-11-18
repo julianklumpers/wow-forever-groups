@@ -9,6 +9,7 @@ local Compose = ns.Compose or require("core.compose")
 local Levels = ns.Levels or require("core.levels")
 local Languages = ns.Languages or require("core.languages")
 local Fill = ns.Fill or require("core.fill")
+local Zones = ns.Zones or require("core.zones")
 
 local Matchmaker = {}
 
@@ -27,6 +28,48 @@ local PREFER_BUDGET = 200
 -- An anchor takes the players closest to its level first; whoever waited
 -- VARIETY_TIME counts as close (tools/simulate.lua turns it off to compare).
 Matchmaker.levelPreference = true
+
+-- function(dungeon, zone) -> zones between them (nil: another continent or
+-- a zone not on the map) and the furthest ring; nothing when the dungeon's
+-- place is not known. Set by wow/main.lua (wow/zonemap.lua); without it,
+-- distance plays no part.
+Matchmaker.zoneDistance = nil
+
+-- function(dungeon) -> { min, max }, its level range, or nil. Set by
+-- wow/main.lua; without it, levels play no part in choosing the dungeon.
+Matchmaker.levelRange = nil
+
+-- The candidates for a dungeon, closest to it first (otherwise in the order
+-- given), leaving out those further away who still wait for someone closer
+-- (core/zones.lua, from when they joined the queue).
+local function byDistance(candidates, dungeon, anchor, now)
+    local distanceOf = Matchmaker.zoneDistance
+    if not distanceOf or not now then
+        return candidates
+    end
+    local kept, ranks = {}, {}
+    for _, candidate in ipairs(candidates) do
+        local steps, most = distanceOf(dungeon, candidate.zone)
+        if candidate.zone == nil or most == nil then
+            kept[#kept + 1] = candidate
+            ranks[candidate] = math.huge
+        elseif Zones.waitLeft(steps, most, candidate.joinedAt, anchor.joinedAt, now) <= 0 then
+            kept[#kept + 1] = candidate
+            ranks[candidate] = Zones.rank(steps, most)
+        end
+    end
+    local order = {}
+    for i, candidate in ipairs(kept) do
+        order[candidate] = i
+    end
+    table.sort(kept, function(a, b)
+        if ranks[a] ~= ranks[b] then
+            return ranks[a] < ranks[b]
+        end
+        return order[a] < order[b]
+    end)
+    return kept
+end
 
 function Matchmaker.comparePriority(a, b)
     if a.joinedAt ~= b.joinedAt then
@@ -402,6 +445,33 @@ end
 
 Matchmaker.candidateFor = candidateFor
 
+-- How a group suits its dungeon (Fill.score): the zones to its furthest
+-- player whose zone is known, then how far its levels are from the middle
+-- of the dungeon's level range.
+local function fit(group)
+    if not group.fit then
+        local steps, levels = nil, {}
+        for _, entry in ipairs(group.entries) do
+            local away, most
+            if entry.zone and Matchmaker.zoneDistance then
+                away, most = Matchmaker.zoneDistance(group.dungeon, entry.zone)
+            end
+            if most ~= nil then
+                steps = math.max(steps or 0, Zones.rank(away, most))
+            end
+            for _, member in ipairs(entry.members) do
+                levels[#levels + 1] = member.level
+            end
+        end
+        group.fit = Fill.score("", {}, {
+            steps = steps, levels = levels, range = Matchmaker.levelRange and Matchmaker.levelRange(group.dungeon),
+        })
+    end
+    return group.fit
+end
+
+-- Whether group a goes before b: the players who waited longest, then (the
+-- same players for another dungeon) the shorter walk and the better levels.
 local function isBetter(a, b)
     if not b then
         return true
@@ -416,7 +486,7 @@ local function isBetter(a, b)
             return x < y
         end
     end
-    return false
+    return Fill.better(fit(a), fit(b))
 end
 
 local function sortedCopy(list)
@@ -544,6 +614,7 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames, now)
                 candidates[#candidates + 1] = candidate
             end
         end
+        candidates = byDistance(candidates, dungeon, anchor, now)
         -- Under wishes: first whether the places can be filled at all by
         -- these players; a wish for a class nobody here plays ends it at once.
         local fillable = true
@@ -570,6 +641,7 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames, now)
             for i, entry in ipairs(chosen) do
                 ranks[i] = entry.rank
             end
+            table.sort(ranks)
             local group = { dungeon = dungeon, entries = chosen, ranks = ranks, picked = picked }
             if isBetter(group, best) then
                 best = group
@@ -579,6 +651,7 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames, now)
             for i, entry in ipairs(fallback.entries) do
                 ranks[i] = entry.rank
             end
+            table.sort(ranks)
             local group = { dungeon = dungeon, entries = fallback.entries, ranks = ranks, picked = fallback.picked }
             if isBetter(group, bestFallback) then
                 bestFallback = group
@@ -759,6 +832,7 @@ local function wrapAll(entries, slots, now)
             rules = now and Compose.active(entry.compose, now) or nil,
             levels = now and Levels.active(entry.levels, now) or nil,
             language = Languages.decode(entry.language),
+            zone = entry.zone,
         }
     end
     return wrapped

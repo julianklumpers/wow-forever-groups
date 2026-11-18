@@ -16,7 +16,9 @@ local ASK_WAIT = 20
 local PROMISE_WAIT = 30
 -- How long asking groups may take before building the group instead.
 local ASKING_TIME = 60
-local INVITE_TIMEOUT = 30
+-- An invited player keeps their place until they answer or WoW drops the
+-- invite (60 s, a little slack): nobody else can have it meanwhile.
+local INVITE_TIMEOUT = 62
 local STALE = 30
 local PARTY_SIZE = 5
 

@@ -4,9 +4,9 @@
 -- (core/matchmaker.lua) runs every MATCH_INTERVAL at a moment of its own, and
 -- a player without a group invites simulated Group Finder listings with the
 -- real picking (core/fill.lua). A player with a possible Forever Groups
--- partner waits `grace` seconds first (wow/autofill.lua), and a group that
--- builds leaves a role a queued Forever Groups player can play to them for
--- ADDON_GRACE (wow/filler.lua, unless `hold` is false); one who invited
+-- partner waits `grace` seconds first (one matchmaking round, wow/autofill.lua);
+-- with `hold` a group that builds leaves a role a queued Forever Groups player
+-- can play to them for `holdFor` seconds (one round, wow/filler.lua); one who invited
 -- anyone counts as a party (its invites are reserved roles), two parties
 -- never merge, and one whose invites fill the group leaves the matchmaker
 -- until a place opens again (wow/main.lua). Every variant replays the same arrivals and the same
@@ -36,11 +36,11 @@ local Sim = {}
 local SLOTS = Config.SLOTS
 local ROUND = Config.MATCH_INTERVAL
 local PROPOSAL_DELAY = 10
-local INVITE_TIMEOUT = 30
-local PARTNER_GRACE = 20
--- How long a building group leaves a role to a Forever Groups player in the
--- queue who can play it (wow/filler.lua, ADDON_GRACE).
-local ADDON_GRACE = 20
+local INVITE_TIMEOUT = 62
+local PARTNER_GRACE = Config.MATCH_ROUND
+-- With `hold` and no `holdFor`: how long a building group leaves a role to a
+-- Forever Groups player in the queue who can play it.
+local ADDON_GRACE = Config.MATCH_ROUND
 -- A builder picks from the Group Finder this often (it resolves answers
 -- every second).
 local PICK_EVERY = 5
@@ -72,32 +72,33 @@ local LISTED_MINUTES = 20
 
 Sim.VARIANT_SETS = {
     main = {
-        { name = "current", partial = true, variety = true, grace = PARTNER_GRACE },
-        { name = "no-partial", partial = false, variety = true, grace = PARTNER_GRACE },
-        { name = "no-variety", partial = true, variety = false, grace = PARTNER_GRACE },
-        { name = "no-grace", partial = true, variety = true, grace = 0 },
+        { name = "current", partial = true, variety = true, grace = PARTNER_GRACE, hold = true },
+        { name = "no-partial", partial = false, variety = true, grace = PARTNER_GRACE, hold = true },
+        { name = "no-variety", partial = true, variety = false, grace = PARTNER_GRACE, hold = true },
+        { name = "no-grace", partial = true, variety = true, grace = 0, hold = true },
     },
     hold = {
-        { name = "current", partial = true, variety = true, grace = PARTNER_GRACE },
-        { name = "no-hold", partial = true, variety = true, grace = PARTNER_GRACE, hold = false },
+        { name = "current", partial = true, variety = true, grace = PARTNER_GRACE, hold = true },
+        { name = "hold 20", partial = true, variety = true, grace = PARTNER_GRACE, hold = true, holdFor = 20 },
+        { name = "no-hold", partial = true, variety = true, grace = PARTNER_GRACE },
     },
     level = {
-        { name = "current", partial = true, variety = true, grace = PARTNER_GRACE },
-        { name = "no-near", partial = true, variety = true, grace = PARTNER_GRACE, near = false },
+        { name = "current", partial = true, variety = true, grace = PARTNER_GRACE, hold = true },
+        { name = "no-near", partial = true, variety = true, grace = PARTNER_GRACE, hold = true, near = false },
     },
     adaptive = {
-        { name = "fixed 5m", partial = true, variety = true, grace = PARTNER_GRACE },
-        { name = "fixed 2m", partial = true, variety = true, grace = PARTNER_GRACE, strict = 120 },
-        { name = "fixed 1m", partial = true, variety = true, grace = PARTNER_GRACE, strict = 60 },
-        { name = "adaptive", partial = true, variety = true, grace = PARTNER_GRACE, adaptive = true },
+        { name = "fixed 5m", partial = true, variety = true, grace = PARTNER_GRACE, hold = true },
+        { name = "fixed 2m", partial = true, variety = true, grace = PARTNER_GRACE, hold = true, strict = 120 },
+        { name = "fixed 1m", partial = true, variety = true, grace = PARTNER_GRACE, hold = true, strict = 60 },
+        { name = "adaptive", partial = true, variety = true, grace = PARTNER_GRACE, hold = true, adaptive = true },
     },
     grace = {
-        { name = "grace 20", partial = true, variety = true, grace = 20 },
-        { name = "grace 15", partial = true, variety = true, grace = 15 },
-        { name = "grace 10", partial = true, variety = true, grace = 10 },
-        { name = "grace 8", partial = true, variety = true, grace = 8 },
-        { name = "grace 5", partial = true, variety = true, grace = 5 },
-        { name = "grace 0", partial = true, variety = true, grace = 0 },
+        { name = "grace 20", partial = true, variety = true, grace = 20, hold = true },
+        { name = "grace 15", partial = true, variety = true, grace = 15, hold = true },
+        { name = "grace 10", partial = true, variety = true, grace = 10, hold = true },
+        { name = "grace 8", partial = true, variety = true, grace = 8, hold = true },
+        { name = "grace 5", partial = true, variety = true, grace = 5, hold = true },
+        { name = "grace 0", partial = true, variety = true, grace = 0, hold = true },
     },
 }
 Sim.VARIANTS = Sim.VARIANT_SETS.main
@@ -446,13 +447,13 @@ function Sim.run(variant, ticks)
                 Fill.addClass(avoid or prefer, out.listing.classToken, out.role)
             end
         end
-        if variant.hold ~= false then
+        if variant.hold then
             local forAddon = needed ~= "" and addonRoles(entry, needed, now) or ""
             if forAddon == "" then
                 build.addonSince = nil
             else
                 build.addonSince = build.addonSince or now
-                if now - build.addonSince < ADDON_GRACE then
+                if now - build.addonSince < (variant.holdFor or ADDON_GRACE) then
                     for letter in string.gmatch(forAddon, ".") do
                         needed = removeLetter(needed, letter)
                     end

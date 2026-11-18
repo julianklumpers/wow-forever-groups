@@ -13,20 +13,22 @@ local Log = ns.Log
 -- time, and asks for a click when the results are used up or too old.
 local Filler = {}
 
-local INVITE_TIMEOUT = 30
--- Every open invite takes a place in the party, also one we gave up on: WoW
--- keeps an invite open for INVITE_LIFETIME s. Inviting past that gets "Your
--- party is full", after which nobody is invited for FULL_WAIT s. The invite
--- follows the whisper after AWAY_CHECK s, so an away player's automatic reply
--- (AFK, DND) comes first and they are passed over.
+-- Every open invite takes a place in the party: WoW keeps an invite open for
+-- INVITE_LIFETIME s, and nobody else can have that place meanwhile. So the
+-- place stays the invited player's until they accept or decline. WoW reports
+-- an invite left unanswered as declined when it expires, at INVITE_LIFETIME s
+-- (/fgp invitewatch, 2026-11-18): such a "decline" counts as no answer.
+-- INVITE_TIMEOUT only catches that message missed (a /reload in between).
+-- Inviting into a full party gets "Your party is full": a place is held by
+-- something not counted (an invite sent elsewhere). Nobody is invited until a
+-- place frees, which WoW always tells: a decline (also an expired invite,
+-- within INVITE_LIFETIME s) or the group's size changing. The invite follows
+-- the whisper after AWAY_CHECK s, so an away player's automatic reply (AFK,
+-- DND) comes first and they are passed over.
 local INVITE_LIFETIME = 60
-local FULL_WAIT = 10
+local INVITE_TIMEOUT = INVITE_LIFETIME + 2
 local AWAY_CHECK = 1.5
 local PARTY_SIZE = 5
--- How long a role is left to a waiting Forever Groups player before the
--- Group Finder fills it after all (the matchmaker may not group them, e.g.
--- when their level does not fit the dungeon).
-local ADDON_GRACE = 20
 -- Results stay usable this long: delisted players drop out of them as WoW
 -- reports it, only new listings need a search (which needs player input).
 local STALE_RESULTS = 300
@@ -68,6 +70,81 @@ local function rangeOf(id)
     return dungeon and dungeon.min and { min = dungeon.min, max = dungeon.max } or nil
 end
 
+-- Zones between a listed player and the dungeon (wow/zonemap.lua): the
+-- closest go first, and one further away waits Zones.STEP_WAIT s a step from
+-- when they showed up (or the search started) for someone closer. Nothing
+-- changes for a player whose zone is not told, or a dungeon not on the map.
+function Filler.zoneSteps(listing, dungeon)
+    local steps, most = ns.ZoneMap.areaDistance(dungeon, listing.area)
+    if most == nil then
+        return nil
+    end
+    return ns.Zones.rank(steps, most)
+end
+
+function Filler.zoneHeld(listing, dungeon)
+    local steps, most = ns.ZoneMap.areaDistance(dungeon, listing.area)
+    if most == nil or not state then
+        return false
+    end
+    local now = GetServerTime()
+    local shownAt = now - (listing.age or 0) - (GetTime() - (listing.seenAt or GetTime()))
+    return ns.Zones.waitLeft(steps, most, shownAt, state.startedAt, now) > 0
+end
+
+-- Zones between the dungeon and the furthest of the player and their party
+-- members, or nil when nobody's zone is known.
+function Filler.groupSteps(dungeon)
+    local worst
+    local function add(zone)
+        local steps, most = ns.ZoneMap.distance(dungeon, zone)
+        if zone and most ~= nil then
+            worst = math.max(worst or 0, ns.Zones.rank(steps, most))
+        end
+    end
+    add(ns.ZoneMap.myZone())
+    for _, member in ipairs(Party.members() or {}) do
+        add(member.unit and ns.ZoneMap.unitZone(member.unit))
+    end
+    return worst
+end
+
+-- For the log: how a dungeon was chosen (Fill.score), e.g. "4 of 4 places
+-- filled now, the furthest player 1 zone away, levels 2.5 from its middle".
+function Filler.describeScore(score)
+    local parts = { score.places == 0 and "no places left to fill"
+        or string.format("%d of %d places filled now", score.places - score.open, score.places) }
+    if score.steps ~= math.huge then
+        parts[#parts + 1] = string.format("the furthest player %d zone%s away", score.steps,
+            score.steps == 1 and "" or "s")
+    end
+    parts[#parts + 1] = string.format("levels %.1f from its middle", score.apart)
+    return table.concat(parts, ", ")
+end
+
+-- Settles the dungeon of a fill for several (Fill.plan's choice), as its
+-- first invite goes out.
+function Filler.choose(plan)
+    state.dungeon = plan.dungeon
+    ns.GroupView.track(plan.dungeon)
+    Log.detail("Chose %s: %s.", Dungeons.name(plan.dungeon), Filler.describeScore(plan.score))
+end
+
+-- The levels of the player and their party members.
+function Filler.groupLevels()
+    local levels = {}
+    local own = Party.playerLevel()
+    if type(own) == "number" and own > 0 then
+        levels[1] = own
+    end
+    for _, member in ipairs(Party.members() or {}) do
+        if type(member.level) == "number" and member.level > 0 then
+            levels[#levels + 1] = member.level
+        end
+    end
+    return levels
+end
+
 -- For the log: why each open role still has nobody although players are
 -- listed for it ("Tank: 3 listed (2 outside the dungeon's levels, 1 of another
 -- playstyle)"); empty when nobody is listed at all.
@@ -81,7 +158,7 @@ local function whyNobody(open, all, listings)
         ranges[id] = rangeOf(id)
     end
     local opts = { dungeons = dungeons, ranges = ranges, exclude = state.exclude, places = Filler.freePlaces(),
-        levels = ns.PartyLevels.rules("dungeons"), avoid = Filler.avoidClasses() }
+        levels = ns.PartyLevels.rules("dungeons"), avoid = Filler.avoidClasses(), held = Filler.zoneHeld }
     local lines, seen = {}, {}
     for letter in string.gmatch(open, ".") do
         if not seen[letter] then
@@ -102,8 +179,9 @@ local function whyNobody(open, all, listings)
                 add(why.class, "of a class your class choices leave out")
                 add(why.variety, string.format("of a class your group has in that role or twice, for %d s more",
                     Filler.varietyLeft()))
+                add(why.held, "further from the dungeon, waiting a little for someone closer")
                 add(style, "of another playstyle")
-                add(why.listed - why.excluded - why.level - why.limit - why.class - why.variety,
+                add(why.listed - why.excluded - why.level - why.limit - why.class - why.variety - why.held,
                     "picked for another role")
                 lines[#lines + 1] = string.format("%s: %d listed (%s)", Widgets.ROLE_NAMES[letter], total,
                     table.concat(reasons, ", "))
@@ -146,10 +224,9 @@ end
 
 -- Places left in the party for new invites: the members, the invites
 -- about to go out and those still open in WoW (any part's) take theirs; none
--- for a while after WoW said it is full.
+-- after WoW said it is full, until a place frees (placeFreed).
 local function freePlaces()
-    local now = GetTime()
-    if now - (state.fullAt or -math.huge) < FULL_WAIT then
+    if state.fullAt then
         return 0
     end
     local taken = IsInGroup() and math.max(1, GetNumGroupMembers() or 1) or 1
@@ -242,9 +319,11 @@ local function wantsDungeon(entry, dungeons)
 end
 
 -- The roles of `needed` that solo Forever Groups players waiting in the
--- queue for this dungeon can play: those go to them, through the matchmaker.
--- Only while our own group is in the queue (else the matchmaker cannot pair
--- us), and only players who are not building a group of their own.
+-- queue for this dungeon can play: those are left to the matchmaker for one
+-- round (Config.MATCH_ROUND), and while its proposal is open until it is
+-- accepted, declined or let lapse. Only while our own group is in the queue
+-- (else the matchmaker cannot pair us), and only players who are not
+-- building a group of their own.
 local function addonRoles(needed)
     local engine = ns.engine
     if not engine or not engine.myEntry or needed == "" then
@@ -288,14 +367,13 @@ function Filler.step()
     if needed == "" then
         return
     end
-    -- Forever Groups players first: their roles wait for the matchmaker.
     local forAddon = addonRoles(needed)
     local leaving
     if forAddon == "" then
         state.addonSince = nil
     else
         state.addonSince = state.addonSince or GetTime()
-        if GetTime() - state.addonSince < ADDON_GRACE then
+        if GetTime() - state.addonSince < ns.Config.MATCH_ROUND then
             for letter in string.gmatch(forAddon, ".") do
                 needed = removeLetter(needed, letter)
             end
@@ -330,6 +408,7 @@ function Filler.step()
         picks, open = Fill.pick(listings, {
             missing = needed, dungeon = state.dungeon, exclude = state.exclude, range = rangeOf(state.dungeon),
             places = places, levels = ns.PartyLevels.rules("dungeons"), avoid = avoid, prefer = prefer, near = near,
+            steps = Filler.zoneSteps, held = Filler.zoneHeld,
         })
     else
         local ranges = {}
@@ -339,11 +418,12 @@ function Filler.step()
         local plan = Fill.plan(listings, {
             missing = needed, dungeons = state.dungeons, exclude = state.exclude, ranges = ranges, places = places,
             levels = ns.PartyLevels.rules("dungeons"), avoid = avoid, prefer = prefer, near = near,
+            steps = Filler.zoneSteps, held = Filler.zoneHeld, groupSteps = Filler.groupSteps,
+            groupLevels = Filler.groupLevels(),
         })
         picks, open = plan.picks, plan.open
         if #picks > 0 then
-            state.dungeon = plan.dungeon
-            ns.GroupView.track(plan.dungeon)
+            Filler.choose(plan)
         end
     end
     if prefer and #picks > 0 and state.dungeon then
@@ -352,7 +432,8 @@ function Filler.step()
             chosen[pick.name] = true
         end
         local plain = Fill.pick(listings, { missing = needed, dungeon = state.dungeon, exclude = state.exclude,
-            range = rangeOf(state.dungeon), levels = ns.PartyLevels.rules("dungeons"), near = near })
+            range = rangeOf(state.dungeon), levels = ns.PartyLevels.rules("dungeons"), near = near,
+            steps = Filler.zoneSteps, held = Filler.zoneHeld })
         for _, pick in ipairs(plain) do
             if not chosen[pick.name] then
                 Log.detail("Passed over %s (%s) for a %s place: another class was listed.", pick.name,
@@ -443,7 +524,7 @@ function Filler.invites()
     local now = GetTime()
     for name, pending in pairs(state.pending) do
         list[#list + 1] = { name = name, role = pending.role, at = pending.at,
-            left = math.max(0, INVITE_TIMEOUT - (now - pending.at)) }
+            left = math.max(0, INVITE_TIMEOUT - (now - (pending.sentAt or pending.at))) }
     end
     for name, late in pairs(state.late) do
         local left = ns.Invites.HOLD - (now - late.at)
@@ -459,6 +540,15 @@ end
 
 function Filler.stillNeeded()
     return state and stillNeeded() or ""
+end
+
+-- The roles held by invites still waiting for an answer ("HD").
+function Filler.pendingRoles()
+    local roles = ""
+    for _, pending in pairs(state and state.pending or {}) do
+        roles = roles .. pending.role
+    end
+    return roles
 end
 
 function Filler.excluded()
@@ -483,10 +573,15 @@ end
 
 -- An invite sent another way (an applicant to our listing) counts like one of
 -- ours: its role is reserved, and joining or not is followed the same way.
--- Varied classes (Fill.avoided) for this group: not for a replacement, off
--- with db.noClassVariety, and the leader's class wishes decide instead.
+-- Varied classes for this group: off with db.noClassVariety, and the
+-- leader's class wishes decide instead. A replacement never waits for
+-- another class (Fill.avoided), it only takes one first (preferClasses).
+local function variedClasses()
+    return state ~= nil and not ns.db.noClassVariety and Filler.freePlaces() == nil
+end
+
 local function wantsVariety()
-    return state ~= nil and state.variety == true and not ns.db.noClassVariety and Filler.freePlaces() == nil
+    return variedClasses() and state.variety == true
 end
 
 -- Seconds left of Config.VARIETY_TIME from the start, in which a class the
@@ -546,7 +641,7 @@ end
 -- The group's classes once nobody waits for another class any more: another
 -- class that is listed still goes first (Fill.pick's prefer); nil otherwise.
 function Filler.preferClasses()
-    return wantsVariety() and Filler.varietyLeft() <= 0 and classesInGroup() or nil
+    return variedClasses() and Filler.varietyLeft() <= 0 and classesInGroup() or nil
 end
 
 -- The class wishes' free places, with the invites on their way counted
@@ -763,6 +858,7 @@ function Filler.dungeon()
     return state and state.dungeon
 end
 
+
 -- The dungeon(s) this fill is for; empty when not filling.
 function Filler.dungeonIds()
     if not state then
@@ -846,9 +942,27 @@ local function checkJoins()
     return found
 end
 
+-- A place may have freed after "Your party is full" (onPartyFull): invite
+-- again.
+local function placeFreed()
+    if state and state.fullAt then
+        state.fullAt = nil
+        changed()
+        Filler.step()
+    end
+end
+
 local function onRosterUpdate()
     if not state then
         return
+    end
+    local size = GetNumGroupMembers() or 0
+    if size ~= state.groupSize then
+        state.groupSize = size
+        placeFreed()
+        if not state then
+            return
+        end
     end
     checkJoins()
     if state then
@@ -897,11 +1011,12 @@ local function onRefused(name)
     state.pending[name] = nil
     state.exclude[name] = nil
     ns.RoleSync.forget(name)
+    ns.WhisperInvite.refused(name)
 end
 
 local function onPartyFull()
     state.fullAt = GetTime()
-    Log.detail("WoW says the party is full: earlier invites are still open. Waiting a moment.")
+    Log.detail("WoW says the party is full: an invite not counted holds a place. Inviting again once one frees up.")
     changed()
 end
 
@@ -916,11 +1031,16 @@ local function onSystemMessage(text)
     for i, pattern in ipairs(patterns()) do
         local name = string.match(text, pattern)
         if name and state.pending[name] then
+            local pending = state.pending[name]
+            local expired = declineKinds[i] == "declined" and pending.sentAt
+                and GetTime() - pending.sentAt >= INVITE_LIFETIME - 1
             state.pending[name] = nil
-            setOutcome(name, declineKinds[i])
+            setOutcome(name, expired and "noanswer" or declineKinds[i])
             ns.RoleSync.forget(name)
-            Log.detail("%s did not join; trying someone else.", name)
+            Log.detail(expired and "%s did not answer the invite; trying someone else."
+                or "%s did not join; trying someone else.", name)
             Log.debug("WoW said: %s", text)
+            state.fullAt = nil
             changed()
             Filler.step()
             return
@@ -930,8 +1050,12 @@ local function onSystemMessage(text)
             state.late[name] = nil
             setOutcome(name, declineKinds[i])
             Log.debug("WoW said: %s", text)
+            state.fullAt = nil
             changed()
             Filler.step()
+            return
+        elseif name then
+            placeFreed()
             return
         end
     end
@@ -960,8 +1084,7 @@ function Filler.tick()
     if not state then
         return
     end
-    if (state.fullAt and GetTime() - state.fullAt >= FULL_WAIT) or (state.waitingForPlace and freePlaces() > 0) then
-        state.fullAt = nil
+    if state.waitingForPlace and freePlaces() > 0 then
         Filler.step()
         if not state then
             return
@@ -976,7 +1099,7 @@ function Filler.tick()
     end
     local now, expired = GetTime(), false
     for name, pending in pairs(state.pending) do
-        if now - pending.at > INVITE_TIMEOUT then
+        if now - (pending.sentAt or pending.at) > INVITE_TIMEOUT then
             state.pending[name] = nil
             state.late[name] = { role = pending.role, at = pending.sentAt or pending.at }
             setOutcome(name, "noanswer")
@@ -986,6 +1109,9 @@ function Filler.tick()
         end
     end
     if expired then
+        -- An invite of ours ran out: whatever held a place after "Your party
+        -- is full" may have been it, whether or not WoW's message came through.
+        state.fullAt = nil
         changed()
         Filler.step()
     elseif state.message and not queueProposalOpen() and stillNeeded() ~= "" then

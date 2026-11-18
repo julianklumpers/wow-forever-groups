@@ -482,6 +482,18 @@ describe("the questing queue and WoW's Group Finder", function()
         assert.is_true(client.ns.ProgressWindow.isShown())
     end)
 
+    it("keeps an invited player's place until the invite expires", function()
+        local world = World.new()
+        world:list("Zone Tank", "T", ELWYNN, 20, 300)
+        world:list("Zone Dps", "D", ELWYNN, 20, 200)
+        local client = queued(world)
+        assert.are.equal("TD", client.ns.questEngine.myEntry.reserved)
+        world:advance(45)
+        assert.are.equal("TD", client.ns.questEngine.myEntry.reserved)
+        world:advance(20)
+        assert.are.equal("", client.ns.questEngine.myEntry.reserved)
+    end)
+
     it("fills a group of five from the Group Finder: out of the queue while the invites fill it", function()
         local world = World.new()
         for i, name in ipairs({ "Zone One", "Zone Two", "Zone Three", "Zone Four" }) do
@@ -506,7 +518,7 @@ describe("the questing queue and WoW's Group Finder", function()
             client:fire("GROUP_ROSTER_UPDATE")
             assert.are.equal(i + 1, #client.ns.QuestQueue.entry().members)
         end
-        world:advance(31)
+        world:advance(63)
         local entry = client.ns.questEngine.myEntry
         assert.are.equal(4, #entry.members)
         assert.are.equal(joinedAt, entry.joinedAt)

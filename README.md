@@ -35,13 +35,25 @@ in the group, with roles set for you.
   holds while other Group Finder addons search too: their results in other languages stay out.
 - **Uses WoW's Group Finder too** — invites solo players listed for your dungeon, asks listed
   groups to invite you (and joins when they do, as the role they still need), lists your own
-  group, and invites players who whisper a needed role. The first 5 minutes of building a group
+  group, and invites players who whisper a needed role (one whose spot is still held by an open
+  invite hears so and is invited as soon as it frees; whoever was still asked for their role
+  when the group fills gets a "sorry, we're full" whisper). The first 5 minutes of building a group
   it invites no second of a class for the same role and no third of a class (a setting), and after
-  that still another class first when there is one; groups of Forever Groups players from the
-  queue follow the same rule. Of the players who fit, those closest to the group's level go first.
+  that still another class first when there is one (a replacement never waits, but also takes
+  another class first when one is listed); groups of Forever Groups players from the
+  queue follow the same rule. Of the players who fit, those closest to the dungeon go first,
+  counted in zones from the dungeon's own zone outwards; a player further away waits 15 seconds
+  for each zone beyond the ones bordering the dungeon (another continent last) in case someone
+  closer shows up. Then those closest to the group's level. With several dungeons ticked, it goes
+  for the one that suits the group best with who is available right now: tank and healer first,
+  then the fewest open places, the shortest walk and the best levels. Joining, it asks a listed
+  group when that turns out at least as well as building your own, else builds at once. It
+  looks at Forever Groups players in the queue first (a place they fit stays free for one
+  matchmaking round and while they are asked), then fills from the Group Finder at once.
 - **One screen** — the window looks the same while you choose, wait and play: your roles stay
   on screen while you wait (press Stop to change them), and the group's five places show under
-  them as they fill.
+  them as they fill. Stop lets go of a group that isn't complete yet; invites already sent can't
+  be taken back in WoW, so the window says how many are still open.
 - **In the group** — every member's role, spec, distance to the entrance and dungeon quests in
   the group's places; your quests for the dungeon are shared by themselves with whoever lacks
   them (or in one click); a waypoint to the entrance.
@@ -114,10 +126,11 @@ groups form.
 
 **What does it send on my behalf?**
 A short whisper before inviting someone from the Group Finder, a question to a group leader
-when asking to be invited, and (as leader) a line in party chat when the group is complete.
+when asking to be invited, and (as leader) a line in party chat when the group is complete (not again after a
+replacement).
 It only contacts players listed for the same dungeon or quest, asks one group leader at a
 time (the next after 20 seconds without an invite, or at once when the leader says no or the
-group fills up), recently listed groups first, and doesn't ask the same leader again for 15
+group fills up), the group that suits you best first, and doesn't ask the same leader again for 15
 minutes. When a leader you asked invites you, you join right away (a setting). If a leader
 asks back for your level, class or spec, Forever Groups answers for you. You can change or turn
 off every message. None of this shows in your chat: you just see "Looking for a group" and then

@@ -217,6 +217,136 @@ describe("finding a replacement", function()
         assert.is_not_nil(leader:find("Button", "Quests", leader:frame("ForeverGroupsFrame")))
     end)
 
+    local function relogInside(leader, world)
+        local saved = leader:logout()
+        local again = world:addClient("Tanky Mctank", { level = 20, saved = saved, loading = true })
+        again.inInstance, again.instanceName = true, "The Deadmines"
+        again:fire("PLAYER_ENTERING_WORLD")
+        return again
+    end
+
+    it("keeps the bosses down over a relog that knows the party only a moment later", function()
+        local world, leader = inDungeon()
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        leader:fire("ENCOUNTER_END", 2, "Sneed", 1, 5, 1)
+        local again = relogInside(leader, world)
+        again.party, again.isLeader = { "Heal", "Dps A", "Dps B", "Dps C" }, true
+        again:fire("GROUP_ROSTER_UPDATE")
+        world:advance(2)
+        assert.are.equal(2, again.ns.Run.current().kills)
+        again:fire("ENCOUNTER_END", 3, "Gilnid", 1, 5, 1)
+        assert.are.equal(3, again.ns.Run.current().kills)
+    end)
+
+    it("keeps the bosses down when WoW reports no group and no instance while loading", function()
+        local world, leader = inDungeon()
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        leader:fire("ENCOUNTER_END", 2, "Sneed", 1, 5, 1)
+        local saved = leader:logout()
+        local again = world:addClient("Tanky Mctank", { level = 20, saved = saved, loading = true })
+        again:fire("GROUP_ROSTER_UPDATE")
+        again.inInstance, again.instanceName = true, "The Deadmines"
+        again.party, again.isLeader = { "Heal", "Dps A", "Dps B", "Dps C" }, true
+        again:fire("PLAYER_ENTERING_WORLD")
+        world:advance(2)
+        assert.are.equal(2, again.ns.Run.current().kills)
+    end)
+
+    it("keeps following the group over a /reload while WoW reports no group for a moment", function()
+        local world, leader = inDungeon()
+        local saved = leader:logout()
+        local again = world:addClient("Tanky Mctank", { level = 20, saved = saved, loading = true,
+            beforeLogin = function(c)
+                c.party, c.isLeader = { "Heal", "Dps A", "Dps B", "Dps C" }, true
+                c.inInstance, c.instanceName = true, "The Deadmines"
+            end })
+        local party = again.party
+        again.party = {}
+        again:fire("GROUP_ROSTER_UPDATE")
+        again.party = party
+        again:fire("PLAYER_ENTERING_WORLD")
+        again:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.is_true(again.ns.GroupView.isTracking())
+        assert.are.equal("5", again.ns.GroupView.trackedDungeon())
+    end)
+
+    it("keeps the bosses down over a relog for a group formed while the player was inside alone", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        world:advance(30)
+        leader.inInstance, leader.instanceName = true, "The Deadmines"
+        leader:fire("PLAYER_ENTERING_WORLD")
+        world:advance(1)
+        leader.party, leader.isLeader = { "Heal", "Dps A", "Dps B", "Dps C" }, true
+        leader:fire("GROUP_ROSTER_UPDATE")
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        local saved = leader:logout()
+        local again = world:addClient("Tanky Mctank", { level = 20, saved = saved, beforeLogin = function(c)
+            c.party, c.isLeader = { "Heal", "Dps A", "Dps B", "Dps C" }, true
+            c.inInstance, c.instanceName = true, "The Deadmines"
+        end })
+        world:advance(2)
+        assert.are.equal(1, again.ns.Run.current().kills)
+    end)
+
+    it("keeps the bosses down over a relog while a party name takes longer than 10 s to load", function()
+        local world, leader = inDungeon()
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        local again = relogInside(leader, world)
+        again.party, again.isLeader = { "Heal", "" }, true
+        again:fire("GROUP_ROSTER_UPDATE")
+        world:advance(15)
+        again.party = { "Heal", "Dps A", "Dps B", "Dps C" }
+        again:fire("GROUP_ROSTER_UPDATE")
+        world:advance(1)
+        assert.are.equal(1, again.ns.Run.current().kills)
+    end)
+
+    it("starts over after a relog when the party, known a little later, is another one without a roster update",
+        function()
+        local world, leader = inDungeon()
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        local again = relogInside(leader, world)
+        again.party, again.isLeader = { "Heal", "" }, true
+        again:fire("GROUP_ROSTER_UPDATE")
+        again.party = { "Someone Else", "Another One" }
+        world:advance(12)
+        assert.are.equal(0, again.ns.Run.current().kills)
+    end)
+
+    it("decides a run kept over a relog only inside the dungeon", function()
+        local world, leader = inDungeon()
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        local again = relogInside(leader, world)
+        again.party, again.isLeader = { "Heal", "" }, true
+        again:fire("GROUP_ROSTER_UPDATE")
+        again.inInstance = false
+        again:fire("PLAYER_ENTERING_WORLD")
+        again.party = { "Someone Else", "Another One" }
+        again:fire("GROUP_ROSTER_UPDATE")
+        world:advance(15)
+        assert.are.equal(1, again.ns.Run.current().kills)
+    end)
+
+    it("starts over after a relog when the party stays empty, as for a player now alone", function()
+        local world, leader = inDungeon()
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        local again = relogInside(leader, world)
+        world:advance(15)
+        assert.are.equal(0, again.ns.Run.current().kills)
+    end)
+
+    it("starts over after a relog once the party known later is another one", function()
+        local world, leader = inDungeon()
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        local again = relogInside(leader, world)
+        again.party, again.isLeader = { "Someone Else", "Another One" }, true
+        again:fire("GROUP_ROSTER_UPDATE")
+        world:advance(2)
+        assert.are.equal(0, again.ns.Run.current().kills)
+    end)
+
     it("counts a boss whose name WoW keeps secret", function()
         local world, leader = inDungeon()
         leader:fire("ENCOUNTER_END", 1, World.SECRET, 1, 5, 1)
@@ -227,6 +357,7 @@ describe("finding a replacement", function()
 
     it("asks the leader when someone leaves before every boss is down", function()
         local world, leader = inDungeon()
+        leader.partyClasses["Heal"] = "PRIEST"
         leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
         leader:fire("ENCOUNTER_END", 2, "Sneed", 1, 5, 1)
         leader:fire("ENCOUNTER_END", 3, "Gilnid", 1, 5, 0)
@@ -236,7 +367,14 @@ describe("finding a replacement", function()
         local text = leader.env.StaticPopupDialogs[leader.popups[1]].text
         assert.are.equal("Dps A left the group. 2/8 bosses down. Queue the group to find a replacement DPS?", text)
 
+        local before = #leader.sent
         leader:acceptStaticPopup()
+        local healSent = false
+        for i = before + 1, #leader.sent do
+            healSent = healSent or (leader.sent[i]:find("|Q|", 1, true) and leader.sent[i]:find("Heal:H:20:5", 1, true))
+                ~= nil
+        end
+        assert.is_true(healSent)
         world:advance(2)
         assert.is_true(leader.ns.Filler.isActive())
         assert.are.equal("Dps D", leader.invites[#leader.invites])
@@ -246,6 +384,35 @@ describe("finding a replacement", function()
         world:advance(6)
         assert.is_not_nil(leader.ns.engine.myEntry)
         assert.are.equal(4, #leader.ns.engine.myEntry.members)
+    end)
+
+    it("says nothing in party chat when a replacement completes the group again", function()
+        local world, leader = inDungeon()
+        local function completeLines()
+            local count = 0
+            for _, w in ipairs(leader.whispers) do
+                if w.chatType == "PARTY" and w.text:find("Meet at the entrance", 1, true) then
+                    count = count + 1
+                end
+            end
+            return count
+        end
+        local before = completeLines()
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        leader:leaves("Dps A")
+        world:advance(1)
+        leader:acceptStaticPopup()
+        world:advance(2)
+        assert.are.equal("Dps D", leader.invites[#leader.invites])
+        leader:joins("Dps D")
+        world:advance(2)
+        local completes = 0
+        for _, line in ipairs(leader.ns.db.log) do
+            completes = completes + (line:find("Your group for The Deadmines is complete", 1, true) and 1 or 0)
+        end
+        assert.are.equal(2, completes)
+        assert.are.equal(before, completeLines())
+        assert.is_true(leader:logged("no party chat for the complete group: a replacement joined"))
     end)
 
     it("shows a Find replacement button, not the dungeon list, while the run goes on", function()
@@ -286,8 +453,30 @@ describe("finding a replacement", function()
                 text = w.text
             end
         end
-        assert.are.equal("[Forever Groups] Hi! Our The Deadmines run needs a dps (1/6 bosses down, group is inside). "
+        assert.are.equal("[Forever Groups] Hi! Our The Deadmines run needs a dps (1/6 bosses down). "
             .. "Inviting you now.", text)
+    end)
+
+    it("says the group is inside only when every member is", function()
+        local world, leader = inDungeon()
+        leader.journalMaps[291], leader.journalBosses[63] = 63, 6
+        leader.positions.player = { 291, 0.5, 0.5 }
+        leader:fire("PLAYER_ENTERING_WORLD")
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        leader:leaves("Dps A")
+        world:advance(1)
+        for i = 1, 3 do
+            leader.visible["party" .. i] = true
+        end
+        assert.are.equal("1/6 bosses down, group is inside", leader.ns.Run.replacementProgress("5"))
+        leader.visible.party2 = false
+        assert.are.equal("1/6 bosses down", leader.ns.Run.replacementProgress("5"))
+        leader.visible.party2 = true
+        for _, name in ipairs({ "Heal", "Dps B", "Dps C" }) do
+            leader.ns.GroupPlaces.onMessage(name, "v1|GP|5|in")
+        end
+        leader.inInstance = false
+        assert.are.equal("1/6 bosses down", leader.ns.Run.replacementProgress("5"))
     end)
 
     it("invites with the usual whisper while no boss is down", function()
@@ -352,6 +541,74 @@ describe("finding a replacement", function()
         assert.are.equal(invites, #leader.invites)
         assert.is_not_nil(leader:find("Button", "Find replacement"))
         assert.is_not_nil(leader:findText("^DPS  ·  1 open$"))
+    end)
+
+    local function stoppedWhileInviting()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        for _, listing in ipairs({ { "Heal", "H" }, { "Dps A", "D" }, { "Dps B", "D" }, { "Dps C", "D" },
+            { "Dps D", "D" } }) do
+            world:list(listing[1], listing[2], 799, 20, 300)
+        end
+        world:advance(30)
+        leader:slash("/dq join tank dm")
+        world:advance(10)
+        assert.are.equal(4, #leader.invites)
+        leader:slash("/dq")
+        leader:click("Button", "Stop")
+        return world, leader
+    end
+
+    it("lets go of a group never complete on Stop, while the invites sent before it are still accepted", function()
+        local world, leader = stoppedWhileInviting()
+        assert.is_false(leader.ns.GroupView.isTracking())
+        leader:joins("Heal")
+        leader:joins("Dps A")
+        world:advance(2)
+        assert.is_nil(leader:find("Button", "Find replacement"))
+        assert.is_nil(leader.ns.engine.myEntry)
+        leader:joins("Dps B")
+        leader:joins("Dps C")
+        world:advance(2)
+        assert.is_false(leader:logged("is complete%."))
+        assert.is_false(leader:said("Group complete"))
+        assert.is_false(leader.ns.GroupView.isTracking())
+    end)
+
+    it("tells after Stop how many invites WoW still holds open, until they are answered or expire", function()
+        local world, leader = stoppedWhileInviting()
+        assert.is_not_nil(leader:findText("^Invites still open in WoW: 4%."))
+        leader:joins("Heal")
+        leader:system(string.format(leader.env.ERR_DECLINE_GROUP_S, "Dps A"))
+        world:advance(1)
+        assert.is_not_nil(leader:findText("^Invites still open in WoW: 2%."))
+        world:advance(62)
+        assert.is_nil(leader:findText("^Invites still open in WoW"))
+    end)
+
+    it("keeps following a group that was complete when Stop ends its replacement search outside", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        for _, listing in ipairs({ { "Heal", "H" }, { "Dps A", "D" }, { "Dps B", "D" }, { "Dps C", "D" },
+            { "Dps D", "D" } }) do
+            world:list(listing[1], listing[2], 799, 20, 300)
+        end
+        world:advance(30)
+        leader:slash("/dq join tank dm")
+        world:advance(2)
+        for _, name in ipairs({ "Heal", "Dps A", "Dps B", "Dps C" }) do
+            leader:joins(name)
+        end
+        world:advance(2)
+        leader:leaves("Dps A")
+        world:advance(1)
+        leader:slash("/dq")
+        leader:click("Button", "Find replacement")
+        world:advance(1)
+        leader:click("Button", "Stop")
+        world:advance(1)
+        assert.is_true(leader.ns.GroupView.isTracking())
+        assert.is_not_nil(leader:find("Button", "Find replacement"))
     end)
 
     it("ends the run on request: the choices come back in the group and nobody is asked for again", function()
@@ -667,6 +924,25 @@ describe("sharing dungeon quests in a new group", function()
         return n
     end
 
+    it("neither asks nor shares again after a /reload while WoW reports no group for a moment", function()
+        local world, leader, heal = party(true)
+        fill(world, leader, heal)
+        assert.are.equal(1, askedIn(heal) + askedIn(leader))
+        local pushed = #leader.pushed
+        assert.is_true(pushed > 0)
+        local saved = leader:logout()
+        local again = world:addClient("Tanky Mctank", { level = 20, saved = saved, questLog = leader.questLog,
+            loading = true })
+        again:fire("GROUP_ROSTER_UPDATE")
+        again.party, again.isLeader = { "Heally Mcheal", "No Addon", "Ann Addonless", "Bo Addonless" }, true
+        again:fire("PLAYER_ENTERING_WORLD")
+        again.ns.GroupView.track("5")
+        again:fire("GROUP_ROSTER_UPDATE")
+        world:advance(20)
+        assert.are.same({}, again.pushed)
+        assert.are.equal(0, askedIn(again))
+    end)
+
     it("does not ask after seeing a boss die, nor share again after a /reload", function()
         local world, leader, heal = party(true)
         heal.ns.Run.current = function()
@@ -678,8 +954,10 @@ describe("sharing dungeon quests in a new group", function()
         assert.are.equal(0, askedIn(heal))
         assert.are.same({ 101, 102 }, leader.pushed)
         local saved = leader:logout()
-        local again = world:addClient("Tanky Mctank", { level = 20, saved = saved, questLog = leader.questLog })
-        again.party, again.isLeader = { "Heally Mcheal", "No Addon" }, true
+        local again = world:addClient("Tanky Mctank", { level = 20, saved = saved, questLog = leader.questLog,
+            beforeLogin = function(c)
+                c.party, c.isLeader = { "Heally Mcheal", "No Addon" }, true
+            end })
         world:advance(12)
         again.ns.GroupView.track("5")
         again:fire("GROUP_ROSTER_UPDATE")
@@ -722,6 +1000,33 @@ describe("sharing dungeon quests in a new group", function()
         assert.are.same({ 101, 102 }, leader.pushed)
         world:advance(16)
         assert.are.same({ 101, 102, 101 }, leader.pushed)
+    end)
+
+    local function laterQuest(world, leader)
+        world:advance(12)
+        assert.are.same({ 101, 102 }, leader.pushed)
+        table.insert(leader.questLog, 2, { "Undying Laborer", false, 104 })
+        leader:fire("QUEST_LOG_UPDATE")
+        world:advance(40)
+    end
+
+    it("shares nothing by itself when someone leaves and WoW says a member without the addon lacks a quest", function()
+        local world, leader, heal = party(true)
+        laterQuest(world, leader)
+        leader.party, heal.party = { "No Addon" }, {}
+        leader:fire("GROUP_ROSTER_UPDATE")
+        heal:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.are.same({ 101, 102 }, leader.pushed)
+    end)
+
+    it("shares nothing by itself when someone leaves and a Forever Groups member's list lacks a quest", function()
+        local world, leader = party(true)
+        laterQuest(world, leader)
+        leader.party = { "Heally Mcheal" }
+        leader:fire("GROUP_ROSTER_UPDATE")
+        world:advance(12)
+        assert.are.same({ 101, 102 }, leader.pushed)
     end)
 
     it("shares again with a player who joins later", function()

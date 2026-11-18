@@ -11,10 +11,9 @@ local Log = ns.Log
 -- in the queue so later Forever Groups players can still join it.
 local AutoFill = {}
 
--- How long a possible Forever Groups partner is waited for: the matchmaker
--- may still refuse the pair (a leader's class wishes or level limit, two
--- leaders), so after this the Group Finder fills anyway.
-local PARTNER_GRACE = 20
+-- A possible Forever Groups partner gets one matchmaking round: Forever
+-- Groups players are looked at first, but no match means the Group Finder.
+local PARTNER_WAIT = ns.Config.MATCH_ROUND
 local partnerSince
 
 local function sharesDungeon(a, b)
@@ -72,7 +71,7 @@ function AutoFill.tick()
     end
     if hasPartner(engine, entry) then
         partnerSince = partnerSince or GetTime()
-        if GetTime() - partnerSince < PARTNER_GRACE then
+        if GetTime() - partnerSince < PARTNER_WAIT then
             return
         end
     else
@@ -106,7 +105,8 @@ function AutoFill.afterGroupFormed(view)
         if member.fake then
             return
         end
-        local entryMember = { name = member.name, roles = member.role, level = ns.Party.playerLevel() }
+        local entryMember = { name = member.name, roles = member.role, level = ns.Party.playerLevel(),
+            class = (ns.Specs.decode(member.spec)) }
         if member.name == ns.selfName then
             table.insert(members, 1, entryMember)
         else

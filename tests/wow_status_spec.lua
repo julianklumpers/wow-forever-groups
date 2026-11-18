@@ -1076,6 +1076,63 @@ describe("Queue window filters", function()
         assert.are.equal("All roles", boxes.roles.label.text)
     end)
 
+    it("lists the classes under the armour they wear at the player's level, plate first", function()
+        local world, client = setup()
+        local boxes = open(world, client)
+        local function texts()
+            local list = {}
+            for _, item in ipairs(client:dropdownItems(boxes.classes)) do
+                if item.font then
+                    assert.are.equal(client.env.GameFontNormalSmall, item.font)
+                    assert.is_true(item.boxHidden)
+                    assert.are.equal(item.selected, item.tickHidden == true)
+                    assert.are.same({ 1, 0.82, 0 }, item.color)
+                    assert.are.equal("LEFT", item.textPoint[1])
+                end
+                list[#list + 1] = item.spacer and "_" or item.font and ("# " .. item.text) or item.text
+            end
+            return list
+        end
+        assert.are.same({ "All classes", "_", "# Mail", "Paladin", "Warrior", "_", "# Leather", "Druid", "Hunter",
+            "Rogue", "Shaman", "_", "# Cloth", "Mage", "Priest", "Warlock" }, texts())
+        assert.is_true(client:logged("menu header: spacer true, font string true, box true"))
+        client.level = 40
+        assert.are.same({ "All classes", "_", "# Plate", "Paladin", "Warrior", "_", "# Mail", "Hunter", "Shaman", "_",
+            "# Leather", "Druid", "Rogue", "_", "# Cloth", "Mage", "Priest", "Warlock" }, texts())
+    end)
+
+    it("ticks or clears all classes of an armour with its header", function()
+        local world, client = setup()
+        world:list("Plate Guy", "T", 799)
+        world.listings[#world.listings].class = "WARRIOR"
+        world:list("Cloth Guy", "D", 799)
+        world.listings[#world.listings].class = "MAGE"
+        local boxes = open(world, client)
+        client.level = 40
+        local function item(text)
+            for _, entry in ipairs(client:dropdownItems(boxes.classes)) do
+                if entry.text == text then
+                    return entry
+                end
+            end
+        end
+        item("Plate").pick()
+        assert.is_true(item("Plate").selected)
+        assert.is_true(item("Plate").tickHidden)
+        assert.is_true(item("Warrior").selected)
+        assert.is_true(item("Paladin").selected)
+        assert.is_false(item("Mage").selected)
+        assert.is_not_nil(client:findText("^Plate Guy$"))
+        assert.is_nil(client:findText("^Cloth Guy$"))
+        item("Paladin").pick()
+        assert.is_false(item("Plate").selected)
+        item("Plate").pick()
+        assert.is_true(item("Paladin").selected)
+        item("Plate").pick()
+        assert.is_false(item("Warrior").selected)
+        assert.is_true(item("All classes").selected)
+    end)
+
     it("shows only players of the chosen classes", function()
         local world, client = setup()
         world:list("Paladin Dps", "D", 799)

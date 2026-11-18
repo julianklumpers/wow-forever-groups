@@ -864,6 +864,65 @@ function Widgets.paintExpander(button, open, countText)
     button.count:SetText(countText or "")
 end
 
+local HEADER_SPACE = 4
+local headerReported = false
+
+-- A small header in a WoW menu that ticks or clears everything under it: a
+-- check (a plain menu button did nothing in Forever's client) with its box
+-- (leftTexture1) and tick (leftTexture2, only while ticked) hidden, a little
+-- space above it. What the client offers for that is logged once.
+local function smallHeader(root, text, isSelected, toggle)
+    local spaced = type(root.CreateSpacer) == "function"
+    if spaced then
+        root:CreateSpacer(HEADER_SPACE)
+    end
+    local header = root:CreateCheckbox(text, isSelected, toggle)
+    if header and type(header.AddInitializer) == "function" then
+        header:AddInitializer(function(frame)
+            local label = frame and frame.fontString
+            local box = frame and frame.leftTexture1
+            if not headerReported then
+                headerReported = true
+                ns.Log.debug("menu header: spacer %s, font string %s, box %s", tostring(spaced),
+                    tostring(label ~= nil), tostring(box ~= nil))
+            end
+            if label and type(label.SetFontObject) == "function" then
+                label:SetFontObject(GameFontNormalSmall)
+                label:SetTextColor(1, 0.82, 0)
+            end
+            if frame and frame.leftTexture2 then
+                frame.leftTexture2:Hide()
+            end
+            if box then
+                box:Hide()
+                if label then
+                    label:ClearAllPoints()
+                    label:SetPoint("LEFT", frame, "LEFT", 0, 0)
+                end
+            end
+        end)
+    end
+end
+
+-- Adds the classes to a WoW menu under a small header per armour they wear at
+-- the player's level (plate first); check(root, class) adds one class. A
+-- header is ticked while all its classes are (allOf(classes)); a click ticks
+-- them all, or clears them all when they were (setAll(classes, on); returns
+-- the menu's response).
+function Widgets.classesByArmor(root, classes, check, allOf, setAll)
+    local names = { Plate = ns.L["Plate"], Mail = ns.L["Mail"], Leather = ns.L["Leather"], Cloth = ns.L["Cloth"] }
+    for _, group in ipairs(ns.Classes.byArmor(classes, ns.Party.playerLevel())) do
+        smallHeader(root, names[group.armor], function()
+            return allOf(group.classes)
+        end, function()
+            return setAll(group.classes, not allOf(group.classes))
+        end)
+        for _, class in ipairs(group.classes) do
+            check(root, class)
+        end
+    end
+end
+
 -- A small gold text link, white on hover; the click area is the text.
 -- A dropdown box like WoW's own: its choice on the left and WoW's dropdown
 -- button on the right (the plain yellow arrow on a client without that

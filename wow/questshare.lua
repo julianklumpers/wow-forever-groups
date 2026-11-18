@@ -377,6 +377,7 @@ local function onSystem(text)
             saved.tries = saved.tries or {}
             local tries = (saved.tries[key] or 0) + 1
             saved.tries[key] = tries
+            Log.debug("quest %d did not reach %s (%s), try %d", lastPush.id, key, text, tries)
             if tries <= RETRIES then
                 shared[key] = nil
                 if not retryScheduled then
@@ -403,9 +404,31 @@ local function autoShareSoon()
     end)
 end
 
+-- Whether someone is in the party who was not in it before for this
+-- dungeon's group. Only an arrival shares by itself: later on the others'
+-- quests may be done and turned in already, and they then seem to lack
+-- them (a list without the quest, or WoW saying they are not on it).
+local ARRIVAL_WINDOW = 30
+local arrivedAt
+
+local function arrived(dungeon)
+    local saved = memory(dungeon)
+    saved.seen = saved.seen or {}
+    local any = false
+    for _, member in ipairs(ns.Party.members() or {}) do
+        if not saved.seen[member.name] then
+            saved.seen[member.name], any = true, true
+        end
+    end
+    if any then
+        arrivedAt = GetTime()
+    end
+    return any
+end
+
 -- A list came in: the sharing waits a little for the others' too.
 function QuestShare.listArrived()
-    if ns.GroupView.trackedDungeon() then
+    if ns.GroupView.trackedDungeon() and arrivedAt and GetTime() - arrivedAt < ARRIVAL_WINDOW then
         autoShareSoon()
     end
 end
@@ -437,7 +460,9 @@ end
 function QuestShare.init()
     ns.on("GROUP_ROSTER_UPDATE", function()
         if not IsInGroup() then
-            ns.charDb.questShare, lastRoster = nil, nil
+            if ns.inWorld then
+                ns.charDb.questShare, lastRoster = nil, nil
+            end
             return
         end
         local key = rosterKey()
@@ -445,9 +470,12 @@ function QuestShare.init()
             return
         end
         lastRoster = key
-        if ns.GroupView.trackedDungeon() then
+        local dungeon = ns.GroupView.trackedDungeon()
+        if dungeon then
             sendSoon(true)
-            autoShareSoon()
+            if arrived(dungeon) then
+                autoShareSoon()
+            end
         end
     end)
     ns.on("CHAT_MSG_SYSTEM", onSystem)

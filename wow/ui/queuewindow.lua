@@ -1859,8 +1859,8 @@ local MENUS = {
     classes = function(root)
         local players = sectionFilter("players")
         allCheck(root, "classes", L["All classes"], { { "players", "classes" } })
-        for _, class in ipairs(allClasses()) do
-            root:CreateCheckbox(classLabel(class), function()
+        Widgets.classesByArmor(root, allClasses(), function(menu, class)
+            menu:CreateCheckbox(classLabel(class), function()
                 return players.classes ~= nil and players.classes[class] == true
             end, function()
                 players.classes = players.classes or {}
@@ -1871,7 +1871,24 @@ local MENUS = {
                 filterChanged()
                 return keepOpen()
             end)
-        end
+        end, function(classes)
+            for _, class in ipairs(classes) do
+                if not (players.classes and players.classes[class]) then
+                    return false
+                end
+            end
+            return true
+        end, function(classes, on)
+            players.classes = players.classes or {}
+            for _, class in ipairs(classes) do
+                players.classes[class] = on or nil
+            end
+            if not next(players.classes) then
+                players.classes = nil
+            end
+            filterChanged()
+            return keepOpen()
+        end)
     end,
     needs = function(root)
         local groups = sectionFilter("groups")

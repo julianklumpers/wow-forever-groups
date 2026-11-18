@@ -42,12 +42,14 @@ describe("whisper invites while building a group", function()
         assert.is_false(W.asksToJoin("hello there"))
     end)
 
-    it("invites a whisperer who names a role the group still needs", function()
-        local _, tank = building()
+    it("invites a whisperer who names a role the group still needs, saying so once WoW confirms the invite", function()
+        local world, tank = building()
         tank:whisperFrom("Whisper Dps", "dps here, inv?")
         assert.is_true(invited(tank, "Whisper Dps"))
         assert.are.equal("D", tank.ns.Filler.roleOf("Whisper Dps"))
         assert.are.equal("DD", tank.ns.Filler.stillNeeded())
+        assert.are.same({}, repliesTo(tank, "Whisper Dps"))
+        world:advance(1)
         assert.truthy(repliesTo(tank, "Whisper Dps")[1]:find("Inviting you as dps for The Deadmines"))
     end)
 
@@ -116,7 +118,7 @@ describe("whisper invites while building a group", function()
 
         dps:whisperFrom("Other Guy", "ok tank")
         assert.is_false(invited(dps, "Other Guy"))
-        assert.truthy(repliesTo(dps, "Other Guy")[4]:find("we only need"))
+        assert.truthy(repliesTo(dps, "Other Guy")[4]:find("That spot is held by an open invite", 1, true))
     end)
 
     it("says which roles are needed when the whispered role is taken, and asks nothing after", function()
@@ -165,7 +167,7 @@ describe("whisper invites while building a group", function()
         assert.are.same({}, repliesTo(tank, "Old Builder"))
     end)
 
-    it("does not promise a place every open invite holds, and invites the whisperer when one frees up", function()
+    it("tells a whisperer their role's place is held by an open invite, and invites them once it expires", function()
         local world = World.new()
         local tank = world:addClient("Solo Tank", { level = 20 })
         world:list("Heal A", "H", 799, 20, 900)
@@ -179,14 +181,22 @@ describe("whisper invites while building a group", function()
         tank:joins("Dps 1")
         tank:joins("Dps 2")
         world:advance(30)
-        assert.are.equal("HD", tank.ns.Filler.stillNeeded())
+        assert.are.equal("", tank.ns.Filler.stillNeeded())
         tank:whisperFrom("Whisper Dps", "dps inv?")
         world:advance(2)
         assert.are.same({}, tank.refusedInvites)
-        assert.are.same({}, repliesTo(tank, "Whisper Dps"))
-        world:advance(40)
+        assert.is_false(invited(tank, "Whisper Dps"))
+        local replies = repliesTo(tank, "Whisper Dps")
+        assert.are.equal(1, #replies)
+        assert.truthy(replies[1]:find("That spot is held by an open invite", 1, true))
+        tank:whisperFrom("Whisper Dps", "didnt get inv")
+        assert.are.equal(2, #repliesTo(tank, "Whisper Dps"))
+        assert.truthy(repliesTo(tank, "Whisper Dps")[2]:find("That spot is held by an open invite", 1, true))
+        tank:whisperFrom("Whisper Dps", "ok ty")
+        assert.are.equal(2, #repliesTo(tank, "Whisper Dps"))
+        world:advance(35)
         assert.is_true(invited(tank, "Whisper Dps"))
-        assert.truthy(repliesTo(tank, "Whisper Dps")[1]:find("Inviting you as dps for The Deadmines"))
+        assert.truthy(repliesTo(tank, "Whisper Dps")[3]:find("Inviting you as dps for The Deadmines"))
     end)
 
     it("keeps a whisperer waiting until a held place is free, however late it frees", function()
@@ -206,6 +216,160 @@ describe("whisper invites while building a group", function()
         assert.is_false(invited(tank, "Whisper Heal"))
         world:advance(80)
         assert.is_true(invited(tank, "Whisper Heal"))
+    end)
+
+    local function fullAfterQuestion(stopFirst)
+        local world, tank = building()
+        tank:whisperFrom("Some Player", "inv pls")
+        tank:whisperFrom("Told Tank", "tank inv?")
+        for i = 1, 3 do
+            tank:whisperFrom("Whisper Dps " .. i, "dps inv?")
+        end
+        if stopFirst then
+            tank.ns.Filler.stop()
+            world:advance(2)
+        end
+        for _, name in ipairs({ "Listed Heal", "Whisper Dps 1", "Whisper Dps 2", "Whisper Dps 3" }) do
+            tank:joins(name)
+        end
+        world:advance(5)
+        return world, tank
+    end
+
+    it("tells a whisperer still asked for their role, once, that the group is full", function()
+        local world, tank = fullAfterQuestion()
+        assert.is_false(tank.ns.Filler.isActive())
+        local replies = repliesTo(tank, "Some Player")
+        assert.are.equal(2, #replies)
+        assert.truthy(replies[2]:find("Sorry, our group for The Deadmines is full now%. Good luck!"))
+        assert.are.equal(1, #repliesTo(tank, "Told Tank"))
+        assert.are.equal(1, #repliesTo(tank, "Whisper Dps 1"))
+        world:advance(30)
+        assert.are.equal(2, #repliesTo(tank, "Some Player"))
+    end)
+
+    it("says nothing of a full group when it is stopped before it is complete", function()
+        local world, tank = fullAfterQuestion(true)
+        world:advance(30)
+        assert.are.equal(1, #repliesTo(tank, "Some Player"))
+    end)
+
+    it("says nothing of a full group when a replacement search is stopped with a place still open", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        for _, listing in ipairs({ { "Heal", "H" }, { "Dps A", "D" }, { "Dps B", "D" }, { "Dps C", "D" } }) do
+            world:list(listing[1], listing[2], 799, 20, 300)
+        end
+        world:advance(30)
+        tank:slash("/dq join tank dm")
+        world:advance(2)
+        for _, name in ipairs({ "Heal", "Dps A", "Dps B", "Dps C" }) do
+            tank:joins(name)
+        end
+        world:advance(2)
+        tank:leaves("Dps A")
+        world:advance(1)
+        tank:slash("/dq")
+        tank:click("Button", "Find replacement")
+        world:advance(1)
+        tank:whisperFrom("Some Player", "inv pls")
+        assert.are.equal(1, #repliesTo(tank, "Some Player"))
+        tank:click("Button", "Stop")
+        world:advance(5)
+        assert.is_true(tank.ns.GroupView.isTracking())
+        assert.are.equal(1, #repliesTo(tank, "Some Player"))
+    end)
+
+    it("puts a whisperer whose invite WoW turned down back on the list, and says 'inviting you' once", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        tank.inviteLifetime = 120
+        tank.ns.db.noListing = true
+        world:list("Away Heal", "H", 799, 20, 300)
+        for i = 1, 3 do
+            world:list("Dps " .. i, "D", 799, 20, 300 - i)
+        end
+        world:advance(30)
+        tank:slash("/dq join tank dm")
+        world:advance(2)
+        for i = 1, 3 do
+            tank:joins("Dps " .. i)
+        end
+        world:advance(65)
+        tank:whisperFrom("Whisper Heal", "heal inv?")
+        world:advance(1)
+        assert.are.same({ "Whisper Heal" }, tank.refusedInvites)
+        assert.is_true(tank:logged("Whisper Heal, who whispered you, waits for a place again"))
+        for _, text in ipairs(repliesTo(tank, "Whisper Heal")) do
+            assert.is_nil(text:find("Inviting you", 1, true))
+        end
+        world:advance(70)
+        assert.is_true(invited(tank, "Whisper Heal"))
+        local replies = repliesTo(tank, "Whisper Heal")
+        local inviting = 0
+        for _, text in ipairs(replies) do
+            inviting = inviting + (text:find("Inviting you as healer", 1, true) and 1 or 0)
+        end
+        assert.are.equal(1, inviting)
+    end)
+
+    it("tells a class that plays one role only, asking to join, that its role's place is held", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        world:list("Listed Heal", "H", 799, 20, 300)
+        for i = 1, 3 do
+            world:list("Dps " .. i, "D", 799, 20, 300 - i)
+        end
+        world:advance(30)
+        tank:slash("/dq join tank dm")
+        world:advance(2)
+        assert.are.equal("", tank.ns.Filler.stillNeeded())
+        tank:whisperFrom("Whisper Rogue", "inv?", "ROGUE")
+        assert.is_false(invited(tank, "Whisper Rogue"))
+        assert.truthy(repliesTo(tank, "Whisper Rogue")[1]:find("That spot is held by an open invite", 1, true))
+    end)
+
+    it("tells a waiting whisperer what is still needed once their role is taken after all", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        world:list("Listed Heal", "H", 799, 20, 300)
+        for i = 1, 3 do
+            world:list("Dps " .. i, "D", 799, 20, 300 - i)
+        end
+        world:advance(30)
+        tank:slash("/dq join tank dm")
+        world:advance(2)
+        tank:whisperFrom("Whisper Heal", "heal inv?")
+        assert.truthy(repliesTo(tank, "Whisper Heal")[1]:find("That spot is held by an open invite", 1, true))
+        tank:joins("Listed Heal")
+        world:advance(2)
+        local replies = repliesTo(tank, "Whisper Heal")
+        assert.are.equal(2, #replies)
+        assert.truthy(replies[2]:find("Sorry, we only need DPS right now", 1, true))
+    end)
+
+    it("tells a whisperer waiting for a held place that the group is full", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        for i = 1, 3 do
+            world:list("Dps " .. i, "D", 799, 20, 300 - i)
+        end
+        world:advance(30)
+        tank:slash("/dq join tank dm")
+        world:advance(2)
+        assert.are.equal("H", tank.ns.Filler.stillNeeded())
+        tank.ns.Invites.send("Quest Guy", "quests")
+        world:advance(1)
+        tank:whisperFrom("Whisper Heal", "heal inv?")
+        assert.is_false(invited(tank, "Whisper Heal"))
+        for _, name in ipairs({ "Dps 1", "Dps 2", "Dps 3", "Quest Guy" }) do
+            tank:joins(name)
+        end
+        world:advance(5)
+        local replies = repliesTo(tank, "Whisper Heal")
+        assert.are.equal(2, #replies)
+        assert.truthy(replies[1]:find("That spot is held by an open invite", 1, true))
+        assert.truthy(replies[2]:find("is full now", 1, true))
     end)
 
     it("asks a whisperer told no in an earlier group their role again in a later one", function()
@@ -289,6 +453,7 @@ describe("whisper invites while building a group", function()
         lead:whisperFrom("Mage Guy", "can i join", "MAGE")
         assert.is_true(invited(lead, "Mage Guy"))
         assert.are.equal("D", lead.ns.Filler.roleOf("Mage Guy"))
+        world:advance(1)
         assert.truthy(repliesTo(lead, "Mage Guy")[1]:find("Inviting you as dps", 1, true))
         lead:whisperFrom("Pala Guy", "can i join", "PALADIN")
         assert.is_false(invited(lead, "Pala Guy"))

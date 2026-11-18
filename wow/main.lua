@@ -17,7 +17,7 @@ ns.addonName = addonName
 local function copyMembers(members)
     local copy = {}
     for i, member in ipairs(members) do
-        copy[i] = { name = member.name, roles = member.roles, level = member.level }
+        copy[i] = { name = member.name, roles = member.roles, level = member.level, class = member.class }
     end
     return copy
 end
@@ -139,7 +139,8 @@ local function queuedParty(entry)
         known[member.name] = true
         if inParty[member.name] then
             local roles = ns.PartyRoles.rolesOf(inParty[member.name])
-            members[#members + 1] = { name = member.name, roles = roles, level = inParty[member.name].level }
+            members[#members + 1] = { name = member.name, roles = roles, level = inParty[member.name].level,
+                class = inParty[member.name].classToken }
         elseif Group.isExpected(member.name) then
             members[#members + 1] = member
         end
@@ -149,7 +150,8 @@ local function queuedParty(entry)
             if not Filler.roleOf(member.name) and not ns.RoleSync.expected(member.name) then
                 return nil, "stranger"
             end
-            members[#members + 1] = { name = member.name, roles = ns.PartyRoles.rolesOf(member), level = member.level }
+            members[#members + 1] = { name = member.name, roles = ns.PartyRoles.rolesOf(member), level = member.level,
+                class = member.classToken }
         end
     end
     return members
@@ -237,7 +239,7 @@ local function syncEntry()
     local sameMembers = #members == #entry.members
     for i = 1, #members do
         sameMembers = sameMembers and entry.members[i] and entry.members[i].name == members[i].name
-            and entry.members[i].roles == members[i].roles
+            and entry.members[i].roles == members[i].roles and entry.members[i].level == members[i].level
     end
     -- The class wishes and level limit as they stand now go in the same
     -- update (one message), seated like the members and invites in it; while
@@ -434,6 +436,7 @@ local function onReady(selfName)
         language = ns.MatchLanguages.wireText(),
         lastSent = Comm.lastSent,
     })
+    ns.engine:setZone(ns.ZoneMap.myZone())
     ns.engine:start(false)
     ns.QuestQueue.start(selfName)
     ns.BgQueue.start(selfName)
@@ -609,6 +612,18 @@ ns.on("ADDON_LOADED", function(name)
     ns.Diagnostics.init()
     ns.QuestGroup.init()
     ns.Entrances.init()
+    ns.Matchmaker.zoneDistance = ns.ZoneMap.distance
+    ns.Matchmaker.levelRange = function(id)
+        local dungeon = ns.Dungeons.get(id)
+        return dungeon and dungeon.min and { min = dungeon.min, max = dungeon.max } or nil
+    end
+    local function zoneChanged()
+        if ns.engine then
+            ns.engine:setZone(ns.ZoneMap.myZone())
+        end
+    end
+    ns.on("PLAYER_ENTERING_WORLD", zoneChanged)
+    ns.on("ZONE_CHANGED_NEW_AREA", zoneChanged)
     ns.GroupPlaces.init()
     ns.InspectSpec.init()
     ns.Run.init()

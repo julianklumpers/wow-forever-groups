@@ -150,8 +150,17 @@ local function refreshDungeonsTab(y, state)
     ui.joinSummary:SetText(summary or "")
     ui.joinSummary:SetShown(summary ~= nil)
     Widgets.setEnabled(ui.join, engine ~= nil and ready)
-    ui.ready:SetText(L["Choose a role and at least one dungeon."])
-    ui.ready:SetShown(listed and not searching and not ready and (ui.hint:GetText() or "") == "")
+    -- WoW can't take an invite back: after Stop, whoever still accepts one
+    -- joins the party.
+    local stillOpen = not searching and ui.join:IsShown() and ns.Invites.held("filler") or 0
+    local noHint = (ui.hint:GetText() or "") == ""
+    if stillOpen > 0 then
+        ui.ready:SetText(string.format(
+            L["Invites still open in WoW: %d. They can't be taken back; whoever accepts joins your party."], stillOpen))
+    else
+        ui.ready:SetText(L["Choose a role and at least one dungeon."])
+    end
+    ui.ready:SetShown(noHint and (stillOpen > 0 or (listed and not searching and not ready)))
     ui.delist:SetShown(not ui.join:IsShown() and ns.GroupView.isListed()
         and (Party.inGroup() or ns.GroupView.isTracking()) and state ~= "member" and state ~= "raid")
     local leader = not full and ns.TakeLead.leader()
@@ -233,6 +242,7 @@ function Window.onJoinClicked()
             engine:leave()
         end
         ns.Filler.stop()
+        ns.GroupView.stopBuilding()
         ns.Apply.stopSeeking()
         ns.Listing.tick()
         ns.Input.run()

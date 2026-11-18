@@ -162,6 +162,7 @@ function Listing.checkApplicants()
         return
     end
     local dungeon = ns.Filler.dungeon()
+    local dungeons = ns.Filler.dungeonIds()
     local candidates, byName = {}, {}
     for _, id in ipairs(ids) do
         local infoOk, info = call("GetApplicantInfo", id)
@@ -176,7 +177,7 @@ function Listing.checkApplicants()
             end
             if roles ~= "" then
                 candidates[#candidates + 1] = {
-                    name = member.name, roles = roles, dungeons = { dungeon }, solo = true,
+                    name = member.name, roles = roles, dungeons = dungeons, solo = true,
                     level = tonumber(member.level), age = 0,
                     classToken = not ns.isSecret(member.class) and member.class or nil,
                 }
@@ -184,13 +185,21 @@ function Listing.checkApplicants()
             end
         end
     end
-    local entry = Dungeons.get(dungeon)
-    local picks = Fill.pick(candidates, {
-        missing = ns.Filler.stillNeeded(), dungeon = dungeon, exclude = ns.Filler.excluded(),
-        range = entry and entry.min and { min = entry.min, max = entry.max } or nil,
+    local ranges = {}
+    for _, id in ipairs(dungeons) do
+        local entry = Dungeons.get(id)
+        ranges[id] = entry and entry.min and { min = entry.min, max = entry.max } or nil
+    end
+    local plan = Fill.plan(candidates, {
+        missing = ns.Filler.stillNeeded(), dungeons = dungeons, exclude = ns.Filler.excluded(), ranges = ranges,
         places = ns.Filler.freePlaces(), levels = ns.PartyLevels.rules("dungeons"), avoid = ns.Filler.avoidClasses(),
-        prefer = ns.Filler.preferClasses(), near = ns.Filler.groupLevel(),
+        prefer = ns.Filler.preferClasses(), near = ns.Filler.groupLevel(), groupSteps = ns.Filler.groupSteps,
+        groupLevels = ns.Filler.groupLevels(),
     })
+    local picks = plan and plan.picks or {}
+    if not dungeon and #picks > 0 then
+        ns.Filler.choose(plan)
+    end
     for _, pick in ipairs(picks) do
         local id = byName[pick.name]
         local roleName = ns.Widgets.ROLE_NAMES[pick.role]

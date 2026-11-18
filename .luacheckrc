@@ -82,7 +82,7 @@ local wow_read_globals = {
     "IsInGroup",
     "IsInInstance",
     "GetBattlefieldStatus",
-    "GetMaxBattlefieldID", "ERR_GROUP_FULL", "C_PvP", "IsTrialAccount", "IsVeteranTrialAccount",
+    "GetMaxBattlefieldID", "ERR_GROUP_FULL", "ERR_INVITE_PLAYER_S", "C_PvP", "IsTrialAccount", "IsVeteranTrialAccount",
     "GetBattlefieldEstimatedWaitTime",
     "JoinChannelByName",
     "JoinTemporaryChannel",

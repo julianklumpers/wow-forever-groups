@@ -3113,6 +3113,534 @@ local function cmdRaid()
     log("INFO", "raid: turning the party into a raid in 1 s and back in 6 s, both from a timer")
 end
 
+function Extra.bossLocks(when)
+    log("INFO", "bosses %s: GetInstanceLockTimeRemaining = %s", when, probeCall("GetInstanceLockTimeRemaining"))
+    for i = 1, 8 do
+        log("INFO", "bosses %s: encounter %d = %s", when, i, probeCall("GetInstanceLockTimeRemainingEncounter", i))
+    end
+    log("INFO", "bosses %s: GetNumSavedInstances = %s", when, probeCall("GetNumSavedInstances"))
+end
+
+-- After /fgp bosses: asks the server for fresh instance info, and reads the
+-- lock info again after every boss kill seen for the next hour.
+function Extra.watchBosses()
+    if not Extra.bossFrame then
+        Extra.bossFrame = CreateFrame("Frame")
+        Extra.bossFrame:RegisterEvent("UPDATE_INSTANCE_INFO")
+        Extra.bossFrame:RegisterEvent("ENCOUNTER_END")
+        Extra.bossFrame:RegisterEvent("BOSS_KILL")
+        Extra.bossFrame:SetScript("OnEvent", function(_, event, ...)
+            if GetTime() > (Extra.bossWatchUntil or 0) then
+                return
+            end
+            if event == "UPDATE_INSTANCE_INFO" then
+                Extra.bossLocks("after UPDATE_INSTANCE_INFO")
+                return
+            end
+            log("INFO", "bosses: %s %s", event, dumpTable({ ... }))
+            C_Timer.After(2, function()
+                Extra.bossLocks("2 s after " .. event)
+                if _G.RequestRaidInfo then
+                    _G.RequestRaidInfo()
+                end
+            end)
+        end)
+    end
+    Extra.bossWatchUntil = GetTime() + 3600
+    if _G.RequestRaidInfo then
+        _G.RequestRaidInfo()
+    end
+    log("INFO", "bosses: asked the server for instance info; boss kills are watched for an hour")
+end
+
+-- /fgp bosses: inside a dungeon, does the client know which bosses of this
+-- instance are already down (also ones killed before the player joined)?
+function Extra.bosses()
+    local instanceInfo = { pcall(GetInstanceInfo) }
+    log("INFO", "bosses: GetInstanceInfo = %s", dumpTable({ unpack(instanceInfo, 2) }))
+    local difficulty = instanceInfo[5]
+    local map = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+    log("INFO", "bosses: map %s, IsInInstance %s", show(map), show(IsInInstance()))
+    for _, path in ipairs({ "C_EncounterJournal.IsEncounterComplete", "C_RaidLocks.IsEncounterComplete",
+        "C_EncounterJournal.GetEncountersOnMap", "GetInstanceLockTimeRemaining", "GetNumSavedInstances",
+        "GetSavedInstanceInfo", "GetInstanceLockTimeRemainingEncounter", "RequestRaidInfo",
+        "C_ScenarioInfo.GetScenarioInfo", "C_ScenarioInfo.GetCriteriaInfo" }) do
+        log("INFO", "bosses: %s %s", path, type(resolve(path)))
+    end
+    Extra.bossLocks("now")
+    Extra.watchBosses()
+    local count = resolve("GetNumSavedInstances")
+    local saved = count and select(2, pcall(count))
+    for i = 1, type(saved) == "number" and math.min(saved, 10) or 0 do
+        log("INFO", "bosses: GetSavedInstanceInfo(%d) = %s", i, probeCall("GetSavedInstanceInfo", i))
+    end
+    if map then
+        log("INFO", "bosses: GetEncountersOnMap(%s) = %s", show(map),
+            probeCall("C_EncounterJournal.GetEncountersOnMap", map))
+    end
+    local journal = map and EJ_GetInstanceForMap and select(2, pcall(EJ_GetInstanceForMap, map))
+    log("INFO", "bosses: EJ_GetInstanceForMap = %s", show(journal))
+    for i = 1, type(journal) == "number" and journal ~= 0 and 20 or 0 do
+        local ok, name, _, journalEncounter, _, _, _, dungeonEncounter = pcall(EJ_GetEncounterInfoByIndex, i, journal)
+        if not ok or not name then
+            break
+        end
+        log("INFO", "bosses: %d %s (journal %s, encounter %s): EJ complete %s, RaidLocks complete %s", i, show(name),
+            show(journalEncounter), show(dungeonEncounter),
+            probeCall("C_EncounterJournal.IsEncounterComplete", journalEncounter),
+            probeCall("C_RaidLocks.IsEncounterComplete", map, dungeonEncounter, difficulty))
+    end
+    Extra.bossScenario()
+    Extra.bossLfgDungeon(instanceInfo[2], instanceInfo[9])
+    Extra.bossListings()
+    Extra.bossUnits()
+    Extra.bossGlobals()
+end
+
+-- The objective tracker's source: a scenario with steps and criteria.
+function Extra.bossScenario()
+    log("INFO", "bosses: GetScenarioInfo %s | C_ScenarioInfo.GetScenarioInfo %s | GetScenarioStepInfo %s",
+        probeCall("GetScenarioInfo"), probeCall("C_ScenarioInfo.GetScenarioInfo"), probeCall("GetScenarioStepInfo"))
+    log("INFO", "bosses: C_ScenarioInfo.GetScenarioStepInfo %s", probeCall("C_ScenarioInfo.GetScenarioStepInfo"))
+    for i = 1, 10 do
+        local criteria = probeCall("C_ScenarioInfo.GetCriteriaInfo", i)
+        local old = probeCall("C_Scenario.GetCriteriaInfo", i)
+        if criteria ~= "(no returns)" and criteria ~= "nil" or old ~= "(no returns)" and old ~= "missing" then
+            log("INFO", "bosses: criteria %d: C_ScenarioInfo %s | C_Scenario %s", i, criteria, old)
+        end
+    end
+    log("INFO", "bosses: C_Scenario.IsInScenario %s, GetInfo %s", probeCall("C_Scenario.IsInScenario"),
+        probeCall("C_Scenario.GetInfo"))
+end
+
+-- The Dungeon Finder knows which bosses are down when it puts a player into
+-- a run in progress: GetLFGDungeonEncounterInfo's isKilled.
+function Extra.bossLfgDungeon(instanceName, instanceId)
+    local info = resolve("GetLFGDungeonInfo")
+    if type(info) ~= "function" then
+        log("FAIL", "bosses: GetLFGDungeonInfo missing")
+        return
+    end
+    local found = 0
+    for id = 1, 4000 do
+        local ok, name = pcall(info, id)
+        if ok and name and (name == instanceName or select(23, pcall(info, id)) == instanceId) then
+            found = found + 1
+            log("INFO", "bosses: LFG dungeon %d %s: map %s, encounters %s", id, show(name),
+                show(select(23, pcall(info, id))), probeCall("GetLFGDungeonNumEncounters", id))
+            for i = 1, 10 do
+                local encounter = probeCall("GetLFGDungeonEncounterInfo", id, i)
+                if encounter == "(no returns)" or encounter:find("^nil") then
+                    break
+                end
+                log("INFO", "bosses: LFG dungeon %d encounter %d = %s", id, i, encounter)
+            end
+        end
+    end
+    log("INFO", "bosses: %d LFG dungeons named %s or with map %s; GetPartyLFGID %s", found, show(instanceName),
+        show(instanceId), probeCall("GetPartyLFGID"))
+end
+
+-- A listed group's defeated bosses, as the Group Finder shows in a tooltip.
+function Extra.bossListings()
+    log("INFO", "bosses: HasActiveEntryInfo %s, GetActiveEntryInfo %s", probeCall("C_LFGList.HasActiveEntryInfo"),
+        probeCall("C_LFGList.GetActiveEntryInfo"))
+    local ok, _, results = pcall(C_LFGList.GetSearchResults)
+    local shown = 0
+    for _, id in ipairs(ok and type(results) == "table" and results or {}) do
+        local encounters = probeCall("C_LFGList.GetSearchResultEncounterInfo", id)
+        if encounters ~= "(no returns)" and encounters ~= "nil" and encounters ~= "{}" and shown < 15 then
+            shown = shown + 1
+            log("INFO", "bosses: listing %s defeated %s", show(id), encounters)
+        end
+    end
+    log("INFO", "bosses: %d of %d Group Finder results tell defeated bosses (GetSearchResultEncounterInfo %s)", shown,
+        ok and type(results) == "table" and #results or 0, type(resolve("C_LFGList.GetSearchResultEncounterInfo")))
+end
+
+-- Target, mouseover and nameplates: a boss corpse in sight says dead.
+function Extra.bossUnits()
+    local units = { "target", "mouseover", "focus" }
+    for i = 1, 40 do
+        units[#units + 1] = "nameplate" .. i
+    end
+    local identities = 0
+    for _, unit in ipairs(units) do
+        if UnitExists(unit) then
+            log("INFO", "bosses: %s boss mob %s, quest boss %s", unit, probeCall("UnitIsBossMob", unit),
+                probeCall("UnitIsQuestBoss", unit))
+            log("INFO", "bosses: %s %s dead %s classification %s level %s guid %s", unit, show(UnitName(unit)),
+                show(_G.UnitIsDead(unit)), show(_G.UnitClassification(unit)), show(UnitLevel(unit)),
+                show(UnitGUID(unit)))
+            if unit == "target" or unit == "mouseover" or (not UnitIsPlayer(unit) and identities < 2) then
+                identities = identities + 1
+                Extra.bossIdentity(unit)
+            end
+        end
+    end
+end
+
+-- With name and GUID secret: what else tells which NPC this is (its 3D
+-- model, the tooltip, creature type, health)?
+function Extra.bossIdentity(unit)
+    log("INFO", "bosses: %s identity secret %s, creature type %s, family %s, health max %s, sex %s", unit,
+        probeCall("C_Secrets.ShouldUnitIdentityBeSecret", unit), probeCall("UnitCreatureType", unit),
+        probeCall("UnitCreatureFamily", unit), probeCall("UnitHealthMax", unit), probeCall("UnitSex", unit))
+    local ok, tooltip = pcall(resolve("C_TooltipInfo.GetUnit"), unit)
+    for i, line in ipairs(ok and type(tooltip) == "table" and tooltip.lines or {}) do
+        log("INFO", "bosses: %s tooltip line %d: %s", unit, i, show(line.leftText))
+    end
+    log("INFO", "bosses: %s tooltip %s", unit, ok and type(tooltip) == "table" and ("id " .. show(tooltip.id)
+        .. ", guid " .. show(tooltip.guid)) or show(tooltip))
+    Extra.models = Extra.models or {}
+    local model = Extra.models[unit] or CreateFrame("PlayerModel", nil, UIParent)
+    Extra.models[unit] = model
+    model:SetSize(64, 64)
+    model:SetPoint("CENTER")
+    model:SetAlpha(0)
+    model:Show()
+    local set = pcall(model.SetUnit, model, unit)
+    local function read(when)
+        for _, method in ipairs({ "GetModelFileID", "GetDisplayInfo", "GetCreatureDisplayID", "GetModel" }) do
+            if type(model[method]) == "function" then
+                local okRead, value = pcall(model[method], model)
+                log("INFO", "bosses: %s model %s (%s) = %s", unit, method, when,
+                    okRead and show(value) or "error: " .. show(value))
+            end
+        end
+    end
+    log("INFO", "bosses: %s model SetUnit ok %s", unit, show(set))
+    read("now")
+    C_Timer.After(1, function()
+        read("after 1 s")
+        model:Hide()
+    end)
+end
+
+-- /fgp zones: every zone with its continent and where it lies on it, how
+-- far each is from a few dungeon entrances, and whether the zone names the
+-- Group Finder gives (areaName) are found among the map names.
+Extra.ENTRANCES = {
+    { "Ruins of Lordaeron", 1420, 0.634, 0.674 }, { "Ragefire Chasm", 1454, 0.526, 0.490 },
+    { "Wailing Caverns", 1413, 0.460, 0.364 }, { "The Deadmines", 1436, 0.425, 0.717 },
+}
+
+function Extra.continentOf(map)
+    local continent = Enum and Enum.UIMapType and Enum.UIMapType.Continent or 2
+    local current, guard = map, 0
+    while current and current ~= 0 and guard < 10 do
+        local info = C_Map.GetMapInfo(current)
+        if not info then
+            return nil
+        end
+        if info.mapType == continent then
+            return current
+        end
+        current, guard = info.parentMapID, guard + 1
+    end
+    return nil
+end
+
+function Extra.zoneMaps()
+    local zones, seen = {}, {}
+    local zoneType = Enum and Enum.UIMapType and Enum.UIMapType.Zone or 3
+    for _, root in ipairs({ 946, 947, 1414, 1415 }) do
+        local ok, children = pcall(C_Map.GetMapChildrenInfo, root, zoneType, true)
+        for _, child in ipairs(ok and type(children) == "table" and children or {}) do
+            if not seen[child.mapID] then
+                seen[child.mapID] = true
+                local continent = Extra.continentOf(child.mapID)
+                local rect = continent and { pcall(C_Map.GetMapRectOnMap, child.mapID, continent) }
+                zones[#zones + 1] = { id = child.mapID, name = child.name, continent = continent,
+                    rect = rect and rect[1] and { rect[2], rect[3], rect[4], rect[5] } or nil,
+                    error = rect and not rect[1] and show(rect[2]) or nil }
+            end
+        end
+    end
+    table.sort(zones, function(a, b)
+        return (a.continent or 0) < (b.continent or 0) or (a.continent == b.continent and a.name < b.name)
+    end)
+    return zones
+end
+
+function Extra.yardsTo(zone, continent, px, py)
+    local r = zone.rect
+    if not r or zone.continent ~= continent then
+        return nil
+    end
+    local minX, maxX, minY, maxY = r[1], r[2], r[3], r[4]
+    local dx = math.max(minX - px, 0, px - maxX)
+    local dy = math.max(minY - py, 0, py - maxY)
+    local ok, width, height = pcall(C_Map.GetMapWorldSize, continent)
+    if not ok or not width or width == 0 then
+        return nil
+    end
+    return math.floor(math.sqrt((dx * width) ^ 2 + (dy * height) ^ 2))
+end
+
+function Extra.zones()
+    local zones = Extra.zoneMaps()
+    log("INFO", "zones: GetMapRectOnMap %s, GetMapWorldSize %s, %d zone maps", type(C_Map.GetMapRectOnMap),
+        type(C_Map.GetMapWorldSize), #zones)
+    local byName, line = {}, {}
+    for _, zone in ipairs(zones) do
+        byName[zone.name] = zone
+        local r = zone.rect
+        line[#line + 1] = string.format("%d %s c%s %s", zone.id, zone.name, tostring(zone.continent),
+            r and string.format("[%.2f-%.2f,%.2f-%.2f]", r[1], r[2], r[3], r[4]) or ("no rect " .. (zone.error or "")))
+        if #line == 4 then
+            log("INFO", "zones: %s", table.concat(line, " | "))
+            line = {}
+        end
+    end
+    if #line > 0 then
+        log("INFO", "zones: %s", table.concat(line, " | "))
+    end
+    for _, continent in ipairs({ 1414, 1415, 947 }) do
+        log("INFO", "zones: continent %d %s, world size %s", continent,
+            show((C_Map.GetMapInfo(continent) or {}).name), probeCall("C_Map.GetMapWorldSize", continent))
+    end
+    for _, entrance in ipairs(Extra.ENTRANCES) do
+        local continent = Extra.continentOf(entrance[2])
+        local ok, minX, maxX, minY, maxY = pcall(C_Map.GetMapRectOnMap, entrance[2], continent or 0)
+        if ok and minX then
+            local px, py = minX + entrance[3] * (maxX - minX), minY + entrance[4] * (maxY - minY)
+            local near = {}
+            for _, zone in ipairs(zones) do
+                local yards = Extra.yardsTo(zone, continent, px, py)
+                if yards then
+                    near[#near + 1] = { zone.name, yards }
+                end
+            end
+            table.sort(near, function(a, b)
+                return a[2] < b[2]
+            end)
+            local parts = {}
+            for i = 1, math.min(14, #near) do
+                parts[#parts + 1] = near[i][1] .. " " .. near[i][2]
+            end
+            log("INFO", "zones: nearest to %s (continent %s): %s", entrance[1], tostring(continent),
+                table.concat(parts, ", "))
+        else
+            log("FAIL", "zones: no place for the %s entrance on continent %s", entrance[1], tostring(continent))
+        end
+    end
+    local where = C_Map.GetBestMapForUnit("player")
+    log("INFO", "zones: you are in GetZoneText %s, GetRealZoneText %s, map %s %s", show(_G.GetZoneText()),
+        show(_G.GetRealZoneText()), show(where), show(where and (C_Map.GetMapInfo(where) or {}).name))
+    local ok, _, results = pcall(C_LFGList.GetSearchResults)
+    local names, found, missing = {}, 0, {}
+    for _, id in ipairs(ok and type(results) == "table" and results or {}) do
+        local okInfo, info = pcall(C_LFGList.GetSearchResultInfo, id)
+        for i = 1, okInfo and info and info.numMembers or 0 do
+            local okPlayer, player = pcall(C_LFGList.GetSearchResultPlayerInfo, id, i)
+            local area = okPlayer and type(player) == "table" and player.areaName
+            if type(area) == "string" and not isSecret(area) and not names[area] then
+                names[area] = true
+                if byName[area] then
+                    found = found + 1
+                else
+                    missing[#missing + 1] = area
+                end
+            end
+        end
+    end
+    log("INFO", "zones: Group Finder areas: %d found on the map, %d not: %s", found, #missing,
+        table.concat(missing, ", "))
+end
+
+-- /fgp zonegraph: which zones border each other, from the zone WoW names at
+-- each point of a grid over a continent (C_Map.GetMapInfoAtPosition), and
+-- the rings of zones around a few dungeons' entrances.
+function Extra.zoneAt(continent, x, y)
+    local zoneType = Enum and Enum.UIMapType and Enum.UIMapType.Zone or 3
+    local ok, info = pcall(C_Map.GetMapInfoAtPosition, continent, x, y)
+    local guard = 0
+    while ok and info and info.mapType ~= zoneType and info.parentMapID and info.parentMapID ~= 0 and guard < 5 do
+        if info.mapType == (Enum and Enum.UIMapType and Enum.UIMapType.Continent or 2) then
+            return nil
+        end
+        info, guard = C_Map.GetMapInfo(info.parentMapID), guard + 1
+    end
+    return ok and info and info.mapType == zoneType and info.mapID or nil
+end
+
+function Extra.zoneGraph()
+    if type(C_Map.GetMapInfoAtPosition) ~= "function" then
+        log("FAIL", "zonegraph: C_Map.GetMapInfoAtPosition missing")
+        return
+    end
+    Extra.neighbors = {}
+    for _, continent in ipairs({ 1414, 1415 }) do
+        local width, height = 150, 100
+        local started = _G.debugprofilestop()
+        local grid, cells, empty = {}, {}, 0
+        for gy = 1, height do
+            grid[gy] = {}
+            for gx = 1, width do
+                local zone = Extra.zoneAt(continent, (gx - 0.5) / width, (gy - 0.5) / height)
+                grid[gy][gx] = zone or false
+                if zone then
+                    cells[zone] = (cells[zone] or 0) + 1
+                else
+                    empty = empty + 1
+                end
+            end
+        end
+        local took = _G.debugprofilestop() - started
+        for gy = 1, height do
+            for gx = 1, width do
+                local here = grid[gy][gx]
+                for _, other in ipairs({ grid[gy][gx + 1], grid[gy + 1] and grid[gy + 1][gx] }) do
+                    if here and other and other ~= here then
+                        Extra.neighbors[here] = Extra.neighbors[here] or {}
+                        Extra.neighbors[other] = Extra.neighbors[other] or {}
+                        Extra.neighbors[here][other], Extra.neighbors[other][here] = true, true
+                    end
+                end
+            end
+        end
+        local count = 0
+        for _ in pairs(cells) do
+            count = count + 1
+        end
+        log("INFO", "zonegraph: continent %d: %dx%d points in %.0f ms, %d zones, %d points on no zone", continent,
+            width, height, took, count, empty)
+        for zone, n in pairs(cells) do
+            local names = {}
+            for other in pairs(Extra.neighbors[zone] or {}) do
+                names[#names + 1] = (C_Map.GetMapInfo(other) or {}).name or tostring(other)
+            end
+            table.sort(names)
+            log("INFO", "zonegraph: %s (%d, %d points): %s", (C_Map.GetMapInfo(zone) or {}).name or "?", zone, n,
+                table.concat(names, ", "))
+        end
+    end
+    for _, entrance in ipairs(Extra.ENTRANCES) do
+        local continent = Extra.continentOf(entrance[2])
+        local ok, minX, maxX, minY, maxY = pcall(C_Map.GetMapRectOnMap, entrance[2], continent or 0)
+        local start = ok and minX and Extra.zoneAt(continent, minX + entrance[3] * (maxX - minX),
+            minY + entrance[4] * (maxY - minY))
+        local ring, seen, rings = { start }, { [start or 0] = true }, {}
+        for hop = 0, 4 do
+            local names, nextRing = {}, {}
+            for _, zone in ipairs(ring) do
+                names[#names + 1] = (C_Map.GetMapInfo(zone) or {}).name or tostring(zone)
+                for other in pairs(Extra.neighbors[zone] or {}) do
+                    if not seen[other] then
+                        seen[other] = true
+                        nextRing[#nextRing + 1] = other
+                    end
+                end
+            end
+            rings[#rings + 1] = hop .. ": " .. table.concat(names, ", ")
+            ring = nextRing
+        end
+        log("INFO", "zonegraph: rings around %s: %s", entrance[1], table.concat(rings, " | "))
+    end
+end
+
+-- /fgp invitewatch [minutes]: how WoW shows what becomes of a party invite
+-- (accepted, declined, ignored until it expires, refused as full): every
+-- invite sent (ours and the addon's), system and UI messages, the party's size
+-- and names, and the invite events, with seconds since each invite went out.
+-- First the global strings about invites, so the messages can be matched.
+function Extra.inviteWatch(rest)
+    local minutes = tonumber(rest and rest:match("%d+")) or 5
+    local globals = {}
+    for key, value in pairs(_G) do
+        if type(key) == "string" and type(value) == "string"
+            and (key:find("INVITE") or key:find("DECLINE") or key:find("GROUP_FULL") or key:find("PARTY_FULL")) then
+            globals[#globals + 1] = key .. " = " .. value
+        end
+    end
+    table.sort(globals)
+    for _, line in ipairs(globals) do
+        log("INFO", "invitewatch string: %s", line)
+    end
+    Extra.inviteWatchUntil = GetTime() + minutes * 60
+    Extra.invitesSent = Extra.invitesSent or {}
+    local function since()
+        local parts = {}
+        for name, at in pairs(Extra.invitesSent) do
+            parts[#parts + 1] = string.format("%s +%.1fs", name, GetTime() - at)
+        end
+        table.sort(parts)
+        return #parts > 0 and table.concat(parts, ", ") or "no invites yet"
+    end
+    local function roster()
+        local names = {}
+        for i = 1, 4 do
+            local name = UnitName("party" .. i)
+            if name then
+                names[#names + 1] = name
+            end
+        end
+        return string.format("%s in the group (%s)", show(GetNumGroupMembers()), table.concat(names, ", "))
+    end
+    if not Extra.inviteFrame then
+        Extra.inviteFrame = CreateFrame("Frame")
+        for _, event in ipairs({ "CHAT_MSG_SYSTEM", "UI_ERROR_MESSAGE", "UI_INFO_MESSAGE", "GROUP_ROSTER_UPDATE",
+            "PARTY_INVITE_REQUEST", "PARTY_INVITE_CANCEL", "GROUP_INVITE_CONFIRMATION", "PARTY_LEADER_CHANGED",
+            "GROUP_JOINED", "GROUP_LEFT" }) do
+            pcall(Extra.inviteFrame.RegisterEvent, Extra.inviteFrame, event)
+        end
+        Extra.inviteFrame:SetScript("OnEvent", function(_, event, ...)
+            if GetTime() > (Extra.inviteWatchUntil or 0) then
+                return
+            end
+            log("EVENT", "invitewatch %s: %s | %s | invites: %s", event, showAll(...), roster(), since())
+        end)
+        local function hook(owner, key, label)
+            if type(owner) == "table" and type(owner[key]) == "function" and type(hooksecurefunc) == "function" then
+                hooksecurefunc(owner, key, function(name)
+                    if GetTime() > (Extra.inviteWatchUntil or 0) then
+                        return
+                    end
+                    Extra.invitesSent[tostring(name)] = GetTime()
+                    log("EVENT", "invitewatch %s(%s) | %s", label, show(name), roster())
+                end)
+            end
+        end
+        hook(C_PartyInfo, "InviteUnit", "C_PartyInfo.InviteUnit")
+        hook(_G, "InviteUnit", "InviteUnit")
+    end
+    log("INFO", "invitewatch: watching for %d minutes. %s. Invite players and have one accept, one decline, one "
+        .. "ignore it; invite into a full party too. Then /reload so the log is written.", minutes, roster())
+end
+
+-- Every global and C_ namespace function whose name hints at bosses or
+-- progress, to find what this client has.
+function Extra.bossGlobals()
+    local hits = {}
+    local pattern = { "Encounter", "Boss", "Scenario", "Defeat", "Killed", "Progress", "Lockout", "Objective",
+        "InstanceLock", "Dungeon" }
+    local function matches(name)
+        for _, word in ipairs(pattern) do
+            if name:find(word) then
+                return true
+            end
+        end
+    end
+    for key, value in pairs(_G) do
+        if type(key) == "string" then
+            if type(value) == "function" and matches(key) then
+                hits[#hits + 1] = key
+            elseif type(value) == "table" and key:find("^C_") then
+                for inner, fn in pairs(value) do
+                    if type(inner) == "string" and type(fn) == "function" and (matches(key) or matches(inner)) then
+                        hits[#hits + 1] = key .. "." .. inner
+                    end
+                end
+            end
+        end
+    end
+    table.sort(hits)
+    for i = 1, #hits, 8 do
+        log("INFO", "bosses: functions %s", table.concat(hits, ", ", i, math.min(i + 7, #hits)))
+    end
+end
+
 -- /fgp rescind <Name> [expire]: invite a player, then take the invite back
 -- after 5 s with C_PartyInfo.UninviteUnit (or, with "expire", leave it to
 -- see how long WoW keeps it open); every system message and roster change
@@ -3357,6 +3885,12 @@ local COMMANDS = {
     { "pvp", "battlegrounds: functions, the battlegrounds and the Group Finder's battleground activities", cmdPvp },
     { "mask", "draw art with rounded-corner mask candidates, to see which one fits the frames", cmdMask },
     { "scrollbar", "draw WoW's scroll bar templates, to see which one Who is looking can use", Extra.scrollbar },
+    { "bosses", "inside a dungeon: which bosses the client says are already down", Extra.bosses },
+    { "zones", "every zone, where it lies, nearest zones to some dungeons, Group Finder zone names", Extra.zones },
+    { "zonegraph", "which zones border each other (from a grid over each continent), rings around dungeons",
+        Extra.zoneGraph },
+    { "invitewatch", "[minutes] what becomes of party invites: messages, events, party size (default 5 min)",
+        Extra.inviteWatch },
     { "raid", "as party leader outside an instance: turn the party into a raid and back, from a timer", cmdRaid },
     { "rescind", "[Name] [expire] invite your target (or Name), take it back on a key press after 5 s", cmdRescind },
     { "autoaccept", "[off] accept the next party invite by itself, without a click (10 min)", cmdAutoAccept },

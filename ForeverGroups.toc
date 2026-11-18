@@ -30,6 +30,7 @@ core\levels.lua
 core\languages.lua
 core\protocol.lua
 core\fill.lua
+core\zones.lua
 core\matchmaker.lua
 core\questmatch.lua
 core\bgmatch.lua
@@ -64,6 +65,7 @@ wow\lfglist.lua
 wow\quests.lua
 wow\questshare.lua
 wow\entrances.lua
+wow\zonemap.lua
 wow\groupplaces.lua
 wow\rolesync.lua
 wow\partyroles.lua

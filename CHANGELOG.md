@@ -2,6 +2,72 @@
 
 ## Unreleased
 
+- The class menus (the class choices per place and the Classes box in Who is looking) group the classes under
+  Plate, Mail, Leather and Cloth, by the armour they wear at your level: below 40 Warriors and Paladins are under
+  Mail and Hunters and Shamans under Leather. A click on a header ticks all its classes, or clears them.
+- With several dungeons ticked, Forever Groups now picks the one that suits the group best with the players
+  available right now: first the one whose tank and healer places can be filled, then the one with the fewest
+  places left open, then the shortest walk for the group's furthest player (you and your party members included),
+  then the levels closest to the middle of the dungeon's range. Before, it took the dungeon with the most players
+  and, on a tie, the lowest one in the list. The log says why ("Chose Shadowfang Keep: 4 of 4 places filled now,
+  the furthest player 1 zone away, levels 1.4 from its middle.").
+- Join group compares the listed groups with building your own: a group is asked when it turns out at least as
+  well (its places left after you, filled from who is listed now; its walk and levels), and your own group is
+  built at once when that suits better. Before, groups were asked for the first minute in any case. A group listed
+  for several of your dungeons is asked for the one that suits best.
+- Forever Groups players in the queue are looked at first, but no longer waited for: a possible partner gets one
+  matchmaking round (about 9 seconds instead of 20), and a place a Forever Groups player in the queue can take is
+  kept free for that round (was 20 seconds) and then for as long as the group proposed to them is open, until they
+  accept, decline or let it lapse. With no proposal in that round the Group Finder fills the place.
+- Of the same players, a group from the Forever Groups queue goes to the dungeon with the shortest walk, then the
+  levels that suit it best (before: the first dungeon by its number).
+- A party in the queue now sends its members' classes, so no Forever Groups player of the same class joins in the
+  same role as a friend in your party (as for Group Finder players). Older versions ignore them.
+- Fixed: a player who applied to your group while it was listed for several dungeons was never invited; now they
+  count for each of those dungeons, and inviting them settles the dungeon.
+- Fixed: a group formed while you waited inside the dungeon is no longer taken for a new group after a /reload, which
+  put the bosses down back to 0.
+- Whispers while every place is held by an open invite are no longer met with silence: the player hears that the
+  spot is held and is invited as soon as it frees up (or told what's still needed if their role gets taken, or
+  that the group is full). A later "didn't get inv" no longer gets the role question when they named their role
+  already, an invite WoW turns down puts them back on the list, and "Inviting you" is said once, only when WoW
+  confirms the invite went out. The new answer can be changed or turned off with the other whisper texts.
+- A replacement's invite whisper says "group is inside" only when everyone in the group is inside the dungeon,
+  not just you.
+- No second "Group complete … Meet at the entrance" in party chat when a replacement completes the group again:
+  the group met already.
+- After WoW says "Your party is full", Forever Groups no longer tries again every 10 seconds: it invites again as
+  soon as WoW tells a place freed (a decline, an invite that expired, or someone joining or leaving).
+- An invited player who doesn't answer now keeps their place until WoW drops the invite, instead of being given up
+  on after 30 seconds while WoW still held the place for them. WoW reports an unanswered invite as declined after
+  60 seconds, which frees the place right then (and counts as no answer); a decline frees it at once. The Quests
+  and Battlegrounds finders keep the place 62 seconds too.
+- Fixed: a player who joined your party before WoW knew their level stayed in the queue as level 0; their level is
+  now updated once it is known.
+- Players close to the dungeon go first. Forever Groups reads from WoW's map which zones border each other, and
+  counts how many zones a player is away from the dungeon's own zone. Of the players who fit, the closest is invited
+  first; one further away waits 15 seconds for each zone beyond the ones bordering the dungeon (another continent
+  last), so someone closer who shows up meanwhile gets the place. The same goes for Forever Groups players in the
+  queue (who now send the zone they are in), and when you join a listed group, the one closest to the dungeon is
+  asked first. Players who whisper you are invited at once, as before.
+- A replacement from the Group Finder is now of another class than the group has when one is listed, as after
+  the first 5 minutes of building a group; it still never waits for one.
+- A player who whispered you and was still asked for their role, or waiting for a place, when your group filled
+  up now gets a whisper that the group is full ("Sorry, our group for {dungeon} is full now. Good luck!"; the text
+  can be changed or turned off with the other answers).
+- Fixed: Forever Groups no longer shares your dungeon quests by itself when someone leaves the group. It shares
+  when someone new joins; after a run the others had their quests done and turned in, so they seemed to lack them
+  and got them shared again.
+- Fixed: a /reload or relog in a group no longer makes Forever Groups forget that group. While loading WoW may
+  briefly report no group (and no instance), which put the bosses down back to 0, shared the dungeon quests and
+  asked the party for theirs again (also when the run was over), and could drop the agreed roles and the group
+  followed (also when a party member's name takes longer than 10 seconds to load). Shares turned down as too far
+  away or busy are logged.
+- Fixed: Stop while a group is still being built lets go of that group. Invites sent before the stop can't be taken
+  back, so whoever accepts one still joins your party, but Forever Groups no longer follows it: no "Find replacement"
+  in place of Stop (a second click no longer queued and listed the group again), no "Group complete!", waypoint or
+  quest sharing. The window says how many of those invites WoW still holds open. Stopping a replacement search for a
+  group that was complete keeps following it.
 - Fixed: other addons (ForeverLFG, LFGForever) and WoW's own Group Finder window no longer upset Forever Groups'
   Group Finder results. Their searches count against the server's limit, so ours are no longer refused after
   theirs; their results are added to ours without removing any, never count as a fresh search, and bring in new

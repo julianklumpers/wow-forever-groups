@@ -521,6 +521,49 @@ describe("WoW UI", function()
         assert.are.equal("DAMAGER", leader.roles["Friend Person"])
     end)
 
+    it("gives the matchmaker each dungeon's level range from the Group Finder", function()
+        local _, client = connected("Tanky Mctank")
+        assert.are.same({ min = 17, max = 26 }, client.ns.Matchmaker.levelRange("5"))
+        assert.is_nil(client.ns.Matchmaker.levelRange("nope"))
+    end)
+
+    it("sends the class of each party member with the queue entry", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank")
+        local other = world:addClient("Dps One")
+        leader.party, leader.isLeader = { "Friend Person" }, true
+        leader.partyClasses["Friend Person"] = "PRIEST"
+        world:advance(CONNECT)
+        leader:slash("/dq")
+        leader:click("CheckButton", "Tank")
+        leader:click("Button", "Find group")
+        world:advance(2)
+        assert.are.equal("PRIEST", leader.ns.engine.myEntry.members[2].class)
+        assert.are.equal("PRIEST", other.ns.engine.queue.entries["Tanky Mctank"].members[2].class)
+        leader.roles["Friend Person"] = "HEALER"
+        leader:fire("ROLE_CHANGED_INFORM")
+        world:advance(1)
+        assert.are.equal("H", leader.ns.engine.myEntry.members[2].roles)
+        assert.are.equal("PRIEST", leader.ns.engine.myEntry.members[2].class)
+        local saved = leader:logout()
+        assert.are.equal("PRIEST", saved.charDb.queue.members[2].class)
+    end)
+
+    it("updates a party member's level once WoW knows it", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank")
+        leader.party, leader.isLeader = { "Friend Person" }, true
+        leader.partyLevels = { ["Friend Person"] = 0 }
+        world:advance(CONNECT)
+        leader:slash("/dq")
+        leader:click("CheckButton", "Tank")
+        leader:click("Button", "Find group")
+        assert.are.equal(0, leader.ns.engine.myEntry.members[2].level)
+        leader.partyLevels["Friend Person"] = 16
+        world:advance(6)
+        assert.are.equal(16, leader.ns.engine.myEntry.members[2].level)
+    end)
+
     it("follows a party member who switches roles while queued", function()
         local world = World.new()
         local leader = world:addClient("Tanky Mctank")

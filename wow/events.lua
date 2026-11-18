@@ -24,9 +24,17 @@ local function readable(...)
     return n, args
 end
 
+-- ns.inWorld: the first PLAYER_ENTERING_WORLD after loading came. Before it
+-- WoW may report no group (and no instance) for a moment, so nothing that
+-- belongs to the group is let go on that.
+ns.inWorld = false
+
 -- One failing handler must not stop the others for the same event; the
 -- error still goes to WoW's error handler.
 frame:SetScript("OnEvent", function(_, event, ...)
+    if event == "PLAYER_ENTERING_WORLD" then
+        ns.inWorld = true
+    end
     local n, args = readable(...)
     if ns.Demo and ns.Demo.isOn() and not ns.Demo.passes(event) then
         return

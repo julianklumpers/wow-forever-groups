@@ -2,6 +2,7 @@ local _, ns = ...
 ns = ns or {}
 
 local Roles = ns.Roles or require("core.roles")
+local Fill = ns.Fill or require("core.fill")
 
 -- Chooses groups listed in WoW's Group Finder to apply to.
 -- A group: { id, leader, dungeons = { ... }, remaining = { T, H, D }, age }.
@@ -19,14 +20,23 @@ local function openSlots(group)
     return group.remaining.T + group.remaining.H + group.remaining.D
 end
 
--- The first of the group's dungeons that the player wants, or nil.
-local function shared(group, wanted)
+-- The group's dungeon to ask for: of those the player wants, the first, or
+-- with `score` (function(group, dungeon, role) -> Fill.score) the one that
+-- suits best; nil when the player wants none. Also returns its score.
+local function shared(group, wanted, score, role)
+    local best, bestScore
     for _, id in ipairs(group.dungeons) do
         if wanted[id] then
-            return id
+            if not score then
+                return id
+            end
+            local this = score(group, id, role)
+            if not best or Fill.better(this, bestScore) then
+                best, bestScore = id, this
+            end
         end
     end
-    return nil
+    return best, bestScore
 end
 
 local ASK_ORDER = { "T", "H", "D" }
@@ -55,27 +65,39 @@ function LfgPick.askRole(roles, remaining)
 end
 
 -- opts: roles ("D", "TD"), dungeons (set of ids), exclude (set of group ids),
--- max. Returns up to max { id, role, tank, healer, dps }: the groups that
--- need one of the roles; listings up for half an hour or more last; then the
+-- max, score (function(group, dungeon, role) -> Fill.score: how the group
+-- would turn out with the player in it, from who is available now;
+-- optional), steps (function(group, dungeon) -> zones between the group's
+-- furthest member and the dungeon, or nil when not known; optional). Returns
+-- up to max { id, role, tank, healer, dps, score }: the groups that need one
+-- of the roles; listings up for half an hour or more last; then the group
+-- that would turn out best, then the one closest to the dungeon, then the
 -- nearest to full first (they start soonest), then the most recently listed.
 -- role (and the one flag set) is the one role offered (LfgPick.askRole).
 function LfgPick.groupsToApply(groups, opts)
     local exclude = opts.exclude or {}
     local candidates = {}
     for _, group in ipairs(groups) do
-        local dungeon = not exclude[group.id] and shared(group, opts.dungeons)
+        local role = not exclude[group.id] and LfgPick.askRole(opts.roles, group.remaining)
+        local dungeon, score
+        if role and group.remaining[role] > 0 then
+            dungeon, score = shared(group, opts.dungeons, opts.score, role)
+        end
         if dungeon then
-            local role = LfgPick.askRole(opts.roles, group.remaining)
-            if role and group.remaining[role] > 0 then
-                candidates[#candidates + 1] = { group = group, role = role, offer = { [role] = true },
-                    dungeon = dungeon }
-            end
+            candidates[#candidates + 1] = { group = group, role = role, offer = { [role] = true },
+                dungeon = dungeon, score = score, steps = opts.steps and opts.steps(group, dungeon) or math.huge }
         end
     end
     table.sort(candidates, function(a, b)
         local oldA, oldB = LfgPick.isOld(a.group), LfgPick.isOld(b.group)
         if oldA ~= oldB then
             return oldB
+        end
+        if a.score and (Fill.better(a.score, b.score) or Fill.better(b.score, a.score)) then
+            return Fill.better(a.score, b.score)
+        end
+        if a.steps ~= b.steps then
+            return a.steps < b.steps
         end
         local sa, sb = openSlots(a.group), openSlots(b.group)
         if sa ~= sb then
@@ -90,7 +112,7 @@ function LfgPick.groupsToApply(groups, opts)
     for i = 1, math.min(opts.max or #candidates, #candidates) do
         local c = candidates[i]
         result[i] = { id = c.group.id, leader = c.group.leader, dungeon = c.dungeon, role = c.role,
-            tank = c.offer.T == true, healer = c.offer.H == true, dps = c.offer.D == true }
+            tank = c.offer.T == true, healer = c.offer.H == true, dps = c.offer.D == true, score = c.score }
     end
     return result
 end

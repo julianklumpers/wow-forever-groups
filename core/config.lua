@@ -7,6 +7,9 @@ local Config = {
     RESTORE_WINDOW = 900,
     WARMUP = 10,
     MATCH_INTERVAL = 5,
+    -- One matchmaking round as a client sees it: a Forever Groups player who
+    -- may fit is given this long before the Group Finder fills their place.
+    MATCH_ROUND = 9,
     ALIVE_INTERVAL = 10,
     ALIVE_TIMEOUT = 25,
     ALIVE_RANKS = 3,

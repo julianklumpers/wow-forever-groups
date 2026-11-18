@@ -13,7 +13,9 @@ local Log = ns.Log
 local QuestFinder = {}
 
 local STALE = 20
-local INVITE_TIMEOUT = 30
+-- An invited player keeps their place until they answer or WoW drops the
+-- invite (60 s, a little slack): nobody else can have it meanwhile.
+local INVITE_TIMEOUT = 62
 local PARTY_SIZE = 5
 -- One leader at a time, the next after this long without an invite.
 local MAX_ASKS = 1

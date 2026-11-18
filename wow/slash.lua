@@ -104,6 +104,7 @@ end
 local function cmdLeave()
     local filling = ns.Filler.isActive()
     ns.Filler.stop(true)
+    ns.GroupView.stopBuilding()
     ns.Apply.stopSeeking()
     ns.Listing.tick()
     ns.Input.run()
@@ -209,6 +210,7 @@ end
 local function cmdFill(rest)
     if string.lower(trim(rest)) == "stop" then
         ns.Filler.stop()
+        ns.GroupView.stopBuilding()
         return
     end
     ns.Window.startFill()

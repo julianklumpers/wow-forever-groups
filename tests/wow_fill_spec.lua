@@ -64,7 +64,15 @@ describe("Filling from WoW's Group Finder", function()
         end
     end)
 
-    it("gives a freed role to a Forever Groups player in the queue before the Group Finder", function()
+    local function invitedNames(client)
+        local set = {}
+        for _, name in ipairs(client.invites) do
+            set[name] = true
+        end
+        return set
+    end
+
+    local function freedForAddon()
         local world = World.new()
         local tank = world:addClient("Tanky Mctank", { level = 20 })
         local addon = world:addClient("Addon Dps", { level = 20 })
@@ -85,9 +93,88 @@ describe("Filling from WoW's Group Finder", function()
         world:advance(1)
         assert.are.equal(4, #tank.invites)
         assert.is_true(tank:logged("Leaving DPS to Forever Groups players in the queue"))
-        world:advance(10)
+        world:advance(8)
         assert.is_true(addon:proposalShown())
         assert.is_true(tank:proposalShown())
+        return world, tank, addon
+    end
+
+    it("gives a freed role to a Forever Groups player in the queue for one round, and while it is proposed",
+        function()
+        local world, tank, addon = freedForAddon()
+        world:advance(15)
+        assert.are.equal(4, #tank.invites)
+        tank:acceptPopup()
+        addon:acceptPopup()
+        world:advance(3)
+        assert.is_true(invitedNames(tank)["Addon Dps"])
+    end)
+
+    it("logs what WoW counts in the group and the invites on record when it says the party is full", function()
+        local world = World.new()
+        local tank = world:addClient("Tanky Mctank", { level = 20 })
+        tank.inviteLifetime = 120
+        tank.ns.db.noListing = true
+        world:list("Away Heal", "H", 799, 20, 300)
+        for _, name in ipairs({ "Dps A", "Dps B", "Dps C" }) do
+            world:list(name, "D", 799, 20, 200)
+        end
+        world:advance(CONNECT)
+        tank:slash("/dq join tank dm")
+        tank:slash("/dq fill")
+        world:advance(2)
+        for _, name in ipairs({ "Dps A", "Dps B", "Dps C" }) do
+            tank:joins(name)
+        end
+        world:list("Late Heal", "H", 799, 20, 10)
+        world:advance(70)
+        tank:press("W")
+        world:advance(5)
+        assert.are.same({ "Late Heal" }, tank.refusedInvites)
+        assert.is_true(tank:logged("party full: 4 in the group, invites on record: Late Heal 0 s"))
+    end)
+
+    it("fills the role from the Group Finder after one round when the matchmaker can't group them", function()
+        local world = World.new()
+        local tank = world:addClient("Tanky Mctank", { level = 20 })
+        local addon = world:addClient("Addon Dps", { level = 20 })
+        world:list("Listed Heal", "H", 799, 20, 300)
+        for _, name in ipairs({ "Dps A", "Dps B", "Dps C", "Dps D" }) do
+            world:list(name, "D", 799, 20, 200)
+        end
+        world:advance(CONNECT)
+        for _, client in ipairs({ tank, addon }) do
+            local real = client.ns.engine.matcher
+            client.ns.engine.matcher = setmetatable({
+                findGroups = function()
+                    return {}
+                end,
+                findPartialGroup = function()
+                    return nil
+                end,
+            }, { __index = real })
+        end
+        tank:slash("/dq join tank dm")
+        tank:slash("/dq fill")
+        world:advance(2)
+        tank:joins("Listed Heal")
+        addon:slash("/dq join dps dm")
+        world:advance(2)
+        tank:system(tank.invites[#tank.invites] .. " declines your group invitation.")
+        world:advance(1)
+        assert.are.equal(4, #tank.invites)
+        world:advance(10)
+        assert.is_false(addon:proposalShown())
+        assert.are.equal(5, #tank.invites)
+    end)
+
+    it("fills the role from the Group Finder once the Forever Groups player declines", function()
+        local world, tank, addon = freedForAddon()
+        tank:acceptPopup()
+        addon:declinePopup()
+        world:advance(6)
+        assert.are.equal(5, #tank.invites)
+        assert.is_nil(invitedNames(tank)["Addon Dps"])
     end)
 
     it("does not wait for a Forever Groups player who is building a group of their own", function()
@@ -225,14 +312,14 @@ describe("Filling from WoW's Group Finder", function()
         client:joins("Dps A")
         assert.are.equal("DAMAGER", client.roles["Dps A"])
         assert.are.equal("TANK", client.roles["Tanky Mctank"])
-        world:advance(25)
+        world:advance(55)
         assert.is_false(client:logged("Slow Heal did not answer"))
-        world:advance(8)
-        assert.is_true(client:logged("Slow Heal did not answer"))
         for _, name in ipairs(client.invites) do
             assert.are_not.equal("Quick Heal", name)
         end
-        world:advance(32)
+        world:advance(8)
+        assert.is_true(client:logged("Slow Heal did not answer"))
+        world:advance(2)
         invitedOnly(client, { "Quick Heal" })
     end)
 
@@ -257,15 +344,18 @@ describe("Filling from WoW's Group Finder", function()
         invitedOnly(tank, { "Listed Heal", "Dps A", "Dps B", "Dps C" })
     end)
 
-    it("counts a decline after it gave up waiting: the place is free and the player is not asked again", function()
+    it("takes WoW's decline when an invite expires as no answer, and asks once more when still listed later",
+        function()
         local world = World.new()
         local tank = world:addClient("Solo Tank", { level = 20 })
         world:list("Dps 1", "D", 799, 20, 300)
         world:advance(30)
         tank:slash("/dq join tank dm")
-        world:advance(35)
+        world:advance(59)
+        assert.is_false(tank:logged("Dps 1 did not answer"))
+        world:advance(5)
+        assert.is_true(tank:logged("Dps 1 did not answer the invite; trying someone else"))
         assert.are.equal("noanswer", tank.ns.Filler.saved().outcomes["Dps 1"].kind)
-        tank:system("Dps 1 declines your group invitation.")
         for _, invite in ipairs(tank.ns.Filler.invites()) do
             assert.are_not.equal("Dps 1", invite.name)
         end
@@ -279,10 +369,22 @@ describe("Filling from WoW's Group Finder", function()
         for _, name in ipairs(tank.invites) do
             count = count + (name == "Dps 1" and 1 or 0)
         end
-        assert.are.equal(1, count)
+        assert.are.equal(2, count)
     end)
 
-    it("shows the invited players in the open places, with the time left", function()
+    it("takes a decline within the invite's minute as a decline", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        world:list("Dps 1", "D", 799, 20, 300)
+        world:advance(30)
+        tank:slash("/dq join tank dm")
+        world:advance(20)
+        tank:system("Dps 1 declines your group invitation.")
+        assert.is_true(tank:logged("Dps 1 did not join; trying someone else"))
+        assert.are.equal("declined", tank.ns.Filler.saved().outcomes["Dps 1"].kind)
+    end)
+
+    it("shows the invited players in the open places, with the time left until the invite expires", function()
         local world = World.new()
         local tank = world:addClient("Tanky Mctank", { level = 20 })
         world:list("Listed Heal", "H", 799, 20, 300)
@@ -305,17 +407,16 @@ describe("Filling from WoW's Group Finder", function()
         end
         local slot = slotOf("Dps A")
         assert.is_not_nil(slot)
-        assert.is_truthy(slot.lines[2].text:match("^invited 0:%d%d$"))
+        assert.is_truthy(slot.lines[2].text:match("^invited 1:0%d$"))
         world:advance(30)
-        slot = slotOf("Dps A")
-        assert.is_truthy(slot.lines[2].text:match("^frees in 0:%d%d$"))
-        world:advance(30)
-        assert.is_truthy(slotOf("Dps A").lines[2].text:match("^frees in 0:0%d$"))
-        world:advance(2)
+        assert.is_truthy(slotOf("Dps A").lines[2].text:match("^invited 0:3%d$"))
+        world:advance(27)
+        assert.is_truthy(slotOf("Dps A").lines[2].text:match("^invited 0:0%d$"))
+        world:advance(3)
         assert.is_nil(slotOf("Dps A"))
     end)
 
-    it("waits when WoW says the party is full, and tries again after a while", function()
+    local function fullAfterInvites()
         local world = World.new()
         local tank = world:addClient("Tanky Mctank", { level = 20 })
         world:list("Listed Heal", "H", 799, 20, 300)
@@ -327,12 +428,52 @@ describe("Filling from WoW's Group Finder", function()
         local invites = #tank.invites
         tank:system(tank.env.ERR_GROUP_FULL)
         assert.is_true(tank:logged("WoW says the party is full"))
-        world:list("Dps B", "D", 799, 20, 100)
-        tank:system("Listed Heal declines your group invitation.")
-        world:advance(5)
+        world:advance(20)
         assert.are.equal(invites, #tank.invites)
-        world:advance(8)
+        return world, tank, invites
+    end
+
+    it("after WoW says the party is full, invites again as soon as a decline frees a place", function()
+        local world, tank, invites = fullAfterInvites()
+        tank:system("Someone Else declines your group invitation.")
+        world:advance(2)
+        assert.are.equal(invites + 1, #tank.invites)
+        assert.are.equal("Dps A", tank.invites[#tank.invites])
+    end)
+
+    it("after WoW says the party is full, invites again when the group changes", function()
+        local world, tank, invites = fullAfterInvites()
+        tank:joins("Listed Heal")
+        world:advance(2)
+        assert.are.equal(invites + 1, #tank.invites)
+        assert.are.equal("Dps A", tank.invites[#tank.invites])
+    end)
+
+    it("after WoW says the party is full, invites again once its own invite ran out, also without WoW's message",
+        function()
+        local world = World.new()
+        local tank = world:addClient("Tanky Mctank", { level = 20 })
+        tank.inviteLifetime = 120
+        world:list("Listed Heal", "H", 799, 20, 300)
+        world:list("Dps A", "D", 799, 20, 200)
+        world:advance(CONNECT)
+        tank:slash("/dq join tank dm")
+        tank:slash("/dq fill")
+        world:advance(2)
+        local invites = #tank.invites
+        tank:system(tank.env.ERR_GROUP_FULL)
+        world:advance(55)
+        assert.are.equal(invites, #tank.invites)
+        world:advance(10)
         assert.is_true(#tank.invites > invites)
+    end)
+
+    it("after WoW says the party is full, invites again when an invite holding a place expires", function()
+        local world, tank, invites = fullAfterInvites()
+        world:advance(30)
+        assert.are.equal(invites, #tank.invites)
+        world:advance(15)
+        assert.are.equal(invites + 1, #tank.invites)
     end)
 
     it("invites one listed player per open role, and notes the roles nobody is listed for", function()
@@ -583,6 +724,23 @@ describe("A group filled to five", function()
         assert.is_false(leader.listed)
         world:advance(5)
         assert.are.equal(1, #leader.notices)
+
+        world:list("Dps E", "D", 799, 20, 50)
+        leader:leaves("Dps C")
+        world:advance(1)
+        leader:acceptStaticPopup()
+        world:advance(3)
+        assert.are.equal("Dps E", leader.invites[#leader.invites])
+        leader:joins("Dps E")
+        world:advance(2)
+        assert.are.equal(2, #leader.notices)
+        said = {}
+        for _, w in ipairs(leader.whispers) do
+            if w.chatType == "PARTY" and w.text:find("Meet at the entrance", 1, true) then
+                said[#said + 1] = w.text
+            end
+        end
+        assert.are.equal(1, #said)
     end)
 end)
 
@@ -675,6 +833,31 @@ describe("A player who switches roles after joining", function()
         leader:fire("ROLE_CHANGED_INFORM")
         world:advance(0.2)
         assert.are.equal("HEALER", leader.roles["Feral Heal"])
+    end)
+
+    it("keeps the agreed roles over a /reload while WoW reports no group for a moment", function()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        world:list("Feral Heal", "H", 799, 20, 300)
+        world:list("Dps A", "D", 799, 20, 200)
+        world:advance(CONNECT)
+        leader:slash("/dq")
+        leader:click("CheckButton", "Tank")
+        leader:click("Button", "None")
+        leader:click("CheckButton", "The Deadmines")
+        leader:slash("/dq fill")
+        world:advance(2)
+        leader:joins("Feral Heal")
+        world:advance(6)
+        local roles = leader.roles
+        local saved = leader:logout()
+        local again = world:addClient("Tanky Mctank", { level = 20, saved = saved, loading = true })
+        again:fire("GROUP_ROSTER_UPDATE")
+        again.party, again.isLeader, again.roles = { "Feral Heal" }, true, roles
+        again:fire("PLAYER_ENTERING_WORLD")
+        again:fire("GROUP_ROSTER_UPDATE")
+        world:advance(2)
+        assert.are.equal("H", again.ns.RoleSync.expected("Feral Heal"))
     end)
 
     it("pauses only when something keeps changing a role back, in a loop", function()
@@ -1229,6 +1412,47 @@ describe("Filling with classes the group lacks first", function()
         Filler.start({ dungeon = "5", missing = "D", members = {}, replacement = true })
         assert.is_nil(Filler.avoidClasses())
     end)
+
+    local function replacing(world, listed)
+        local client = world:addClient("Tanky Mctank", { level = 20, class = "WARRIOR", classVariety = true })
+        client.ns.db.noListing = true
+        listClass(world, "Heal", "H", "PRIEST", 900)
+        listClass(world, "Dps Mage", "D", "MAGE", 900)
+        listClass(world, "Dps Hunter", "D", "HUNTER", 900)
+        listClass(world, "Dps Rogue", "D", "ROGUE", 900)
+        world:advance(CONNECT)
+        client:slash("/dq")
+        client:click("CheckButton", "Tank")
+        client:slash("/dq fill")
+        world:advance(2)
+        for name, class in pairs({ Heal = "PRIEST", ["Dps Mage"] = "MAGE", ["Dps Hunter"] = "HUNTER",
+            ["Dps Rogue"] = "ROGUE" }) do
+            client.partyClasses[name] = class
+            client:joins(name)
+        end
+        world:advance(65)
+        client:leaves("Dps Rogue")
+        for _, entry in ipairs(listed) do
+            listClass(world, entry[1], "D", entry[2], entry[3])
+        end
+        world:advance(1)
+        client:click("Button", "Find replacement")
+        world:advance(2)
+        client:press("W")
+        world:advance(5)
+        return client
+    end
+
+    it("lets a replacement of another class go first, without waiting for one", function()
+        local world = World.new()
+        local client = replacing(world, { { "Mage Two", "MAGE", 900 }, { "Warlock", "WARLOCK", 10 } })
+        assert.is_true(invited(client, "Warlock"))
+        assert.is_false(invited(client, "Mage Two"))
+
+        world = World.new()
+        client = replacing(world, { { "Mage Two", "MAGE", 900 } })
+        assert.is_true(invited(client, "Mage Two"))
+    end)
 end)
 
 describe("A player who did not join", function()
@@ -1373,7 +1597,7 @@ describe("A player who did not join", function()
     it("who did not answer is invited once more when still listed five minutes later", function()
         local world = World.new()
         local tank = filling(world)
-        world:advance(35)
+        world:advance(65)
         assert.is_true(tank:logged("Good Heal did not answer"))
         tank:slash("/dq fill")
         world:advance(2)
@@ -1382,10 +1606,228 @@ describe("A player who did not join", function()
         tank:slash("/dq fill")
         world:advance(2)
         assert.are.equal(2, invites(tank, "Good Heal"))
-        world:advance(35)
+        world:advance(65)
         world:advance(300)
         tank:slash("/dq fill")
         world:advance(2)
         assert.are.equal(2, invites(tank, "Good Heal"))
+    end)
+end)
+
+describe("Players closer to the dungeon", function()
+    local function zoneMap(client)
+        client.ns.ZoneMap.setGraph({
+            near = { [1] = { [2] = true }, [2] = { [1] = true, [3] = true }, [3] = { [2] = true, [4] = true },
+                [4] = { [3] = true } },
+            names = { Westfall = 1, Duskwood = 2, ["Redridge Mountains"] = 3, ["Swamp of Sorrows"] = 4 },
+            starts = { ["5"] = { 1 } },
+        })
+    end
+
+    local function listIn(world, name, roles, area, age)
+        world:list(name, roles, 799, 20, age)
+        world.listings[#world.listings].area = area
+    end
+
+    local function invited(client, name)
+        for _, other in ipairs(client.invites) do
+            if other == name then
+                return true
+            end
+        end
+        return false
+    end
+
+    it("invites the closest first and lets one further away wait 15 s a step for someone closer", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        tank.ns.db.noListing = true
+        zoneMap(tank)
+        listIn(world, "Heal", "H", "Westfall", 300)
+        listIn(world, "Near Dps", "D", "Duskwood", 10)
+        listIn(world, "Mid Dps", "D", "Redridge Mountains", 600)
+        listIn(world, "Far Dps", "D", "Swamp of Sorrows", 900)
+        world:advance(30)
+        tank:slash("/dq join tank dm")
+        world:advance(3)
+        assert.is_true(invited(tank, "Near Dps"))
+        assert.is_false(invited(tank, "Mid Dps"))
+        assert.is_false(invited(tank, "Far Dps"))
+        assert.is_true(tank:logged("further from the dungeon, waiting a little for someone closer"))
+        listIn(world, "Close Dps", "D", "Westfall", 1)
+        world:advance(8)
+        tank:press("W")
+        world:advance(2)
+        assert.is_true(invited(tank, "Close Dps"))
+        assert.is_false(invited(tank, "Mid Dps"))
+        world:advance(5)
+        assert.is_true(invited(tank, "Mid Dps"))
+        world:advance(40)
+        assert.is_false(invited(tank, "Far Dps"))
+    end)
+
+    it("invites a player further away once nobody closer came, and one on another continent last", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        zoneMap(tank)
+        listIn(world, "Heal", "H", "Westfall", 300)
+        listIn(world, "Far Dps", "D", "Swamp of Sorrows", 900)
+        listIn(world, "Away Dps", "D", "Orgrimmar", 900)
+        world:advance(30)
+        tank:slash("/dq join tank dm")
+        world:advance(25)
+        assert.is_false(invited(tank, "Far Dps"))
+        world:advance(10)
+        assert.is_true(invited(tank, "Far Dps"))
+        assert.is_false(invited(tank, "Away Dps"))
+        world:advance(15)
+        assert.is_true(invited(tank, "Away Dps"))
+    end)
+
+    it("holds nobody back when the zones are not known", function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        tank.ns.ZoneMap.setGraph(nil)
+        listIn(world, "Heal", "H", "Westfall", 300)
+        listIn(world, "Far Dps", "D", "Swamp of Sorrows", 900)
+        world:advance(30)
+        tank:slash("/dq join tank dm")
+        world:advance(3)
+        assert.is_true(invited(tank, "Far Dps"))
+    end)
+
+    it("counts a listed group as far away as its furthest member", function()
+        local world = World.new()
+        local dps = world:addClient("Solo Dps", { level = 20 })
+        zoneMap(dps)
+        local steps = dps.ns.Apply.groupSteps({ memberInfo = { { area = "Westfall" }, { area = "Swamp of Sorrows" },
+            { area = nil } } }, "5")
+        assert.are.equal(3, steps)
+        assert.are.equal(1, dps.ns.Apply.groupSteps({ area = "Duskwood" }, "5"))
+        assert.are.equal(1, dps.ns.Apply.groupSteps({ area = "Duskwood", memberInfo = {} }, "5"))
+        assert.are.equal(4, dps.ns.Apply.groupSteps({ area = "Orgrimmar" }, "5"))
+        assert.is_nil(dps.ns.Apply.groupSteps({}, "5"))
+    end)
+
+    local function askedLeaders(client)
+        local asked = {}
+        for _, w in ipairs(client.whispers) do
+            if w.text:find("could you invite me") then
+                asked[#asked + 1] = w.target
+            end
+        end
+        return asked
+    end
+
+    it("asks the listed group closest to the dungeon first when joining one", function()
+        local world = World.new()
+        local dps = world:addClient("Solo Dps", { level = 20 })
+        zoneMap(dps)
+        world:listGroup("Far Lead", 799, { T = 0, H = 1, D = 1 }, 300)
+        world.listings[#world.listings].area = "Swamp of Sorrows"
+        world:listGroup("Near Lead", 799, { T = 0, H = 1, D = 1 }, 300)
+        world.listings[#world.listings].area = "Westfall"
+        world:advance(30)
+        dps:slash("/dq join dps dm")
+        world:advance(3)
+        assert.are.same({ "Near Lead" }, askedLeaders(dps))
+    end)
+
+    it("asks a group the player completes before a closer one that would still miss a healer", function()
+        local world = World.new()
+        local dps = world:addClient("Solo Dps", { level = 20 })
+        zoneMap(dps)
+        world:listGroup("Far Lead", 799, { T = 0, H = 0, D = 1 }, 300)
+        world.listings[#world.listings].area = "Swamp of Sorrows"
+        world:listGroup("Near Lead", 799, { T = 0, H = 1, D = 1 }, 300)
+        world.listings[#world.listings].area = "Westfall"
+        world:advance(30)
+        dps:slash("/dq join dps dm")
+        world:advance(3)
+        assert.are.same({ "Far Lead" }, askedLeaders(dps))
+    end)
+
+    describe("choosing between dungeons", function()
+        local function twoDungeons(client)
+            client.ns.ZoneMap.setGraph({
+                near = { [1] = { [2] = true }, [2] = { [1] = true, [3] = true }, [3] = { [2] = true, [4] = true },
+                    [4] = { [3] = true } },
+                names = { Westfall = 1, Duskwood = 2, ["Redridge Mountains"] = 3, ["Swamp of Sorrows"] = 4 },
+                starts = { ["5"] = { 1 }, ["6"] = { 4 } },
+            })
+            for zone = 1, 4 do
+                client.mapInfo[zone] = { mapType = 3 }
+            end
+        end
+
+        local function listFor(world, activity, prefix, area)
+            for _, entry in ipairs({ { "Heal", "H" }, { "Dps A", "D" }, { "Dps B", "D" }, { "Dps C", "D" } }) do
+                world:list(prefix .. " " .. entry[1], entry[2], activity, 20, 300)
+                world.listings[#world.listings].area = area
+            end
+        end
+
+        it("goes to the dungeon closest to the player when both fill alike", function()
+            local world = World.new()
+            local tank = world:addClient("Solo Tank", { level = 24 })
+            tank.ns.db.noListing = true
+            twoDungeons(tank)
+            listFor(world, 799, "DM", "Westfall")
+            listFor(world, 800, "SFK", "Swamp of Sorrows")
+            tank.positions.player = { 4, 0.5, 0.5 }
+            world:advance(30)
+            tank:slash("/dq join tank dm, sfk")
+            world:advance(3)
+            assert.are.equal("6", tank.ns.Filler.dungeon())
+            assert.is_true(tank:logged("Chose Shadowfang Keep: 4 of 4 places filled now, the furthest player 0 zones "
+                .. "away, levels 4.2 from its middle."))
+        end)
+
+        it("asks the listed group whose dungeon is closest to the player when joining", function()
+            local world = World.new()
+            local dps = world:addClient("Solo Dps", { level = 20 })
+            twoDungeons(dps)
+            world:listGroup("Deadmines Lead", 799, { T = 0, H = 0, D = 1 }, 300)
+            world.listings[#world.listings].area = "Westfall"
+            world:listGroup("Keep Lead", 800, { T = 0, H = 0, D = 1 }, 300)
+            world.listings[#world.listings].area = "Swamp of Sorrows"
+            dps.positions.player = { 4, 0.5, 0.5 }
+            world:advance(30)
+            dps:slash("/dq join dps dm, sfk")
+            world:advance(3)
+            assert.are.same({ "Keep Lead" }, askedLeaders(dps))
+        end)
+
+        it("leaves the player's zone out while WoW keeps their map secret", function()
+            local world = World.new()
+            local tank = world:addClient("Solo Tank", { level = 20 })
+            twoDungeons(tank)
+            world:advance(30)
+            tank.positions.player = { World.SECRET, 0.5, 0.5 }
+            assert.is_nil(tank.ns.ZoneMap.myZone())
+            tank.positions.party1 = { World.SECRET, 0.5, 0.5 }
+            assert.is_nil(tank.ns.ZoneMap.unitZone("party1"))
+        end)
+
+        it("counts where the party members are", function()
+            local world = World.new()
+            local tank = world:addClient("Party Tank", { level = 20 })
+            tank.ns.db.noListing = true
+            tank.party, tank.isLeader = { "Friend Dps" }, true
+            tank.partyLevels = { ["Friend Dps"] = 28 }
+            twoDungeons(tank)
+            listFor(world, 799, "DM", "Westfall")
+            listFor(world, 800, "SFK", "Swamp of Sorrows")
+            tank.positions.player = { 2, 0.5, 0.5 }
+            tank.positions.party1 = { 4, 0.5, 0.5 }
+            world:advance(30)
+            tank:slash("/dq")
+            tank:click("CheckButton", "Tank")
+            tank:click("Button", "Find group")
+            world:advance(3)
+            assert.are.equal("6", tank.ns.Filler.dungeon())
+            assert.is_true(tank:logged("Chose Shadowfang Keep: 3 of 3 places filled now, the furthest player 2 zones "
+                .. "away, levels 4.6 from its middle."))
+        end)
     end)
 end)

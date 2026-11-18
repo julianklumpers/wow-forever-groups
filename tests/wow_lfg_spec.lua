@@ -374,6 +374,127 @@ describe("asking groups in WoW's Group Finder to invite you", function()
         assert.is_nil(entry.compose)
     end)
 
+    local function listFour(world)
+        local players = {
+            { "Solo Tank", "T", "WARRIOR" }, { "Solo Heal", "H", "PRIEST" }, { "Dps A", "D", "MAGE" },
+            { "Dps B", "D", "ROGUE" },
+        }
+        for _, player in ipairs(players) do
+            world:list(player[1], player[2], 799, 20, 300)
+            world.listings[#world.listings].class = player[3]
+        end
+    end
+
+    it("builds its own group at once when that suits better than any listed group", function()
+        local world, solo = setup()
+        world:listGroup("Group Lead", 796, { T = 0, H = 1, D = 1 })
+        listFour(world)
+        solo:slash("/dq join dps dm, wc")
+        world:advance(3)
+        assert.are.same({}, asked(solo))
+        assert.are.equal("5", solo.ns.Filler.dungeon())
+        assert.is_true(solo:logged("Building your own group: it suits better than asking Group Lead %(4 of 4 places "
+            .. "filled now, levels 1.5 from its middle"))
+        assert.is_true(solo:logged("asking: 0 of 1 places filled now, levels 0.5 from its middle"))
+    end)
+
+    it("compares again with the players listed since, after a leader says no", function()
+        local world, solo = setup()
+        world:listGroup("First Lead", 799, { T = 0, H = 0, D = 1 })
+        solo:slash("/dq join dps dm, wc")
+        world:advance(3)
+        assert.are.same({ "First Lead" }, asked(solo))
+        listFour(world)
+        world:listGroup("Second Lead", 796, { T = 0, H = 1, D = 1 })
+        world:advance(8)
+        solo:press("W")
+        world:advance(1)
+        solo:whisperFrom("First Lead", "no sorry, full")
+        world:advance(3)
+        assert.are.same({ "First Lead" }, asked(solo))
+        assert.is_true(solo.ns.Filler.isActive())
+    end)
+
+    it("asks the listed group when building would turn out no better", function()
+        local world, solo = setup()
+        world:listGroup("Group Lead", 799, { T = 0, H = 0, D = 1 })
+        listFour(world)
+        solo:slash("/dq join dps dm")
+        world:advance(3)
+        assert.are.same({ "Group Lead" }, asked(solo))
+    end)
+
+    describe("comparing listed groups with who is available now", function()
+        local function rogue()
+            local world = World.new()
+            local solo = world:addClient("Solo Rogue", { level = 20, class = "ROGUE" })
+            world:advance(CONNECT)
+            return world, solo
+        end
+
+        local function group(world, leader, activity, age, members)
+            local id = world:listGroup(leader, activity, { T = 0, H = 0, D = 2 }, age)
+            world.listings[id].memberList = members
+        end
+
+        local function solo(world, name, roles, activity, class)
+            world:list(name, roles, activity, 20, 300)
+            world.listings[#world.listings].class = class
+        end
+
+        it("counts the classes of a group's members", function()
+            local world, player = rogue()
+            group(world, "Mage Group", 799, 10, { { class = "MAGE", role = "DAMAGER", level = 20 },
+                { class = "PRIEST", role = "HEALER", level = 20 } })
+            group(world, "Warrior Group", 799, 300, { { class = "WARRIOR", role = "DAMAGER", level = 20 },
+                { class = "PRIEST", role = "HEALER", level = 20 } })
+            solo(world, "Solo Mage", "D", 799, "MAGE")
+            player:slash("/dq join dps dm")
+            world:advance(3)
+            assert.are.same({ "Warrior Group" }, asked(player))
+        end)
+
+        it("counts the levels of a group's members", function()
+            local world, player = rogue()
+            group(world, "Low Group", 799, 10, { { class = "MAGE", role = "DAMAGER", level = 17 },
+                { class = "PRIEST", role = "HEALER", level = 17 } })
+            group(world, "Even Group", 799, 300, { { class = "MAGE", role = "DAMAGER", level = 22 },
+                { class = "PRIEST", role = "HEALER", level = 22 } })
+            player:slash("/dq join dps dm")
+            world:advance(3)
+            assert.are.same({ "Even Group" }, asked(player))
+        end)
+
+        it("counts the player's own class in a group", function()
+            local world, player = rogue()
+            for _, entry in ipairs({ { "Deadmines Group", 799 }, { "Caverns Group", 796 } }) do
+                group(world, entry[1], entry[2], 300, { { class = "PRIEST", role = "HEALER", level = 21 },
+                    { class = "WARRIOR", role = "TANK", level = 21 } })
+                world.listings[#world.listings].level = 21
+            end
+            solo(world, "Solo Rogue Two", "D", 799, "ROGUE")
+            world.listings[#world.listings].level = 21
+            solo(world, "Solo Mage", "D", 796, "MAGE")
+            world.listings[#world.listings].level = 21
+            player:slash("/dq join dps dm, wc")
+            world:advance(3)
+            assert.are.same({ "Caverns Group" }, asked(player))
+        end)
+
+        it("counts the player's own class when building", function()
+            local world, player = rogue()
+            group(world, "Caverns Group", 796, 300, { { class = "PRIEST", role = "HEALER", level = 20 },
+                { class = "WARRIOR", role = "TANK", level = 20 } })
+            solo(world, "Solo Tank", "T", 799, "WARRIOR")
+            solo(world, "Solo Heal", "H", 799, "PRIEST")
+            solo(world, "Solo Rogue Two", "D", 799, "ROGUE")
+            solo(world, "Solo Mage", "D", 799, "MAGE")
+            player:slash("/dq join dps dm, wc")
+            world:advance(3)
+            assert.are.same({ "Caverns Group" }, asked(player))
+        end)
+    end)
+
     it("never asks the same leader twice", function()
         local world, solo = setup()
         world:listGroup("Group Lead", 799, { T = 0, H = 0, D = 1 })
@@ -454,6 +575,24 @@ describe("listing your own group in WoW's Group Finder", function()
         assert.are.equal("D", tank.ns.Filler.roleOf("Applying Dps"))
         tank:press("W")
         assert.are.same({ "Applying Dps" }, tank.applicantInvites)
+    end)
+
+    it("invites an applicant while the group is still listed for several dungeons, which settles the dungeon",
+        function()
+        local world = World.new()
+        local tank = world:addClient("Solo Tank", { level = 20 })
+        world:advance(CONNECT)
+        tank:slash("/dq join tank dm, sfk")
+        world:advance(2)
+        assert.is_nil(tank.ns.Filler.dungeon())
+        tank:press("W")
+        assert.are.same({ 799, 800 }, tank.listingArgs[1].activityIDs)
+        tank:applicant("Applying Dps", "D")
+        world:advance(1)
+        tank:press("W")
+        assert.are.same({ "Applying Dps" }, tank.applicantInvites)
+        assert.are.equal("5", tank.ns.Filler.dungeon())
+        assert.is_true(tank:logged("Chose The Deadmines: 1 of 4 places filled now"))
     end)
 
     it("removes the listing when you stop", function()

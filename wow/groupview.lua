@@ -30,7 +30,9 @@ end
 -- playstyles: the formed group's (core/playstyles.lua ids), if known.
 function GroupView.track(dungeon, playstyles)
     if not context or context.dungeon ~= dungeon or context.entered then
-        setContext({ dungeon = dungeon, announced = false, startedAt = GetServerTime() })
+        -- A replacement for a run: the group was complete before.
+        local complete = context and context.dungeon == dungeon and (context.complete or context.entered) or nil
+        setContext({ dungeon = dungeon, announced = false, startedAt = GetServerTime(), complete = complete })
         ns.Entrances.request(dungeon)
         ns.QuestGroup.startDungeon(dungeon)
     end
@@ -96,6 +98,15 @@ end
 -- Stops following the group (another kind of group took its place).
 function GroupView.forget()
     setContext(nil)
+end
+
+-- The player stopped building a group that was never complete: it is no
+-- longer followed, also when invites sent before the stop are accepted
+-- after it. A group that was complete once, or went in, stays followed.
+function GroupView.stopBuilding()
+    if context and not context.entered and not context.complete and not context.announced then
+        setContext(nil)
+    end
 end
 
 -- Puts another group in place of the one followed, without saving it;
@@ -235,7 +246,9 @@ function GroupView.lines()
     return lines
 end
 
-local function announce()
+-- again: the group was complete before (someone left and was replaced); the
+-- party met already, so nothing is said in party chat.
+local function announce(again)
     local dungeon = groupName()
     local text = "Group complete! " .. dungeon
     if RaidNotice_AddMessage and RaidWarningFrame then
@@ -252,6 +265,8 @@ local function announce()
     local announcement = ns.Messages.text("partyComplete", { dungeon = Dungeons.englishName(context.dungeon) })
     if Party.state() ~= "leader" then
         Log.debug("no party chat for the complete group: not the leader")
+    elseif again then
+        Log.debug("no party chat for the complete group: a replacement joined a group that met already")
     elseif ns.db.noPartyAnnounce or not announcement then
         Log.debug("no party chat for the complete group: turned off in the settings")
     elseif lockdown then
@@ -276,19 +291,26 @@ function GroupView.check()
         return
     end
     if not IsInGroup() then
+        if not ns.inWorld then
+            return
+        end
         if context.joined or GetServerTime() - context.startedAt > JOIN_TIMEOUT then
             setContext(nil)
         end
         return
     end
     context.joined = true
+    local count = #GroupView.composition().members
+    local wasComplete = context.complete
+    if count >= 5 then
+        context.complete = true
+    end
     if context.entered then
         return
     end
-    local count = #GroupView.composition().members
     if count >= 5 and not context.announced then
         context.announced = true
-        announce()
+        announce(wasComplete)
     elseif count < 5 then
         context.announced = false
     end

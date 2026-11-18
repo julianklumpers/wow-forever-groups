@@ -104,4 +104,81 @@ describe("Fill", function()
         assert.are.equal("6", plan.dungeon)
         assert.are.equal(2, #plan.picks)
     end)
+
+    describe("choosing between dungeons", function()
+        it("takes the dungeon whose tank and healer places can be filled before one with more players", function()
+            local listings = {
+                listing("Tank", "T", { "6" }), listing("Heal", "H", { "6" }),
+                listing("Dps A", "D", { "5" }), listing("Dps B", "D", { "5" }), listing("Dps C", "D", { "5" }),
+            }
+            local plan = Fill.plan(listings, { missing = "THDD", dungeons = { "5", "6" } })
+            assert.are.equal("6", plan.dungeon)
+            assert.are.same({ scarce = 0, open = 2, steps = math.huge, apart = 0, places = 4 }, plan.score)
+            listings[#listings + 1] = listing("Tank 5", "T", { "5" })
+            listings[#listings + 1] = listing("Heal 5", "H", { "5" })
+            assert.are.equal("5", Fill.plan(listings, { missing = "THDD", dungeons = { "5", "6" } }).dungeon)
+        end)
+
+        it("takes the dungeon that fills more places before a shorter walk", function()
+            local listings = {
+                listing("Dps 5", "D", { "5" }), listing("Dps 6", "D", { "6" }), listing("Dps 6b", "D", { "6" }),
+            }
+            local plan = Fill.plan(listings, { missing = "DD", dungeons = { "5", "6" }, groupSteps = function(dungeon)
+                return dungeon == "5" and 0 or 4
+            end })
+            assert.are.equal("6", plan.dungeon)
+        end)
+
+        it("takes the shorter walk of the group's furthest player, the group itself too", function()
+            local listings = { listing("Dps 5", "D", { "5" }), listing("Dps 6", "D", { "6" }) }
+            local steps = { ["Dps 5"] = 3, ["Dps 6"] = 1 }
+            local opts = { missing = "D", dungeons = { "5", "6" }, steps = function(l)
+                return steps[l.name]
+            end }
+            assert.are.equal("6", Fill.plan(listings, opts).dungeon)
+            opts.groupSteps = function(dungeon)
+                return dungeon == "6" and 5 or 0
+            end
+            assert.are.equal("5", Fill.plan(listings, opts).dungeon)
+        end)
+
+        it("takes the dungeon whose level range suits the group's levels, on an equal walk", function()
+            local listings = { listing("Dps 5", "D", { "5" }, 0, 20), listing("Dps 6", "D", { "6" }, 0, 20) }
+            local ranges = { ["5"] = { min = 15, max = 21 }, ["6"] = { min = 20, max = 26 } }
+            local plan = Fill.plan(listings, { missing = "D", dungeons = { "5", "6" }, ranges = ranges,
+                groupLevels = { 23 } })
+            assert.are.equal("6", plan.dungeon)
+            assert.are.equal(1.5, plan.score.apart)
+            plan = Fill.plan(listings, {
+                missing = "D", dungeons = { "5", "6" }, ranges = ranges, groupLevels = { 17 },
+            })
+            assert.are.equal("5", plan.dungeon)
+        end)
+
+        it("keeps the first dungeon on a full tie", function()
+            local listings = { listing("Dps 5", "D", { "5" }), listing("Dps 6", "D", { "6" }) }
+            assert.are.equal("5", Fill.plan(listings, { missing = "D", dungeons = { "5", "6" } }).dungeon)
+            assert.are.equal("6", Fill.plan(listings, { missing = "D", dungeons = { "6", "5" } }).dungeon)
+        end)
+    end)
+
+    it("takes the player closest to the dungeon first and passes over one still waiting", function()
+        local far, near, unknown = listing("Far Dps", "D", nil, 900), listing("Near Dps", "D", nil, 10),
+            listing("Who Dps", "D", nil, 950)
+        local steps = { ["Far Dps"] = 3, ["Near Dps"] = 0 }
+        local opts = { missing = "D", dungeon = "5", steps = function(l)
+            return steps[l.name]
+        end }
+        local picks = Fill.pick({ far, near, unknown }, opts)
+        assert.are.equal("Near Dps", picks[1].name)
+        picks = Fill.pick({ far, unknown }, opts)
+        assert.are.equal("Far Dps", picks[1].name)
+        opts.held = function(l)
+            return l.name == "Far Dps"
+        end
+        picks = Fill.pick({ far, unknown }, opts)
+        assert.are.equal("Who Dps", picks[1].name)
+        local why = Fill.skipped({ far }, { dungeons = { "5" }, held = opts.held }, "D")
+        assert.are.equal(1, why.held)
+    end)
 end)

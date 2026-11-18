@@ -22,6 +22,42 @@ describe("Choosing groups to apply to", function()
         assert.is_false(picks[1].tank)
     end)
 
+    it("asks the group that would turn out best, for its dungeon that suits best", function()
+        local function score(open, steps)
+            return { scarce = 0, open = open, steps = steps, apart = 0, places = 1 }
+        end
+        local both = group(1, "4", 0, 0, 2)
+        both.dungeons = { "4", "5" }
+        local groups = { both, group(2, "4", 0, 0, 1) }
+        local scores = { [1] = { ["4"] = score(1, 0), ["5"] = score(0, 2) }, [2] = { ["4"] = score(0, 3) } }
+        local opts = { roles = "D", dungeons = { ["4"] = true, ["5"] = true }, max = 5 }
+        opts.score = function(g, dungeon, role)
+            assert.are.equal("D", role)
+            return scores[g.id][dungeon]
+        end
+        local picks = LfgPick.groupsToApply(groups, opts)
+        assert.are.same({ 1, 2 }, { picks[1].id, picks[2].id })
+        assert.are.equal("5", picks[1].dungeon)
+        assert.are.same(score(0, 2), picks[1].score)
+        opts.score = nil
+        picks = LfgPick.groupsToApply(groups, opts)
+        assert.are.same({ 2, 1 }, { picks[1].id, picks[2].id })
+        assert.are.equal("4", picks[2].dungeon)
+    end)
+
+    it("asks the group closest to the dungeon first, before the one nearest to full", function()
+        local groups = { group(1, "4", 0, 0, 1), group(2, "4", 1, 1, 2), group(3, "4", 0, 0, 2) }
+        local away = { [1] = 3, [2] = 0 }
+        local picks = LfgPick.groupsToApply(groups, { roles = "D", dungeons = wanted, max = 5, steps = function(g)
+            return away[g.id]
+        end })
+        local ids = {}
+        for i, pick in ipairs(picks) do
+            ids[i] = pick.id
+        end
+        assert.are.same({ 2, 1, 3 }, ids)
+    end)
+
     it("skips other dungeons, excluded groups and respects the maximum", function()
         local groups = { group(1, "5", 0, 0, 1), group(2, "4", 0, 0, 1), group(3, "4", 0, 0, 1, 50),
             group(4, "4", 0, 0, 1, 10) }

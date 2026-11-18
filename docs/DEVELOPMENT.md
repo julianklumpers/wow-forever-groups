@@ -134,7 +134,13 @@ How the addon works inside, for anyone reading or changing the code. The player-
   and the party's places with who is there (those can't be clicked). A place open to any class has a dashed edge, a
   "+" and "Any class". Each card is a dropdown like the playstyle's (a `DropdownButton` with WoW's dropdown
   arrow at its bottom right): WoW's own menu with "Any class" and a check per class the role allows, the names in
-  their class colour, open while ticking; our own list (`wow/ui/classmenu.lua`) on a client without it. And Reset. Not done: a note in the own Group Finder listing (whether Forever's CreateListing takes
+  their class colour, under a small header per armour they wear at the player's level, plate first
+  (`Widgets.classesByArmor`, `Classes.byArmor`: Warriors and Paladins mail below 40 and plate from 40, Hunters and
+  Shamans leather below 40 and mail from 40; the Who is looking class box the same). A header ticks all its classes,
+  or clears them when all were: a check (a plain menu button did nothing in Forever's client) in
+  `GameFontNormalSmall`, gold (set again, the check makes its text white), with its box and tick (`leftTexture1`, and `leftTexture2`, which WoW makes only while it is ticked) hidden and the text moved to the
+  left, a `CreateSpacer` of 4 above it; what the client offers is logged once ("menu header: …"), and whatever is
+  missing is left as WoW draws it. Open while ticking; our own list (`wow/ui/classmenu.lua`) on a client without it. And Reset. Not done: a note in the own Group Finder listing (whether Forever's CreateListing takes
   one is unknown)
 - the test mock makes clients that used the addon before unless `fresh = true` (see Demo for a new player's
   first opening)
@@ -165,7 +171,8 @@ How the addon works inside, for anyone reading or changing the code. The player-
   place for 60 s from 0.2 s after it is sent (`ERR_GROUP_FULL` past five). Each input is a frame of its own (`GetTime()` moves by 1e-6 per input),
   a search only changes the result list when the server takes it, listings can have a `language` that only a search
   in that language returns (a `stray` one comes for any search), and `C_LFGList.ClearSearchResults` empties the
-  list; `tests/outside_searches_spec.lua` searches as another addon would, and `tests/search_fuzz_spec.lua` plays
+  list. A client logs in like WoW: `ADDON_LOADED`, `PLAYER_LOGIN`, then `PLAYER_ENTERING_WORLD` (with `loading = true`
+  the test fires that itself, after what WoW reports while loading; `beforeLogin` sets the party known at login); `tests/outside_searches_spec.lua` searches as another addon would, and `tests/search_fuzz_spec.lua` plays
   random runs of our searches, other addons' searches, cleared lists, language changes and new listings, and checks
   after every step that no other language comes in, no one is listed twice, none of our searches is refused or
   blocked, and that the lists catch up (`FUZZ_SEEDS`, `FUZZ_STEPS`)
@@ -260,12 +267,12 @@ test looks for it in combinations nobody wrote down. (Seeded; REALISTIC_SEEDS an
 (roles, classes, 1-3 of 6 dungeons, some duos) and others see their entry 1-2 s later, the real
 `Matchmaker.findGroups` / `findPartialGroup` run every 5 s at a moment of their own, and a player without a group
 invites simulated Group Finder listings with the real `Fill.pick` / `Fill.plan` (60% accept after 5-20 s, the rest
-time out after 30 s). A player with a possible partner waits the variant's `grace` first (`PARTNER_GRACE`), and a
-group that builds leaves a role a queued solo Forever Groups player can play to them for 20 s (`ADDON_GRACE`, as
-`addonRoles` in `wow/filler.lua`); one who invited anyone is a party for the matchmaker (open invites are reserved roles), two parties never merge, and an entry
+time out after 30 s). A player with a possible partner waits the variant's `grace` first (`PARTNER_GRACE`, one
+matchmaking round as `Config.MATCH_ROUND`), and with `hold` a group that builds leaves a role a queued solo Forever
+Groups player can play to them for `holdFor` s (one round, as `addonRoles` in `wow/filler.lua`); one who invited anyone is a party for the matchmaker (open invites are reserved roles), two parties never merge, and an entry
 whose invites fill the group leaves the matchmaker until a place opens (as `wow/main.lua` parks it). Every variant
 replays the same arrivals and answers. Sets (`Sim.VARIANT_SETS`): `main` (current, no partial groups, no class
-variety, no partner grace), `hold` (with and without leaving roles to Forever Groups players), `level` (with and
+variety, no partner grace), `hold` (one round, 20 s, or no place left to Forever Groups players), `level` (with and
 without the level preference), `adaptive` (the strict class time fixed at 5, 2 or 1 minutes, or growing with the
 listed players available; measured: shorter saves at most ~30 s and gives 2-3x the class doubles, so 5 minutes stays)
 and `grace` (0-20 s). Dungeons have levels (15-31) and players pick only those their
@@ -421,7 +428,7 @@ players in the bracket (the longest listed first, but healers first while the gr
 the player counts when they ticked Healer, invited healers while in the group or on the way, and the others in
 the group whose role (WoW's or the agreed one) is healer; the places still
 lacking a healer stay open, and the status says "Still looking for N healers"; the
-`bgInvite` whisper before each invite; no answer within 30 s or a decline frees the place, read from WoW's own
+`bgInvite` whisper before each invite; a decline frees the place at once, no answer when WoW drops the invite (62 s), read from WoW's own
 `ERR_DECLINE_GROUP_S` / `ERR_ALREADY_IN_GROUP_S` texts through `Filler.declinedName`). Once a player it invited
 joins, the dungeon and questing queues are left (`Queues.leaveOthers`; while it builds they ignore the roster). While
 it looks, the role tiles and battleground ticks are locked. A leader asked by hand from Who is looking counts as asked
@@ -534,8 +541,10 @@ addon see what their leader's queue does ("Your party is queued by X", proposals
 One button. The click queues you for Forever Groups players and searches WoW's Group Finder at the same time; both
 sources fill the group, whichever is first. Queued Forever Groups players who could share a group are merged at once (a
 partial group); a player with no partner in sight fills from the Group Finder right away while staying in the queue. A possible
-partner (same dungeon, language and playstyle camp, roles that fit; `hasPartner` in `wow/autofill.lua`) is waited for
-at most 20 s (`PARTNER_GRACE`): the matchmaker may still refuse the pair (class wishes, a level limit, two leaders).
+partner (same dungeon, language and playstyle camp, roles that fit; `hasPartner` in `wow/autofill.lua`) gets one
+matchmaking round (`Config.MATCH_ROUND`, 9 s: the entry seen on the channel, the round, its proposal back); no match
+then means the Group Finder at once. The matchmaker keeps running every 5 s, so one who fits an open place later
+still gets it.
 An incomplete group stays in the queue (same place) so later Forever Groups players can still join it. Group Finder
 searches need player input: the Find group click, Accept, and, while roles are still open, the player's own key
 presses and clicks in the game world (a keyboard frame that passes every key through, and a hook on the world
@@ -557,7 +566,8 @@ When queued players cannot make a full group, the matchmaker proposes a partial 
 players); the roles left open are filled from WoW's own Group Finder: the leader's Accept click also runs a Group
 Finder search (searching is protected and needs a click), then the best listed solo players (right role, level and
 dungeon; single-role players first, longest listed first) get a whisper and an invite. For the first 5 minutes of a
-group Forever Groups starts (`VARIETY_TIME`; not a run's replacement, `Filler.start`'s `replacement`; not while the
+group Forever Groups starts (`VARIETY_TIME`; not a replacement, `Filler.start`'s `replacement`, which never waits
+and only takes another class first as below; not while the
 leader's class wishes have a free place; `db.noClassVariety` turns it off) nobody is picked whose class the group
 (members, the players a formed queue group brought who have not joined yet with the class of their queue entry,
 and invites out, with their roles) already has in that role, or has twice (`Fill.avoided`, `MAX_OF_CLASS`;
@@ -565,23 +575,67 @@ and invites out, with their roles) already has in that role, or has twice (`Fill
 are fine, a third Paladin waits. The matchmaker holds groups from the queue to the same rule while their anchor (who
 waited longest) has waited less than `Config.VARIETY_TIME` and has no class wishes (`checkFor` in
 `core/matchmaker.lua`: a complete set is accepted only with a role assignment, from every assignment
-`Roles.options(…, true)`, that passes `varied`; partial groups too). It knows only each entry's owner's class (from
-the spec on the wire); a party's other players and places held for invites count as unknown and are never held back.
+`Roles.options(…, true)`, that passes `varied`; partial groups too). It knows each entry's owner's class (from
+the spec on the wire) and a party's other players' classes (a 4th part of each `Q` member, `name:roles:level:class`
+with WoW's class id, `Classes.code`; left out when the message would pass 255 bytes, ignored by older versions;
+`member.class` from `Party.members()`, from a formed group's spec in `AutoFill.afterGroupFormed`, and from the
+group's places when a run queues for a replacement, `queueGroup` in `wow/run.lua`); places held
+for invites count as unknown and are never held back.
 Only the elected matchmaker computes groups, so an older one simply leaves the rule out. Past that time the rule is a
 preference: `Fill.pick`'s `prefer` (`Filler.preferClasses`) picks with it first and fills the roles left open with
 anyone who fits ("Passed over … another class was listed" in the log); the matchmaker keeps the first complete set that
 is not varied as a fallback, looks `PREFER_BUDGET` steps further for a varied one (the steps that cuts off are not
 charged to the round's budget, `share.unused`), and takes the fallback when there is none (`canStayVaried` prunes sets that can never be varied while the rule is hard).
+Distance to the dungeon counts in zones (`core/zones.lua`, `wow/zonemap.lua`): the dungeon's own zone is step 0
+(the zone of its entrance's map, plus the zone at the entrance's spot when that is another, so Undercity counts with
+Tirisfal Glades for Ruins of Lordaeron), the zones bordering it step 1, and so on. Which zones border each other is
+read once, the first time a distance is asked for: a 150x100 grid over Kalimdor and the Eastern Kingdoms, each point
+named by `C_Map.GetMapInfoAtPosition` and climbed to its zone; zones on neighbouring points border each other
+(`/fgp zonegraph` 2026-11-18: 15-17 ms a continent, the borders right; a strait narrower than a grid cell, such as
+Teldrassil-Darkshore, counts as a border). A Group Finder player's zone is the result's `areaName` (`listing.area`,
+per member `memberInfo[i].area`); a dungeon's name there (a player inside it) counts as its entrance's zone. Another
+continent and a name not on the map rank after the furthest ring (`Zones.rank`). The closest go first
+(`Fill.pick`'s `steps`, before single-role players and levels), and a player further away waits `Zones.STEP_WAIT`
+(15 s) for each step beyond the first ring, another continent one step after the furthest ring, counted from when
+they showed up (the listing's age) or the search started when that was later (`Zones.waitLeft`; `Fill.pick`'s
+`held`, `Filler.zoneHeld`; the log counts them: "further from the dungeon, waiting a little for someone closer").
+Someone closer who shows up meanwhile takes the place. A player whose zone is not told (no `areaName`, an older
+client) and a dungeon or client without the map are left as they were: no wait, no order. Whisperers are not held.
+The queue carries the owner's zone as the 14th field of `Q` (a map id, `Engine:setZone` at connect and on
+`ZONE_CHANGED_NEW_AREA`; inside a dungeon its entrance's zone); the matchmaker (`Matchmaker.zoneDistance`, set by
+`wow/main.lua`) sorts each dungeon's candidates by steps and leaves out those still waiting, counted from when they
+joined the queue or the anchor did (`byDistance`); an entry without a zone is neither held nor moved. A solo player
+asks the listed group whose furthest member is closest first (`LfgPick.groupsToApply`'s `steps`,
+`Apply.groupSteps`). Tested in `tests/zones_spec.lua`, `tests/fill_spec.lua`, `tests/matchmaker_spec.lua`,
+`tests/lfgpick_spec.lua` and "Players closer to the dungeon" in `tests/wow_fill_spec.lua` (`ZoneMap.setGraph`).
+With several dungeons and none settled yet, the filler takes the one that suits the group best with the players
+available now (`Fill.plan`, `Fill.score`, `Fill.better`; no guesses about who may come later): the fewest tank and
+healer places nobody listed can fill, then the fewest places left open, then the fewest zones to the group's furthest
+player (the picks, the player (`ZoneMap.myZone`) and the party members (`ZoneMap.unitZone`, `C_Map.GetBestMapForUnit`
+on their party unit); `Filler.groupSteps`), then the levels closest to the middle of the dungeon's range on average
+(`Filler.groupLevels` and the picks), then the first in the list. Its first invite settles the dungeon
+(`Filler.choose`, "Chose Shadowfang Keep: 4 of 4 places filled now, the furthest player 1 zone away, levels 1.4 from
+its middle." in the log). Applicants to our listing count the same way for every dungeon on the listing
+(`Listing.checkApplicants`), so one is invited (and settles the dungeon) also before anyone from the search results.
+The matchmaker breaks a tie between dungeons for the same players (equal ranks) by the walk of the furthest entry
+whose zone is known, then the levels (`fit` in `isBetter`, `Matchmaker.levelRange` set by `wow/main.lua`). Tested in
+"choosing between dungeons" in `tests/fill_spec.lua` and `tests/wow_fill_spec.lua`, "comparing listed groups" in
+`tests/wow_lfg_spec.lua` and `tests/matchmaker_spec.lua`.
 Levels are a preference too (never a limit; the dungeon's levels and a level limit still are): `Fill.pick`'s `near`
 (`Filler.groupLevel`, the player's and the party's average) puts the closest level before the longest listed, after
 single-role players; the matchmaker sorts an anchor's candidates by how far their average level is from the anchor's
 (`Matchmaker.levelPreference`, `averageLevel`), whoever waited `VARIETY_TIME` counting as near, then by queue order. A whisperer held back waits in `wow/whisperinvite.lua` until then; the log counts
 them per role ("of a class your group has in that role or twice, for 95 s more"). The test mock turns it off unless a client
-is made with `classVariety` (its listed players are mostly Paladins). Anyone who declines or does not
-join within 30 s is replaced (a player who joins later is kept while a spot is open). What became of each invite is
+is made with `classVariety` (its listed players are mostly Paladins). Anyone who declines is replaced at
+once; one who does not answer keeps the place until WoW drops the invite, as nobody else could have it meanwhile.
+What WoW shows (`/fgp invitewatch`, 2026-11-18): "You have invited X to join your group." as an invite goes out,
+"X joins the party." on accepting, "X declines your group invitation." on declining, and the same decline exactly
+60 s after an invite nobody answered (inviting while alone makes a party of one at once, gone again with the
+decline). So an unanswered invite frees its place by that message; a decline 59 s or more after the invite went out
+counts as no answer (outcome noanswer), an earlier one as declined. `INVITE_TIMEOUT` (62 s from sending) only
+catches that message missed, as after a /reload; the questing and battleground finders keep the place 62 s too. What became of each invite is
 kept (`state.outcomes`: declined, grouped for WoW's "is already in a group", missing for "Cannot find player",
-noanswer, away; from WoW's own system text, also for an answer that comes after the 30 s, which frees the
-place it held) and the player is passed over until they look again (`reopen`, before
+noanswer, away; from WoW's own system text) and the player is passed over until they look again (`reopen`, before
 each pick): one who was in a group or not found once they list again (a listing newer than the outcome:
 `seenAt - age`, so a kept older listing never counts), one who declined once more after listing again, one who did
 not answer once more when still listed 5 minutes after (`REOPEN_WAIT`); a second no is final for the fill. Who is
@@ -598,20 +652,31 @@ uninvited. Every open invite takes a place in the party, also one given up on: W
 for exactly 60 s. Every invite the addon sends goes through `wow/invites.lua` (the filler, the battleground and quest
 finders, a formed queue group, whisper invites and the player menu), which counts the places open invites hold until
 they are answered, joined or 62 s old (WoW's 60 s start when its server gets the invite, a moment after it is sent,
-so a place counted free at 60 s could still be taken: "Your party is full"). A /reload keeps them (`charDb.invites`, with their ages). The queue entry
+so a place counted free at 60 s could still be taken: "Your party is full"; each one logs how many WoW counts in the
+group and the invites on record with their ages, "party full: …"). A /reload keeps them (`charDb.invites`, with their ages). The queue entry
 saved for a /reload (`charDb.queue`) carries the filler (`Filler.saved`, `Filler.restore`: the roles sought, the
 invites still out, who not to invite again), so it fills on without whispering and inviting the same players twice.
 When members and invites take all five places the party leaves the queue for the moment (`parked` in
 `wow/main.lua`) and joins again at its old place once a place frees; that too is saved, and after a /reload the
 filler goes on and replaces whoever declines. The filler, the battleground finder and the quest finder invite no more than
 the party has room for after those. WoW's `ERR_GROUP_FULL` ("Your party is full") names nobody and belongs to the
-invite sent last (`Invites.onRefused` tells its sender, which may pick that player again); the filler then invites
-nobody for 10 s. A pending invite
-can't be taken back (`C_PartyInfo.UninviteUnit` is protected and left the invite open in the probe). The group's places
-fill their open places with `Filler.invites()` by role: the invited player's name with "invited" and the seconds left
-of the 30, or "frees in" and the seconds until WoW drops a given-up invite. A role that a solo Forever Groups player
-waiting in the queue for the dungeon can play is left to the matchmaker first (`addonRoles` in `wow/filler.lua`);
-only the other roles go to the Group Finder, and that role too if the matchmaker has not grouped them within 20 s. "Fill from Group Finder" in the window (or `/fg fill`) does the same for your own party;
+invite sent last (`Invites.onRefused` tells its sender, which may pick that player again); a place is then held by
+something not counted, so the filler invites nobody until a place frees, which WoW always tells: any "declines your
+group invitation" (an expired invite too, within 60 s) or the group's size changing (`placeFreed`), or one of the
+filler's own invites running out (in case WoW's message did not get through, as a secret value in combat). A pending invite
+can't be taken back (`C_PartyInfo.UninviteUnit` is protected and left the invite open in the probe). So Stop (the
+window, `/fg leave`, `/fg fill stop`) also calls `GroupView.stopBuilding`: a group never complete (`context.complete`,
+set at five members and carried over when a run's replacement makes a new context) and not entered is no longer
+followed, so players who accept afterwards join a plain party, and the main button is not "Find replacement" in
+Stop's place. While the filler's invites are still held after a stop (`Invites.held("filler")`) the line above the
+button says how many. The group's places
+fill their open places with `Filler.invites()` by role: the invited player's name with "invited" and the seconds
+until WoW drops the invite, or "frees in" and the seconds until WoW drops an invite given up on (an away reply). A role that a solo Forever Groups player
+waiting in the queue for the dungeon can play is left to the matchmaker first (`addonRoles` in `wow/filler.lua`) for
+one round (`Config.MATCH_ROUND`), and while the proposal it makes is open the filler invites nobody, so the place
+stays free until that player accepts, declines or lets it lapse; with no proposal in that round the Group Finder fills
+the role. Measured with `tools/simulate.lua` (set `hold`): without keeping the place, Forever Groups players waited
+35-40 s longer on average (normal: 6:17 against 5:36), as Group Finder players took the places they fitted. "Fill from Group Finder" in the window (or `/fg fill`) does the same for your own party;
 Filling has no window of its own: what it waits for goes to the saved log
 (`Log.detail`, chat with `/fg debug on`) and the status bar shows who is invited. When a role stays open while
 players are listed for it, the line says why they were passed over (`Fill.skipped`: already invited/asked/declined,
@@ -661,7 +726,14 @@ healer and three DPS still lacks (`GroupView.composition`).
 Forever's Group Finder is the board-style one (Blizzard_GroupFinder_VanillaStyle): no applications, players and
 groups are listed and people whisper or invite each other. So a solo player first asks listed groups that need one of
 their roles to invite them, by whisper to the leader (one at a time; listings up for 30 min or more last (`LfgPick.OLD_LISTING`, often an
-away leader), then nearest to full, then the most recently listed; the next after 20 s without an invite, so two
+away leader), then the one that would turn out best with the player in it (`Fill.score` from `Apply.groupScore`: its
+places left after the player filled from the solo players listed now, of classes it and the player don't have in that
+role; the walk of its furthest member or the player; its members' and the player's levels; a group listed for
+several of the player's dungeons is asked for the one that suits best), then the one whose furthest member is
+closest to the dungeon in zones, then nearest to full, then the most recently listed. Before asking, the best group
+is compared with building our own (`Apply.buildScore`, `Fill.plan` over the player's dungeons): when that suits
+better (`Fill.better`; a tie asks the group, as the player chose to join), nobody is asked and building starts at
+once ("Building your own group: it suits better than asking …" in the log); the next after 20 s without an invite, so two
 invites never arrive at once; a leader asked automatically is not asked again for 15 min, also in a later queue or
 after a reload (`charDb.askedLeaders`); the questing queue the same), and waits 60 s in all, or less: with no group left to ask and every asked leader clearly done (a no, full or gone),
 building starts at once (`Apply.wantsToBuild`). Replies and invites are matched to the asked leader with or without a
@@ -759,9 +831,19 @@ which role they play when they only ask to join ("inv pls"), and says which role
 An answer that names no role ("i can tnak") is asked again, at most three questions in all (`MAX_ASKS`); a line
 within 3 s of the question ("inv?") is not taken as the answer. Role words are matched exactly, never guessed. Each
 step goes to the saved log with the whisper's first 80 characters.
-When open invites hold every party place (`Filler.room`), a whisperer gets no answer yet and is invited (with the
-usual answer) as soon as a place frees, kept waiting just past `Invites.HOLD` (`WhisperInvite.tick`). What was
-asked and told (`asked`) holds for the group being built only: forgotten once no group is being built.
+A whisperer whose role's place an open invite holds (every party place held, `Filler.room`, or their role only
+among the roles invites still out hold, `Filler.pendingRoles`) is told so at once ("That spot is held by an open
+invite right now. I'll invite you as soon as it frees up.", `whisperWait`, once per whisper) and waits; they are
+invited when that place frees (the invite declined, turned down or expired), told what is still needed when their
+role is taken after all, or told the group is full: by what happens, not after a fixed time (`WhisperInvite.tick`).
+The roles a whisperer named are kept for the group (`known`): a later line without a role ("didnt get inv") counts
+as the same roles, not a reason to ask again; other chat from someone waiting ("ok", "ty") gets no answer. "Inviting you as …" is said once per whisperer, and only when WoW
+confirms the invite went out (`ERR_INVITE_PLAYER_S`, `Invites.onSent`; at once on a client without that text): an
+invite WoW turns down ("Your party is full", `WhisperInvite.refused` from the filler) says nothing and puts them back
+on the list. What was asked and told (`asked`) holds for the group being built only: forgotten once no group is being built. When that
+is because the dungeon group is full (5 in the party, a dungeon followed), whoever was still asked for their role or
+waiting for a place gets one "Sorry, our group for {dungeon} is full now" (`whisperFull`, `tellFull`); not those
+already told no place takes them, nor anyone in the party, and not after Stop with a place still open.
 Asking groups happens out of sight: no status, window or chat line says how many were asked (only the saved log
 does). With `/fg debug on` the status shows "Building your own group: inviting …" once the filler runs.
 
@@ -870,6 +952,9 @@ not on the Quests tab.
 - **Taskbar flash:** proposals and invites flash the WoW icon in the taskbar and play a sound (`wow/notify.lua`).
 - **Dungeon quests:** the dungeon table shows how many quests from the quest log belong to each dungeon (the quest
   log's area headers; `wow/quests.lua`).
+- **Group complete:** the leader's own notice, sound and waypoint, and one "Group complete for … Meet at the
+  entrance." in party chat (`partyComplete`); not that party line again when a replacement completes a group that was
+  complete before (`announce(again)` in `wow/groupview.lua`: the party met already).
 - **Entrances:** when the group is complete a waypoint is set to the dungeon entrance, with directions, and each
   group slot shows how far that player is. Sources, in order: WoW's own dungeon pins
   (`C_EncounterJournal.GetDungeonEntrancesForMap`; Forever's client has none), the entrances copied into
@@ -885,8 +970,11 @@ not on the Quests tab.
   change, and once connected after a login or /reload (`QuestShare.onReady`), as the lists live in memory only and
   party messages are read only once the own name is known); the window shows
   the counts per player, and "Share my quests" shares every shareable quest, 1.5 s apart (`wow/questshare.lua`).
-  Sharing also happens by itself (`QuestShare.autoShare`, off with `db.noAutoShareQuests`) 5 s after the roster
-  changes or a list arrives: each of our shareable quests for the dungeon that a member lacks is shared, by the
+  Sharing also happens by itself (`QuestShare.autoShare`, off with `db.noAutoShareQuests`) 5 s after someone
+  arrives in the party who was not in it before for this dungeon's group (`seen` in `charDb.questShare`), or a list
+  arrives within 30 s of that; not when someone only leaves, as by then the others' quests may be done and turned
+  in, so they seem to lack them (a share to a whole finished group once went out that way): each of our shareable
+  quests for the dungeon that a member lacks is shared, by the
   first by name of the Forever Groups players in the party holding it (lists of players who left are kept but
   not counted), once per member (`sharedTo`, so a member who joins later
   gets it too). A member with Forever Groups whose list has not come in is waited for once (5 s more); one without
@@ -903,9 +991,20 @@ not on the Quests tab.
   share WoW turns down with `ERR_QUEST_PUSH_TOO_FAR_S` or `ERR_QUEST_PUSH_BUSY_S` (a newcomer outside while we are
   inside; the line names the player, so it is matched to the quest shared in the last 1.5 s) is tried again every
   15 s, at most 20 times. What was shared, whether we asked or heard an ask are kept in `charDb.questShare` for the
-  group's dungeon, so a /reload does not share or ask again; it is cleared on leaving the group. Only a real change
+  group's dungeon, so a /reload does not share or ask again; it is cleared on leaving the group (not on WoW's
+  "no group" while loading, `ns.inWorld`). Only a real change
   starts a round (the tracked dungeon or the party's names, not every `GROUP_ROSTER_UPDATE`).
-- **Replacement:** `wow/run.lua` counts bosses killed (`ENCOUNTER_END`). A dungeon's boss count comes from WoW's
+- **Replacement:** `wow/run.lua` counts bosses killed (`ENCOUNTER_END`). The run (`charDb.run`) goes on over a
+  /reload or relog in the same dungeon with the same group (one of its members still there; whoever joins while the
+  player is inside is added to the run's members, so a group formed in the dungeon counts too); right after a login WoW
+  may not know the party yet (no party, or a name not loaded), so then the run is kept and decided at the next
+  `GROUP_ROSTER_UPDATE` (`pending`, `settlePending`) instead of started over; still no party after 10 s
+  (`settleAlone`) decides it by the party then known: the same group keeps the run, another one or none (the player
+  alone now) starts a new run, a name still loading waits another 10 s; leaving the instance drops the undecided
+  run's `pending`. While loading WoW can also report no group and no
+  instance for a moment: a `GROUP_ROSTER_UPDATE` before the first `PLAYER_ENTERING_WORLD` ends nothing
+  (`ns.inWorld`, set in `wow/events.lua`; the same holds for the quest sharing memory, the agreed roles and the
+  followed group). Why a run ends or starts over is logged ("run ended: …", "run kept until the party is known"). A dungeon's boss count comes from WoW's
   Adventure Guide when it lists the dungeon, else from finished runs (the most ever killed in one run). When someone leaves the full group before every known boss is down, the leader gets a popup to
   queue the group for a replacement (Forever Groups and the Group Finder, the leaver excluded); with
   `db.autoReplace` that happens without the popup. Only the popup's click searches the Group Finder; without it the
@@ -915,8 +1014,8 @@ not on the Quests tab.
 searches after the filler started, so the one search covers the run's dungeon.
   While the run of that dungeon has a boss down and goes on, every invite whisper for it (the filler's, the answer
   to a whisperer, the queue group's) is the `replaceInvite` message (`Messages.inviteText`,
-  `Run.replacementProgress`: "1/6 bosses down, group is inside" in English, the group part while the player is
-  inside).
+  `Run.replacementProgress`: "1/6 bosses down, group is inside" in English, the group part only while the player
+  and every party member are inside, `GroupPlaces.of`; one whose place is not known counts as outside).
   Its open places are cards like the class choices' (`placeRows(..., choosing)` maps each to a free
   `Compose.SLOT_ROLES` place, `row.wishSlot`), built by the same `W.newClassCard` (WoW's dropdown menu, our own list without it): a pick
   switches the class choices on (cleared first when they were off) and sets that place's classes (`PartyCompose.setClasses`), which the replacement search then uses; while it searches
