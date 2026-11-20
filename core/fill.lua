@@ -28,10 +28,11 @@ local function limitFits(listing, limit)
 end
 
 -- With `steps` (zones between the player and the dungeon, wow/zonemap.lua)
--- whoever is closest to the dungeon comes first; then players who can play
--- only the open role, so flexible players stay available for scarcer roles;
--- then, with `near` (the group's level), whoever is closest to it; then
--- whoever has been listed longest.
+-- whoever is closest to the dungeon comes first; then, with `spread`, a class
+-- the group does not have enough of yet (Fill.avoided); then players who can
+-- play only the open role, so flexible players stay available for scarcer
+-- roles; then, with `near` (the group's level), whoever is closest to it;
+-- then whoever has been listed longest.
 local function distance(listing, near)
     return listing.level and math.abs(listing.level - near) or math.huge
 end
@@ -40,10 +41,17 @@ local function zoneSteps(listing, opts)
     return opts.steps and opts.steps(listing, opts.dungeon) or math.huge
 end
 
-local function better(a, b, opts)
+local function better(a, b, opts, role, picked)
     local near = opts.near
     if opts.steps and zoneSteps(a, opts) ~= zoneSteps(b, opts) then
         return zoneSteps(a, opts) < zoneSteps(b, opts)
+    end
+    if opts.spread then
+        local x = Fill.avoided(opts.spread, picked, a.classToken, role)
+        local y = Fill.avoided(opts.spread, picked, b.classToken, role)
+        if x ~= y then
+            return y
+        end
     end
     if #a.roles ~= #b.roles then
         return #a.roles < #b.roles
@@ -117,7 +125,7 @@ local function pickInOrder(listings, opts, order)
                     and Roles.has(listing.roles, role) and lists(listing, opts.dungeon)
                     and levelFits(listing, opts.range) and limitFits(listing, opts.levels)
                     and not (opts.held and opts.held(listing, opts.dungeon))
-                    and (not best or better(listing, best, opts))
+                    and (not best or better(listing, best, opts, role, picked))
                     and fitsWith(places, picks, role, listing.classToken)
                     and not Fill.avoided(opts.avoid, picked, listing.classToken, role) then
                     best = listing
@@ -164,7 +172,8 @@ end
 -- optional), levels (a leader's level limit, optional), avoid (the group's
 -- classes while it should get varied ones, optional; Fill.avoided), prefer
 -- (the same, as a preference: the roles nobody of another class can fill go
--- to anyone who fits; never with class wishes, `places`), steps
+-- to anyone who fits; never with class wishes, `places`), spread (the same
+-- under class wishes: of the players as close, another class goes first), steps
 -- (function(listing, dungeon) -> zones away, or nil when not known; the
 -- closest first), held (function(listing, dungeon) -> true while a player
 -- further away still waits for someone closer).
@@ -308,7 +317,8 @@ function Fill.plan(listings, opts)
         local picks, open = Fill.pick(listings, {
             missing = opts.missing, dungeon = dungeon, exclude = opts.exclude,
             range = range, places = opts.places, levels = opts.levels,
-            avoid = opts.avoid, prefer = opts.prefer, near = opts.near, steps = opts.steps, held = opts.held,
+            avoid = opts.avoid, prefer = opts.prefer, spread = opts.spread, near = opts.near, steps = opts.steps,
+            held = opts.held,
         })
         local invited = {}
         for i, pick in ipairs(picks) do

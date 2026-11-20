@@ -182,7 +182,7 @@ function W.onBattlegroundJoinClicked()
     end
     local listed
     for _, id in ipairs(ids) do
-        listed = listed or (Battlegrounds.get(id).lfg and id)
+        listed = listed or (ns.LfgList.battlegroundActivity(id) and id)
     end
     local found = false
     if listed then

@@ -211,7 +211,13 @@ function QueueWindow.groupFinderGroups(subject)
         return result
     end
     for _, listing in ipairs(listings) do
-        if not listing.solo and (listing.members or 1) < 5 and listing.leader ~= ns.selfName
+        local room
+        if subject == "battlegrounds" then
+            room = (listing.open or 0) > 0
+        else
+            room = (listing.members or 1) < 5
+        end
+        if not listing.solo and room and listing.leader ~= ns.selfName
             and matches(listing) and styleFits(listing, subject) then
             result[#result + 1] = listing
         end

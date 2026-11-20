@@ -784,6 +784,73 @@ describe("A player who switches roles after joining", function()
         assert.are.equal("DAMAGER", leader.roles["Listed Heal"])
     end)
 
+    local function joinedHealer()
+        local world = World.new()
+        local leader = world:addClient("Tanky Mctank", { level = 20 })
+        world:list("Listed Heal", "HD", 799, 20, 300)
+        world:advance(CONNECT)
+        leader:slash("/dq")
+        leader:click("CheckButton", "Tank")
+        leader:click("Button", "None")
+        leader:click("CheckButton", "The Deadmines")
+        leader:slash("/dq fill")
+        world:advance(2)
+        leader:joins("Listed Heal")
+        world:advance(6)
+        assert.are.equal("HEALER", leader.roles["Listed Heal"])
+        return world, leader
+    end
+
+    it("takes the leader's change WoW reports, also when it came past UnitSetRole", function()
+        local world, leader = joinedHealer()
+        leader.roles["Listed Heal"] = "DAMAGER"
+        leader:fire("ROLE_CHANGED_INFORM", "Listed", "Tanky", "HEALER", "DAMAGER")
+        leader:fire("PLAYER_ROLES_ASSIGNED")
+        world:advance(6)
+        assert.are.equal("DAMAGER", leader.roles["Listed Heal"])
+        assert.are.equal("D", leader.ns.RoleSync.expected("Listed Heal"))
+    end)
+
+    it("takes the leader's change WoW reports after setting it back, and not its own set-back", function()
+        local world, leader = joinedHealer()
+        leader.roles["Listed Heal"] = "DAMAGER"
+        leader:fire("PLAYER_ROLES_ASSIGNED")
+        assert.are.equal("HEALER", leader.roles["Listed Heal"])
+        leader:fire("ROLE_CHANGED_INFORM", "Listed Heal", "Tanky Mctank", "HEALER", "DAMAGER")
+        assert.are.equal("DAMAGER", leader.roles["Listed Heal"])
+        leader:fire("ROLE_CHANGED_INFORM", "Listed Heal", "Tanky Mctank", "DAMAGER", "HEALER")
+        world:advance(6)
+        assert.are.equal("DAMAGER", leader.roles["Listed Heal"])
+        assert.are.equal("D", leader.ns.RoleSync.expected("Listed Heal"))
+    end)
+
+    it("takes the leader's change to a role it set itself long before, when WoW never reported that set", function()
+        local world, leader = joinedHealer()
+        leader.roles["Listed Heal"] = "DAMAGER"
+        leader:fire("PLAYER_ROLES_ASSIGNED")
+        assert.are.equal("HEALER", leader.roles["Listed Heal"])
+        world:advance(10)
+        leader.roles["Listed Heal"] = "DAMAGER"
+        leader:fire("ROLE_CHANGED_INFORM", "Listed Heal", "Tanky Mctank", "HEALER", "DAMAGER")
+        world:advance(10)
+        leader.roles["Listed Heal"] = "HEALER"
+        leader:fire("ROLE_CHANGED_INFORM", "Listed Heal", "Tanky Mctank", "DAMAGER", "HEALER")
+        leader:fire("PLAYER_ROLES_ASSIGNED")
+        world:advance(6)
+        assert.are.equal("H", leader.ns.RoleSync.expected("Listed Heal"))
+        assert.are.equal("HEALER", leader.roles["Listed Heal"])
+    end)
+
+    it("still sets back a member who changes their own role", function()
+        local world, leader = joinedHealer()
+        leader.roles["Listed Heal"] = "DAMAGER"
+        leader:fire("ROLE_CHANGED_INFORM", "Listed", "Listed", "HEALER", "DAMAGER")
+        leader:fire("PLAYER_ROLES_ASSIGNED")
+        world:advance(6)
+        assert.are.equal("HEALER", leader.roles["Listed Heal"])
+        assert.are.equal("H", leader.ns.RoleSync.expected("Listed Heal"))
+    end)
+
     it("is taken over when it cannot be set, even one the player never offered", function()
         local world = World.new()
         local leader = world:addClient("Tanky Mctank", { level = 20 })

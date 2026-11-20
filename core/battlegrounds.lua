@@ -2,23 +2,43 @@ local _, ns = ...
 ns = ns or {}
 
 -- The battlegrounds Forever Groups helps with. Ids go over the wire: never
--- renumber or reuse one, only append. lfg is the battleground's activity in
--- WoW's Group Finder (its Battlegrounds category, 118, offers only Warsong
--- Gulch); the others are found through the Forever Groups queue only. size: players per side. Battlegrounds
--- put players together by level bracket (10-19, 20-29, ...), so groups only
--- form within one bracket.
+-- renumber or reuse one, only append. map: the battleground's map, by which
+-- WoW's Group Finder activities are told apart. size: players per side.
+-- Battlegrounds put players together by level bracket (10-19, 20-29, ...),
+-- so groups only form within one bracket.
 local LIST = {
-    { id = "wsg", name = "Warsong Gulch", short = "WSG", lfg = 919, size = 10, minLevel = 10, pvp = 2 },
-    { id = "ab", name = "Arathi Basin", short = "AB", size = 15, minLevel = 20, pvp = 3 },
-    { id = "dsi", name = "Darkspear Islands", short = "DSI", size = 15, minLevel = 30, pvp = 1157 },
+    { id = "wsg", name = "Warsong Gulch", short = "WSG", map = 489, size = 10, minLevel = 10, pvp = 2 },
+    { id = "ab", name = "Arathi Basin", short = "AB", map = 529, size = 15, minLevel = 20, pvp = 3 },
+    { id = "dsi", name = "Darkspear Islands", short = "DSI", map = 2997, size = 15, minLevel = 30, pvp = 1157 },
 }
 
-local Battlegrounds = { list = LIST, byId = {}, byActivity = {} }
+-- byActivity: WoW's Group Finder (its Battlegrounds category) has an
+-- activity per battleground and level bracket, read in game (setActivity).
+-- lfg: the activity for the player's own bracket, while there is one.
+local Battlegrounds = { list = LIST, byId = {}, byMap = {}, byActivity = {} }
 
 for _, battleground in ipairs(LIST) do
     Battlegrounds.byId[battleground.id] = battleground
-    if battleground.lfg then
-        Battlegrounds.byActivity[battleground.lfg] = battleground
+    Battlegrounds.byMap[battleground.map] = battleground
+end
+
+-- An activity of WoW's Group Finder on this map; ours: one for the player's
+-- bracket. Returns the battleground, or nil for another map.
+function Battlegrounds.setActivity(activity, map, ours)
+    local battleground = Battlegrounds.byMap[map]
+    if battleground then
+        Battlegrounds.byActivity[activity] = battleground
+        if ours then
+            battleground.lfg = activity
+        end
+    end
+    return battleground
+end
+
+-- Before the player's bracket's activities are read again.
+function Battlegrounds.clearOwnActivities()
+    for _, battleground in ipairs(LIST) do
+        battleground.lfg = nil
     end
 end
 

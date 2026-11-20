@@ -408,6 +408,36 @@ describe("Matchmaker", function()
             assert.are.equal("SFK", Matchmaker.findGroups(entries, nil, 1000)[1].dungeon)
         end)
 
+        it("under the leader's class wishes takes another class as close, never one further away", function()
+            local function as(id, joinedAt, role, class, zone)
+                local e = zoned(id, joinedAt, role, zone)
+                e.spec = class
+                return e
+            end
+            local lead = as("Lead", 1, "D", "SHAMAN", "Westfall")
+            lead.compose = "0:0.0.0.208.208"
+            local entries = {
+                lead, as("Tank", 2, "T", "WARRIOR", "Westfall"), as("Heal", 3, "H", "PRIEST", "Westfall"),
+                as("Lock1", 4, "D", "WARLOCK", "Westfall"), as("Lock2", 5, "D", "WARLOCK", "Westfall"),
+                as("Mage", 6, "D", "MAGE", "Westfall"),
+            }
+            assert.are.same({ "Heal", "Lead", "Lock1", "Mage", "Tank" },
+                ids(Matchmaker.findGroups(entries, nil, 1000)[1]))
+            entries[6].zone = "Swamp"
+            assert.are.same({ "Heal", "Lead", "Lock1", "Lock2", "Tank" },
+                ids(Matchmaker.findGroups(entries, nil, 1000)[1]))
+            for i = 1, 5 do
+                entries[i].dungeons = { "DM", "SFK" }
+            end
+            entries[6].dungeons, entries[6].zone = { "SFK" }, "Westfall"
+            Matchmaker.zoneDistance = function(dungeon, zone)
+                return steps[zone] and (dungeon == "SFK" and 2 or 0), 3
+            end
+            local group = Matchmaker.findGroups(entries, nil, 1000)[1]
+            assert.are.equal("DM", group.dungeon)
+            assert.are.same({ "Heal", "Lead", "Lock1", "Lock2", "Tank" }, ids(group))
+        end)
+
         it("lets one further away wait 15 s a step from joining the queue, then takes them", function()
             local entries = {
                 zoned("Tank", 1, "T", "Westfall"), zoned("Heal", 2, "H", "Westfall"),

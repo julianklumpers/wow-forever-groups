@@ -116,6 +116,7 @@ describe("the battleground queue", function()
 
     it("puts Forever Groups players together and the leader invites", function()
         local world = World.new()
+        world.battlegroundActivities = { [920] = World.BATTLEGROUND_ACTIVITIES[920] }
         local a = world:addClient("Aaa Player", { level = 25 })
         local b = world:addClient("Bbb Player", { level = 27 })
         world:advance(CONNECT)
@@ -169,7 +170,7 @@ describe("the battleground queue", function()
     it("lets the leader fill the group from the Group Finder", function()
         local world = World.new()
         for i = 1, 8 do
-            world:list("Bg Player" .. i, i == 1 and "H" or "D", 919, 22)
+            world:list("Bg Player" .. i, i == 1 and "H" or "D", 920, 22)
         end
         local a = world:addClient("Aaa Player", { level = 25 })
         local b = world:addClient("Bbb Player", { level = 25 })

@@ -404,10 +404,13 @@ whole group (see Demo below).
 
 ### Battlegrounds tab
 
-`core/battlegrounds.lua` lists the battlegrounds: Warsong Gulch (10 players, from level 10) with its Group Finder
-activity (Forever's "Battlegrounds" category 118 offers only Warsong Gulch, activity 919; `/fgp pvp`), Arathi Basin
-(15, from 20) and Darkspear Islands (15, from 30, Forever's own), which only the Forever Groups queue finds players
-for. Battlegrounds put players together by level bracket (10-19, 20-29, ...), so only listings whose leader is in the
+`core/battlegrounds.lua` lists the battlegrounds: Warsong Gulch (10 players, from level 10), Arathi Basin (15, from
+20) and Darkspear Islands (15, from 30, Forever's own), each with its map. Forever's "Battlegrounds" category 118 has
+an activity per battleground and level bracket and offers only those of the player's bracket (at 25: Warsong Gulch
+920 and Arathi Basin 926; at 10-19 Warsong Gulch 919; `/fgp pvp`). `LfgList` reads them in game and tells them apart
+by `mapID` (`battlegroundsNeeded`, again when the bracket changes; `Battlegrounds.setActivity`, `lfg` is the own
+bracket's activity), and places an activity of another bracket in a result by its map too (`battlegroundOf`). A
+battleground without an activity for the bracket finds players through the Forever Groups queue only. Battlegrounds put players together by level bracket (10-19, 20-29, ...), so only listings whose leader is in the
 player's bracket count. `LfgList` searches that
 category as a third kind of result (`searchBattlegrounds`, `battlegroundListings`), each listing with its open places
 (`open`: the battleground's size less its members; roles hardly matter). The tab (`wow/ui/window/battlegrounds.lua`)
@@ -586,6 +589,14 @@ preference: `Fill.pick`'s `prefer` (`Filler.preferClasses`) picks with it first 
 anyone who fits ("Passed over … another class was listed" in the log); the matchmaker keeps the first complete set that
 is not varied as a fallback, looks `PREFER_BUDGET` steps further for a varied one (the steps that cuts off are not
 charged to the round's budget, `share.unused`), and takes the fallback when there is none (`canStayVaried` prunes sets that can never be varied while the rule is hard).
+Under the leader's class wishes the rule is a preference from the start, but distance goes first and nobody waits
+for another class: `Fill.pick`'s `spread` (`Filler.spreadClasses`, also for applicants; off with
+`db.noClassVariety`) ranks a listing whose class the group has in that role or twice (`Fill.avoided`, the picks so
+far included) after one of another class only among listings as many zones from the dungeon (`better`, right after
+`steps`); the filler logs whom that passed over, as for `prefer`. The matchmaker (`spread` in `tryAnchor`) checks the wishes and `varied` together, keeps the first set that
+passes the wishes only as the fallback, and takes a varied set found within `PREFER_BUDGET` only when its furthest
+player is not further from the dungeon than the fallback's (`fit(...).steps`); across the anchor's dungeons a
+fallback with a shorter walk beats a varied group.
 Distance to the dungeon counts in zones (`core/zones.lua`, `wow/zonemap.lua`): the dungeon's own zone is step 0
 (the zone of its entrance's map, plus the zone at the entrance's spot when that is another, so Undercity counts with
 Tirisfal Glades for Ruins of Lordaeron), the zones bordering it step 1, and so on. Which zones border each other is
@@ -697,7 +708,11 @@ back again once the oldest falls out of the window. This also holds when
 they offered that role in the Group Finder and after each of their /reloads (Deadly Boss Mods sets it from the spec
 again): the place they were taken for counts, not what they listed or their talents. Only the leader changing a
 member's role in WoW's party frames makes it their new role (the `hooksecurefunc("UnitSetRole")` hook sees it;
-Forever Groups' own calls are marked `setting` and left alone; on the member's own client `ROLE_CHANGED_INFORM`
+Forever Groups' own calls are marked `setting` and left alone; Forever's party frames can change a role past that
+hook, so the leader's client also takes `ROLE_CHANGED_INFORM` naming the leader as the changer, `leaderChanged`,
+except for a role it set itself in the last `OWN_REPORT_WINDOW` seconds (`ownSets`, per member and role; a set that
+did not take is never reported, so it does not count longer), so its
+own set-back reported after the leader's change is not taken for one; on the member's own client `ROLE_CHANGED_INFORM`
 names the leader as the one who changed it, `onRoleChanged`, so it is not set back there either), and the filler then looks for the role that became
 free. A player who is not the leader (who cannot set others' roles) takes the member's role over at once, and so
 does the leader when WoW does not take the role it sets. The

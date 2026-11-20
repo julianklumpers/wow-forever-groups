@@ -11,7 +11,8 @@ local Log = ns.Log
 -- tank), so another role is set back: the player's own unless they ticked
 -- that one too; a party member's always (Deadly Boss Mods sets it from the
 -- spec again after each of their /reloads). Only the leader changing a
--- member's role in WoW's party frames makes it their new role.
+-- member's role in WoW's party frames makes it their new role (onRoleSet, or
+-- WoW's report of it, leaderChanged).
 -- Each change is answered at once; only LOOP_MAX set-backs of one player
 -- within LOOP_WINDOW seconds (something keeps changing it) pause it, so that
 -- is not answered in a loop. The roles are kept per character, so they still
@@ -40,6 +41,12 @@ local onRoleChanged
 local setting = false
 -- The player's role is held for their single tick, not agreed (claimTicked).
 local tickHeld = false
+-- Per member the roles Forever Groups set and when ({ [role] = time }): a
+-- report of the leader's change that is none of these is the leader's own,
+-- also when it came through no UnitSetRole we see. A set that did not take
+-- is never reported, so a set counts for OWN_REPORT_WINDOW seconds only.
+local ownSets = {}
+local OWN_REPORT_WINDOW = 5
 
 -- The player's name, also before the channel told it (right after a
 -- /reload, when WoW may already have changed the role).
@@ -129,7 +136,7 @@ end
 
 function RoleSync.forget(name)
     expected[name], attempts[name], settled[name], attemptedAt[name], resets[name] = nil, nil, nil, nil, nil
-    paused[name] = nil
+    paused[name], ownSets[name] = nil, nil
     save()
 end
 
@@ -256,6 +263,10 @@ function RoleSync.apply()
             setting = true
             local ok, err = pcall(UnitSetRole, unit, WOW_ROLES[role])
             setting = false
+            if ok and unit ~= "player" then
+                ownSets[name] = ownSets[name] or {}
+                ownSets[name][role] = now
+            end
             Log.debug("set role of %s to %s: %s", name, WOW_ROLES[role], ok and "ok" or tostring(err))
             if LETTERS[UnitGroupRolesAssigned(unit)] == role then
                 -- Taken at once: the next change is answered at once too.
@@ -326,31 +337,67 @@ local function quietBossMods()
     end
 end
 
--- Whether a name (as WoW's role event gives it, maybe the first part only)
--- is the party's leader.
+-- Whether a name as WoW's role event gives it (maybe the first part only)
+-- is this full name.
+local function sameName(full, given)
+    return type(full) == "string" and type(given) == "string"
+        and (full == given or string.match(full, "^(%S+)") == given)
+end
+
+-- Whether a name (as WoW's role event gives it) is the party's leader.
 local function isLeaderName(name)
-    if type(name) ~= "string" then
-        return false
-    end
     for i = 1, 4 do
         local unit = "party" .. i
-        local full = Party.unitName(unit)
-        if full and UnitIsGroupLeader(unit) and (full == name or string.match(full, "^(%S+)") == name) then
+        if UnitIsGroupLeader(unit) and sameName(Party.unitName(unit), name) then
             return true
         end
     end
     return false
 end
 
+-- The full name of the party member a role event names, or nil.
+local function memberNamed(name)
+    for i = 1, 4 do
+        local full = Party.unitName("party" .. i)
+        if sameName(full, name) then
+            return full
+        end
+    end
+    return nil
+end
+
+-- The player, leading, changed a member's role (WoW's party frames): that is
+-- the member's new role. WoW reports Forever Groups' own set-backs the same
+-- way, so a report of a role it set itself (ownSets) is not one.
+local function leaderChanged(who, changedBy, letter)
+    local member = memberNamed(who)
+    if not member or not letter or not expected[member] or not sameName(me(), changedBy)
+        or not UnitIsGroupLeader("player") then
+        return
+    end
+    local mine = ownSets[member]
+    if mine and mine[letter] and GetTime() - mine[letter] <= OWN_REPORT_WINDOW then
+        mine[letter] = nil
+    elseif expected[member] ~= letter then
+        changed(member, letter)
+        settled[member], attempts[member], attemptedAt[member] = false, 0, nil
+        Log.debug("you made %s %s", member, WOW_ROLES[letter])
+    end
+end
+
 -- The party's leader setting the player's role (WoW's party frames) makes it
 -- the player's own: the leader's client holds it from then on, so this one
 -- must not set it back (ROLE_CHANGED_INFORM: changed, changed by, old, new).
-function onRoleChanged(who, changedBy, _, newRole)
+function onRoleChanged(who, changedBy, oldRole, newRole)
     local name = me()
     local letter = LETTERS[newRole]
+    if who ~= nil then
+        Log.debug("WoW: %s made %s %s (was %s)", tostring(changedBy), tostring(who), tostring(newRole),
+            tostring(oldRole))
+    end
+    leaderChanged(who, changedBy, letter)
     if name and letter and expected[name] and expected[name] ~= letter and changedBy ~= who
-        and (who == name or (type(who) == "string" and string.match(name, "^(%S+)") == who))
-        and isLeaderName(changedBy) then
+        and sameName(name, who) and isLeaderName(changedBy) then
         tickHeld = false
         changed(name, letter)
         -- WoW's role data may still show the old role: set the new one
@@ -386,7 +433,7 @@ local function onRosterUpdate()
         if not ns.inWorld then
             return
         end
-        expected, attempts, settled, attemptedAt, resets, paused = {}, {}, {}, {}, {}, {}
+        expected, attempts, settled, attemptedAt, resets, paused, ownSets = {}, {}, {}, {}, {}, {}, {}
         tickHeld = false
         ns.charDb.roleSync, ns.charDb.roleSyncOffered, ns.charDb.roleSyncTick = nil, nil, nil
         return

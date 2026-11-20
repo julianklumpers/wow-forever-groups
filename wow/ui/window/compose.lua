@@ -39,28 +39,6 @@ local function colored(class)
         ns.Spec.className(class))
 end
 
-local function showCardTooltip(card)
-    if not GameTooltip then
-        return
-    end
-    GameTooltip:SetOwner(card, "ANCHOR_BOTTOM")
-    GameTooltip:SetText(Widgets.roleName(card.role), 1, 0.82, 0)
-    if card.person then
-        local name = card.person.self and L["You"] or card.person.name
-        GameTooltip:AddLine(card.person.class and colored(card.person.class) and string.format("%s (%s)", name,
-            colored(card.person.class)) or name, 1, 1, 1)
-    elseif #card.classes == 0 then
-        GameTooltip:AddLine(L["Any class"], 1, 1, 1)
-    else
-        local names = {}
-        for i, class in ipairs(card.classes) do
-            names[i] = colored(class)
-        end
-        GameTooltip:AddLine(table.concat(names, ", "), 1, 1, 1, true)
-    end
-    GameTooltip:Show()
-end
-
 local function chosenIn(place)
     return Compose.classesOf(PartyCompose.masks()[place] or 0)
 end
@@ -163,7 +141,11 @@ function W.newClassCard(parent, placeOf, change)
     end
     card.native = native
     W.addPlaceParts(card)
-    card:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    -- Inside the rounded fill (its backdrop insets), as on the role tiles.
+    card.hover = card:CreateTexture(nil, "HIGHLIGHT")
+    card.hover:SetPoint("TOPLEFT", 4, -4)
+    card.hover:SetPoint("BOTTOMRIGHT", -4, 4)
+    card.hover:SetColorTexture(1, 1, 1, 0.07)
     card.arrow = card:CreateTexture(nil, "ARTWORK")
     card.arrow:SetSize(Widgets.DROPDOWN_ARROW, Widgets.DROPDOWN_ARROW)
     card.arrow:SetPoint("BOTTOMRIGHT", -4, 4)
@@ -205,12 +187,6 @@ function W.buildCompose()
             return slot
         end, changed)
         card.slot, card.role, card.classes = slot, role, {}
-        card:HookScript("OnEnter", showCardTooltip)
-        card:HookScript("OnLeave", function()
-            if GameTooltip then
-                GameTooltip:Hide()
-            end
-        end)
         cards[slot] = card
     end
     W.hideCompose()

@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- With the classes in your party chosen, two of the same class in one role are no longer taken while another of
+  your chosen classes is just as close to the dungeon: with a Mage and a Warlock wished for two DPS places and a
+  Warlock already in, a Mage gets the second place before a second Warlock. It never waits for another class and
+  never takes one from further away; a second Warlock still comes when nobody else fits. This holds for players
+  from WoW's Group Finder, applicants to your listing and Forever Groups players in the queue.
+- Fixed: as leader you can change a member's role in WoW's party frames again: Forever Groups set it straight back to
+  the role they were taken for, as the change came past the call it watched; it now also follows WoW's report that
+  you changed it. Members who change their own role are still set back.
+- Fixed: the Battlegrounds tab found nobody from WoW's Group Finder above level 19. The Group Finder has a
+  battleground activity per level bracket, and Forever Groups searched only Warsong Gulch's for 10-19. It now reads
+  the activities for your bracket from WoW, again after a level up into the next bracket, and so also finds the
+  players and groups listed for Arathi Basin.
+- Fixed: Who is looking left out listed battleground groups of five or more players (as a dungeon group of five is
+  full), so an Arathi Basin group of 11 counted on the Battlegrounds tab but was not in the list. A battleground
+  group now shows while it has room for its battleground's size.
+- The places of "Choose the classes in my party" no longer show a tooltip on mouse-over; the card itself already
+  shows the role and the chosen classes.
+- The class cards of "Choose the classes in my party" light up softly inside their rounded edge on mouse-over, as the
+  role tiles do, instead of a yellow block over the whole card.
+
 ## 0.30.0 (2026-11-18)
 
 - The class menus (the class choices per place and the Classes box in Who is looking) group the classes under

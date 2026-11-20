@@ -344,7 +344,7 @@ function BgFinder.onFormed(view)
         BgFinder.cancel()
         return
     end
-    if not battleground.lfg or not ns.Features.groupFinder() then
+    if not ns.LfgList.battlegroundActivity(id) or not ns.Features.groupFinder() then
         BgFinder.cancel()
         Log.info("Sign your %s group up at a battlemaster: join as a group.", battleground.name)
         return

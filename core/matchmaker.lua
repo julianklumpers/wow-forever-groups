@@ -567,26 +567,42 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames, now)
     end
     local shared = budget
     local perDungeon = math.max(DUNGEON_MIN_BUDGET, math.floor(ANCHOR_BUDGET / math.max(1, #anchor.dungeons)))
-    local picked, fallback, share
+    local picked, fallback, share, current
     local check = checkFor(anchor, rules, now)
     -- Past VARIETY_TIME (no wishes) a varied group is still preferred: the
     -- first group found that is not varied is kept in case none is, so the
-    -- search costs no more where classes don't clash.
+    -- search costs no more where classes don't clash. Under wishes (spread)
+    -- the same, but a varied group goes first only when nobody in it is
+    -- further from the dungeon than in the one kept.
     local prefer = check == nil and now ~= nil and not rules
+    local spread = rules ~= nil and now ~= nil
+    local plain = check or anyRoles
     if prefer then
         check = varied
+    elseif spread then
+        check = function(members)
+            return plain(members) and varied(members)
+        end
     end
     local accept = check and function(chosen)
         picked = pickFor(chosen, slots, check)
+        if picked and spread and fallback
+            and fit({ dungeon = current, entries = chosen }).steps > fit(fallback).steps then
+            picked = nil
+        end
         if picked then
             return true
         end
-        if prefer and not fallback then
+        if (prefer or spread) and not fallback then
+            local kept = pickFor(chosen, slots, plain)
+            if not kept then
+                return false
+            end
             local entries = {}
             for i, entry in ipairs(chosen) do
                 entries[i] = entry
             end
-            fallback = { entries = entries, picked = pickFor(chosen, slots, anyRoles) }
+            fallback = { dungeon = current, entries = entries, picked = kept }
             -- Steps cut off here are never taken, so the round keeps them.
             local capped = math.min(share.left, PREFER_BUDGET)
             share.unused = (share.unused or 0) + share.left - capped
@@ -607,7 +623,7 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames, now)
     end or nil
     local best, bestFallback
     for _, dungeon in ipairs(sortedCopy(anchor.dungeons)) do
-        fallback = nil
+        fallback, current = nil, dungeon
         local candidates = {}
         for _, candidate in ipairs(pool) do
             if wantsDungeon(candidate, dungeon) then
@@ -662,6 +678,9 @@ local function tryAnchor(sorted, anchorIndex, slots, budget, usedNames, now)
         if rules then
             shared.wishLeft = shared.wishLeft - spent
         end
+    end
+    if spread and best and bestFallback and fit(bestFallback).steps < fit(best).steps then
+        return bestFallback
     end
     return best or bestFallback
 end

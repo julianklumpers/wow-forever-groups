@@ -82,6 +82,10 @@ local zoneSearchedAt = -math.huge
 local battlegroundListings = {}
 local battlegroundsUpdatedAt
 local battlegroundsSearchedAt = -math.huge
+-- The level bracket whose battleground activities were read; activities
+-- found to be no battleground's.
+local battlegroundBracket
+local notBattleground = {}
 -- WoW may not have its activities ready at login (0 zones then, 41 later in
 -- the same session): an empty list is read again a few times, when the
 -- Group Finder says it is available, and before it is needed.
@@ -166,10 +170,56 @@ local function zonesOf(info)
     return names
 end
 
+-- The battleground of an activity, also of another bracket than the
+-- player's (WoW's own window shows those).
+local function battlegroundOf(activity)
+    if type(activity) ~= "number" or isSecret(activity) then
+        return nil
+    end
+    local known = ns.Battlegrounds.byActivity[activity]
+    if known or notBattleground[activity] then
+        return known
+    end
+    local info = call("GetActivityInfoTable", activity)
+    local map = type(info) == "table" and not isSecret(info.mapID) and info.mapID
+    if type(map) ~= "number" then
+        return nil
+    end
+    local battleground = ns.Battlegrounds.setActivity(activity, map, false)
+    if not battleground then
+        notBattleground[activity] = true
+    end
+    return battleground
+end
+
+-- WoW offers the battleground activities of the player's level bracket
+-- only; they are read again when the bracket changes.
+local function battlegroundsNeeded()
+    local level = ns.Party.playerLevel()
+    local bracket = ns.Battlegrounds.bracket(level)
+    if bracket == battlegroundBracket then
+        return
+    end
+    ns.Battlegrounds.clearOwnActivities()
+    local activities = call("GetAvailableActivities", CATEGORY_BATTLEGROUNDS)
+    local count = 0
+    for _, activity in ipairs(type(activities) == "table" and activities or {}) do
+        local info = call("GetActivityInfoTable", activity)
+        if type(info) == "table" and not isSecret(activity) and not isSecret(info.mapID)
+            and ns.Battlegrounds.setActivity(activity, info.mapID, true) then
+            count = count + 1
+        end
+    end
+    if count > 0 then
+        battlegroundBracket = bracket
+    end
+    Log.debug("group finder battlegrounds: %d activities for level %s", count, tostring(level))
+end
+
 local function battlegroundsOf(info)
     local ids = {}
     for _, activity in ipairs(info.activityIDs or { info.activityID }) do
-        local battleground = ns.Battlegrounds.byActivity[activity]
+        local battleground = battlegroundOf(activity)
         if battleground then
             ids[#ids + 1] = battleground.id
         end
@@ -384,7 +434,7 @@ local function kindOf(ids)
                 zones = zones + 1
             elseif Dungeons.byActivity[activity] then
                 dungeons = dungeons + 1
-            elseif ns.Battlegrounds.byActivity[activity] then
+            elseif battlegroundOf(activity) then
                 battlegrounds = battlegrounds + 1
             end
         end
@@ -1201,9 +1251,13 @@ function LfgList.searchBattlegrounds()
     if type(fn) ~= "function" or not ns.Features.groupFinder() or not roomToSearch() then
         return false
     end
+    battlegroundsNeeded()
     local activities = {}
     for _, battleground in ipairs(ns.Battlegrounds.list) do
         activities[#activities + 1] = battleground.lfg
+    end
+    if #activities == 0 then
+        return false
     end
     local record = { mine = true, kind = "battlegrounds", activities = activitySet(activities),
         undo = { searchedAt = battlegroundsSearchedAt, anySearchAt = anySearchAt } }
@@ -1216,6 +1270,14 @@ function LfgList.searchBattlegrounds()
         Log.debug("battleground search failed: %s", tostring(err))
     end
     return ok
+end
+
+-- The Group Finder's activity of this battleground for the player's level
+-- bracket; nil when it lists none.
+function LfgList.battlegroundActivity(id)
+    battlegroundsNeeded()
+    local battleground = ns.Battlegrounds.get(id)
+    return battleground and battleground.lfg
 end
 
 function LfgList.battlegroundListings()

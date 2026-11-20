@@ -193,8 +193,8 @@ function Listing.checkApplicants()
     local plan = Fill.plan(candidates, {
         missing = ns.Filler.stillNeeded(), dungeons = dungeons, exclude = ns.Filler.excluded(), ranges = ranges,
         places = ns.Filler.freePlaces(), levels = ns.PartyLevels.rules("dungeons"), avoid = ns.Filler.avoidClasses(),
-        prefer = ns.Filler.preferClasses(), near = ns.Filler.groupLevel(), groupSteps = ns.Filler.groupSteps,
-        groupLevels = ns.Filler.groupLevels(),
+        prefer = ns.Filler.preferClasses(), spread = ns.Filler.spreadClasses(), near = ns.Filler.groupLevel(),
+        groupSteps = ns.Filler.groupSteps, groupLevels = ns.Filler.groupLevels(),
     })
     local picks = plan and plan.picks or {}
     if not dungeon and #picks > 0 then

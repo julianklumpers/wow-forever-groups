@@ -69,6 +69,8 @@ in the group, with roles set for you.
 - **Limit levels** — leading, set the lowest and highest level of the players who join you.
 - **Choose the classes in your party** — leading a dungeon group, switch it on and pick the
   classes you want per place (a Mage for water, a Warrior to tank); only those classes join you.
+  Of the players as close to the dungeon, another of your classes goes before a second of one in the
+  same role, but it never waits for one.
 - **Who is looking** — a drawer on the side of the window with the players and groups looking
   for your dungeons or group quests, from Forever Groups and WoW's Group Finder (Quests & Zones
   for quests); right-click to whisper, invite or request to join. Filter boxes on top show only the

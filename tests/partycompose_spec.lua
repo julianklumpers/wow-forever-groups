@@ -3,8 +3,9 @@ local World = require("tests.helpers.wowmock")
 local CONNECT = 30
 local LEAD = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:16:16|t Lead a group"
 
-local function leader(world, class)
-    local client = world:addClient("Lead Player", { level = 20, class = class or "WARRIOR" })
+local function leader(world, class, classVariety)
+    local client = world:addClient("Lead Player",
+        { level = 20, class = class or "WARRIOR", classVariety = classVariety })
     world:advance(CONNECT)
     client:slash("/dq")
     client:click("CheckButton", "Tank")
@@ -279,6 +280,43 @@ describe("composing the party", function()
         world:advance(3)
         table.sort(client.invites)
         assert.are.same({ "Listed Heal", "Mage C", "Rogue A" }, client.invites)
+    end)
+
+    it("lets the filler take another wished class before a second of one, without waiting for it", function()
+        local world = World.new()
+        world:list("Listed Heal", "H", 799, 20, 300)
+        for _, listed in ipairs({ { "Lock A", "WARLOCK", 400 }, { "Lock B", "WARLOCK", 300 },
+            { "Rogue D", "ROGUE", 200 }, { "Mage C", "MAGE", 100 } }) do
+            world:list(listed[1], "D", 799, 20, listed[3])
+            world.listings[#world.listings].class = listed[2]
+        end
+        local client = leader(world, nil, true)
+        client.ns.charDb.wantsLead = true
+        client.ns.charDb.compose = { masks = { 0, 0, 192, 192, 0 } }
+        client.ns.charDb.composeOn = true
+        client:slash("/dq join tank dm")
+        client:slash("/dq fill")
+        world:advance(3)
+        table.sort(client.invites)
+        assert.are.same({ "Listed Heal", "Lock A", "Mage C", "Rogue D" }, client.invites)
+        assert.is_true(client:logged("Passed over Lock B %(Warlock%) for a DPS place"))
+    end)
+
+    it("does not log a player left out by the wishes as passed over for another class", function()
+        local world = World.new()
+        world:list("Mage C", "D", 799, 20, 100)
+        world.listings[#world.listings].class = "MAGE"
+        world:list("Rogue D", "D", 799, 20, 400)
+        world.listings[#world.listings].class = "ROGUE"
+        local client = leader(world, nil, true)
+        client.ns.charDb.wantsLead = true
+        client.ns.charDb.compose = { masks = { 0, 0, 64, 64, 64 } }
+        client.ns.charDb.composeOn = true
+        client:slash("/dq join tank dm")
+        client:slash("/dq fill")
+        world:advance(3)
+        assert.are.same({ "Mage C" }, client.invites)
+        assert.is_false(client:logged("Passed over Rogue D"))
     end)
 
     it("sends the place of an invite still out without a wish, so the queue can count it", function()

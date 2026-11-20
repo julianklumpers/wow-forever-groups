@@ -57,6 +57,13 @@ end
 World.ZONE_ACTIVITIES = { [9001] = "Elwynn Forest", [9002] = "Westfall", [9003] = "Stranglethorn Vale" }
 World.ZONE_LEVELS = { [9001] = { 1, 14 }, [9002] = { 8, 24 }, [9003] = { 28, 50 } }
 
+-- As in Forever: an activity per battleground and level bracket.
+World.BATTLEGROUND_ACTIVITIES = {
+    [919] = { map = 489, levels = { 10, 19 } },
+    [920] = { map = 489, levels = { 20, 29 } },
+    [926] = { map = 529, levels = { 20, 29 } },
+}
+
 World.QUEST_TAG_NAMES = { [1] = "Elite", [41] = "PvP", [81] = "Dungeon" }
 
 World.QUEST_TITLES = { [101] = "Red Silk Bandanas", [102] = "Oh Brother...", [103] = "The Defias Brotherhood" }
@@ -1490,6 +1497,13 @@ local function buildEnv(world, client)
                     ids[#ids + 1] = id
                 end
                 table.sort(ids)
+            elseif category == 118 then
+                for id, activity in pairs(world.battlegroundActivities or World.BATTLEGROUND_ACTIVITIES) do
+                    if client.level >= activity.levels[1] and client.level <= activity.levels[2] then
+                        ids[#ids + 1] = id
+                    end
+                end
+                table.sort(ids)
             end
             return ids
         end,
@@ -1498,6 +1512,13 @@ local function buildEnv(world, client)
                 local range = World.ZONE_LEVELS[activity]
                 return { fullName = World.ZONE_ACTIVITIES[activity], minLevelSuggestion = range[1],
                     maxLevelSuggestion = range[2] }
+            end
+            local battleground = (world.battlegroundActivities or World.BATTLEGROUND_ACTIVITIES)[activity]
+            if battleground and client.activitiesLate then
+                return { groupFinderActivityGroupID = 300 }
+            elseif battleground then
+                return { categoryID = 118, mapID = battleground.map, minLevelSuggestion = battleground.levels[1],
+                    maxLevelSuggestion = battleground.levels[2], groupFinderActivityGroupID = 300 }
             end
             local levels = client.activityLevels[activity]
             if levels then

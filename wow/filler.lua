@@ -403,12 +403,13 @@ function Filler.step()
     reopen(listings)
     local picks, open
     local places, avoid, prefer = Filler.freePlaces(), Filler.avoidClasses(), Filler.preferClasses()
+    local spread = Filler.spreadClasses()
     local near = Filler.groupLevel()
     if state.dungeon then
         picks, open = Fill.pick(listings, {
             missing = needed, dungeon = state.dungeon, exclude = state.exclude, range = rangeOf(state.dungeon),
-            places = places, levels = ns.PartyLevels.rules("dungeons"), avoid = avoid, prefer = prefer, near = near,
-            steps = Filler.zoneSteps, held = Filler.zoneHeld,
+            places = places, levels = ns.PartyLevels.rules("dungeons"), avoid = avoid, prefer = prefer, spread = spread,
+            near = near, steps = Filler.zoneSteps, held = Filler.zoneHeld,
         })
     else
         local ranges = {}
@@ -417,7 +418,7 @@ function Filler.step()
         end
         local plan = Fill.plan(listings, {
             missing = needed, dungeons = state.dungeons, exclude = state.exclude, ranges = ranges, places = places,
-            levels = ns.PartyLevels.rules("dungeons"), avoid = avoid, prefer = prefer, near = near,
+            levels = ns.PartyLevels.rules("dungeons"), avoid = avoid, prefer = prefer, spread = spread, near = near,
             steps = Filler.zoneSteps, held = Filler.zoneHeld, groupSteps = Filler.groupSteps,
             groupLevels = Filler.groupLevels(),
         })
@@ -426,13 +427,13 @@ function Filler.step()
             Filler.choose(plan)
         end
     end
-    if prefer and #picks > 0 and state.dungeon then
+    if (prefer or spread) and #picks > 0 and state.dungeon then
         local chosen = {}
         for _, pick in ipairs(picks) do
             chosen[pick.name] = true
         end
         local plain = Fill.pick(listings, { missing = needed, dungeon = state.dungeon, exclude = state.exclude,
-            range = rangeOf(state.dungeon), levels = ns.PartyLevels.rules("dungeons"), near = near,
+            range = rangeOf(state.dungeon), places = places, levels = ns.PartyLevels.rules("dungeons"), near = near,
             steps = Filler.zoneSteps, held = Filler.zoneHeld })
         for _, pick in ipairs(plain) do
             if not chosen[pick.name] then
@@ -642,6 +643,13 @@ end
 -- class that is listed still goes first (Fill.pick's prefer); nil otherwise.
 function Filler.preferClasses()
     return variedClasses() and Filler.varietyLeft() <= 0 and classesInGroup() or nil
+end
+
+-- Under the leader's class wishes, the group's classes: of the players as
+-- close to the dungeon, another class goes first (Fill.pick's spread), but
+-- nobody waits for one; nil without wishes or with varied classes off.
+function Filler.spreadClasses()
+    return state ~= nil and not ns.db.noClassVariety and Filler.freePlaces() ~= nil and classesInGroup() or nil
 end
 
 -- The class wishes' free places, with the invites on their way counted

@@ -162,6 +162,29 @@ describe("Fill", function()
         end)
     end)
 
+    it("under class wishes takes another class of the players as close, never one further away", function()
+        local lock, mage = listing("Lock", "D", nil, 900), listing("Mage", "D", nil, 10)
+        lock.classToken, mage.classToken = "WARLOCK", "MAGE"
+        local steps = { Lock = 1, Mage = 1 }
+        local opts = { missing = "D", dungeon = "5", spread = { WARLOCK = { count = 1, roles = { D = true } } },
+            steps = function(l)
+                return steps[l.name]
+            end }
+        assert.are.equal("Mage", Fill.pick({ lock, mage }, opts)[1].name)
+        steps.Mage = 3
+        assert.are.equal("Lock", Fill.pick({ lock, mage }, opts)[1].name)
+        assert.are.equal("Lock", Fill.pick({ lock }, opts)[1].name)
+        local other = listing("Lock 2", "D", nil, 500)
+        other.classToken = "WARLOCK"
+        steps.Mage, steps["Lock 2"] = 1, 1
+        opts.missing, opts.spread = "DD", {}
+        local names = {}
+        for _, pick in ipairs(Fill.pick({ lock, other, mage }, opts)) do
+            names[#names + 1] = pick.name
+        end
+        assert.are.same({ "Lock", "Mage" }, names)
+    end)
+
     it("takes the player closest to the dungeon first and passes over one still waiting", function()
         local far, near, unknown = listing("Far Dps", "D", nil, 900), listing("Near Dps", "D", nil, 10),
             listing("Who Dps", "D", nil, 950)

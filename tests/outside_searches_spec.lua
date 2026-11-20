@@ -272,6 +272,20 @@ describe("searches by other addons and WoW's own window", function()
         end)
         assert.are.equal(9, solo.ns.LfgList.battlegroundListings()[1].open)
     end)
+
+    it("place a battleground listing once WoW can tell its activity's map", function()
+        local world, solo = setup()
+        world:list("Wsg Dps", "D", 919)
+        solo.activitiesLate = true
+        outside(solo, 118, nil, { 919 })
+        world:advance(1)
+        assert.are.equal(0, #solo.ns.LfgList.battlegroundListings())
+        solo.activitiesLate = false
+        world:advance(15)
+        outside(solo, 118, nil, { 919 })
+        world:advance(1)
+        assert.are.equal(1, #solo.ns.LfgList.battlegroundListings())
+    end)
 end)
 
 describe("one listing per leader", function()
