@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.31.0 (2026-11-20)
 
 - With the classes in your party chosen, two of the same class in one role are no longer taken while another of
   your chosen classes is just as close to the dungeon: with a Mage and a Warlock wished for two DPS places and a
