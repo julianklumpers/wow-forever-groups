@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+- Who is looking shows every class in a Forever Groups party in the Classes column, tank, healer, DPS, like the
+  groups from WoW's Group Finder; it showed only the leader's. Its members don't need the addon for this.
+- Fixed: a player in WoW's Group Finder whose name came in just after the search results was left out of group
+  quests and battlegrounds until the next search, so a quest group could find nobody to invite in a quiet zone
+  (often a third of the results come in that way). They are now taken as soon as their name arrives, as for
+  dungeons.
+- Who is looking on the Battlegrounds tab says "Nobody listed for your battlegrounds" when it is empty; it spoke of
+  your dungeons.
+- A dungeon ticked just after opening the window gets its Group Finder results at once more often: the first search
+  of every dungeon of your level is no longer followed by a second one for the ticked dungeons when it came back
+  complete (under WoW's 100 results), which left no room for a search of the newly ticked dungeon until a later key
+  press or mouse move. The debug log says when a search is held back for WoW's limit of two searches per five
+  seconds.
+- The debug log says why Group Finder results were left out (your own listing, no roles, an activity not known, …),
+  next to how many were usable, and how many came in later once their leader's name arrived.
+- The debug log names who sent each party invite and which roles it asks for, and says so when a dungeon invite came
+  from none of the leaders you asked (such an invite is left to you, with WoW's own window).
+
 ## 0.31.0 (2026-11-20)
 
 - With the classes in your party chosen, two of the same class in one role are no longer taken while another of

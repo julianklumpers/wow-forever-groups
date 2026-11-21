@@ -1558,7 +1558,8 @@ local function buildEnv(world, client)
                 if listing.language and languages[listing.language] ~= true then
                     wanted = false
                 end
-                if wanted then
+                -- WoW returns at most 100 results.
+                if wanted and #ids < 100 then
                     ids[#ids + 1] = listing.id
                 end
             end
@@ -1567,8 +1568,8 @@ local function buildEnv(world, client)
         GetSearchResultInfo = function(id)
             local l = world.listings[id]
             local info = { leaderName = l.leaderName, numMembers = l.numMembers, activityIDs = l.activityIDs,
-                age = l.age, isDelisted = l.isDelisted == true, generalPlaystyle = l.generalPlaystyle or 0,
-                comment = l.comment or "" }
+                age = l.age, isDelisted = l.isDelisted == true, hasSelf = l.hasSelf == true,
+                generalPlaystyle = l.generalPlaystyle or 0, comment = l.comment or "" }
             return client.lockdown and secretCopy(info) or info
         end,
         -- Member 1 is the leader; a group's others come from listing.memberList

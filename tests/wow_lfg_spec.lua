@@ -242,6 +242,17 @@ describe("asking groups in WoW's Group Finder to invite you", function()
         assert.is_false(solo.ns.Filler.isActive())
     end)
 
+    it("logs an invite from someone it did not ask, and leaves it to the player", function()
+        local world, solo = setup()
+        world:listGroup("Group Lead", 799, { T = 0, H = 0, D = 2 })
+        solo:slash("/dq join dps dm")
+        world:advance(2)
+        solo:invitedBy("Group Member")
+        assert.is_nil(solo.acceptedFrom)
+        assert.is_true(solo:logged("party invite from Group Member %(asks tank false, healer false, DPS false%)"))
+        assert.is_true(solo:logged("the invite is from none of the leaders you asked %(Group Lead%)"))
+    end)
+
     it("joins as the role the group still needs and closes WoW's role window", function()
         local world, solo = setup()
         world:listGroup("Needs Tank", 799, { T = 1, H = 0, D = 0 })
@@ -693,6 +704,23 @@ describe("searching WoW's Group Finder", function()
         assert.is_true(solo.searchFilter[799])
         assert.is_true(solo.searchFilter[796])
         assert.is_true(solo.ns.LfgList.isSearched("4"))
+        local searches = solo.searches
+        world:advance(3)
+        solo:press("W")
+        world:advance(1)
+        assert.are.equal(searches, solo.searches)
+    end)
+
+    it("searches the main part on its own after a first search cut at 100 results", function()
+        local world, solo = setup()
+        for i = 1, 100 do
+            world:list("Wc Dps " .. i, "D", 796)
+        end
+        solo.ns.charDb.lastDungeons = { ["5"] = true }
+        solo:slash("/dq")
+        solo:press("W")
+        world:advance(1)
+        assert.is_true(solo.searchFilter[796])
         world:advance(3)
         solo:press("W")
         world:advance(1)
@@ -747,7 +775,9 @@ describe("searching WoW's Group Finder", function()
 
     it("sends at most two searches in five seconds, and a held back one on a later input", function()
         local world, solo = setup()
-        world:list("Wc Dps", "D", 796)
+        for i = 1, 100 do
+            world:list("Wc Dps " .. i, "D", 796)
+        end
         solo.ns.charDb.lastDungeons = { ["5"] = true }
         solo:slash("/dq")
         local first = solo.searches
@@ -758,6 +788,7 @@ describe("searching WoW's Group Finder", function()
         solo:press("W")
         world:advance(1)
         assert.are.equal(first + 1, solo.searches)
+        assert.is_true(solo:logged("search held back, 2 searches in the last 5%.5 s"))
         world:advance(2)
         solo:press("W")
         world:advance(1)

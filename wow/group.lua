@@ -300,7 +300,9 @@ local function expects(inviter)
     return (expected ~= nil and inviter == expected.name) or acceptedProposalLeader(inviter)
 end
 
-local function onInviteRequest(inviter)
+local function onInviteRequest(inviter, tank, healer, dps)
+    Log.debug("party invite from %s (asks tank %s, healer %s, DPS %s)", tostring(inviter), tostring(tank == true),
+        tostring(healer == true), tostring(dps == true))
     if expects(inviter) then
         expected = nil
         if not ns.db.noAutoAccept and acceptInvite() then

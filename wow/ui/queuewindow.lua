@@ -1218,6 +1218,31 @@ local function wishesOf(compose, needs)
     return any and list or nil
 end
 
+-- A queued player's or party's classes, tank, healer, DPS: the leader's from
+-- its spec, the members' as the leader sent them (left out of a message that
+-- would be too long).
+local function queuedClasses(entry)
+    local leader = (ns.Specs.decode(entry.spec))
+    local places = {}
+    for i, member in ipairs(entry.members) do
+        local class = member.name == entry.id and leader or member.class
+        if class then
+            places[#places + 1] = { class = class, order = ROLE_ORDER[string.sub(member.roles, 1, 1)] or 4, index = i }
+        end
+    end
+    table.sort(places, function(x, y)
+        if x.order ~= y.order then
+            return x.order < y.order
+        end
+        return x.index < y.index
+    end)
+    local classes = {}
+    for i, place in ipairs(places) do
+        classes[i] = place.class
+    end
+    return classes
+end
+
 local function queueItems(rules)
     local items = {}
     local engine = (mode == "quests" and ns.questEngine) or (mode == "dungeons" and ns.engine)
@@ -1277,7 +1302,7 @@ local function queueItems(rules)
             level = entry.members[1].level,
             unwanted = #entry.members == 1 and entry.id ~= ns.selfName
                 and unwanted(roles, (ns.Specs.decode(entry.spec)), entry.members[1].level, rules),
-            classes = { (ns.Specs.decode(entry.spec)) },
+            classes = queuedClasses(entry),
             color = entry.id == ns.selfName and { 1, 0.82, 0 } or { Widgets.classColor(ns.Specs.decode(entry.spec)) } }
     end
     return items
@@ -1654,6 +1679,7 @@ function QueueWindow.refresh()
     setMode(ns.WindowParts.currentTab())
     refreshSortBar()
     local quests = mode == "quests"
+    local battlegrounds = mode == "battlegrounds"
     -- With WoW's Group Finder turned off only Forever Groups players are shown.
     local useFinder = ns.Features.groupFinder()
     for _, section in ipairs({ sections.groups, sections.players }) do
@@ -1698,13 +1724,17 @@ function QueueWindow.refresh()
     y = fillSection(sections.groups, y, allGroups, ns.Locale.mark(
         (groupsFiltered and "No group matches your filters.")
         or (not useFinder and "No Forever Groups party is queued right now.")
-        or (quests and "No groups listed in the zones of your quests." or "No groups listed for your dungeons.")))
+        or (quests and "No groups listed in the zones of your quests.")
+        or (battlegrounds and "No groups listed for your battlegrounds.")
+        or "No groups listed for your dungeons."))
     sections.players.header:SetText(caption("Players", #allPlayers, countAddon(allPlayers), useFinder))
     y = fillSection(sections.players, y, allPlayers, ns.Locale.mark(
         (playersFiltered and "Nobody matches your filters.")
         or (not useFinder and (quests and "Nobody is looking for a questing group right now."
             or "Nobody is in the Forever Groups queue right now."))
-        or (quests and "Nobody listed in the zones of your quests." or "Nobody listed for your dungeons.")))
+        or (quests and "Nobody listed in the zones of your quests.")
+        or (battlegrounds and "Nobody listed for your battlegrounds.")
+        or "Nobody listed for your dungeons."))
     paintFilterBoxes()
     frame:SetHeight(-y + 10)
 end

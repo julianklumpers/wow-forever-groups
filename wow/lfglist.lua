@@ -36,6 +36,11 @@ local issuing
 local searchFrame = -math.huge
 -- Our last dungeon search, so a late undo leaves a newer one alone.
 local lastDungeonSearch
+-- The part of the dungeons our last dungeon search covered: "all", "main" or
+-- "rest" ("rest" too once nothing has to follow).
+local lastPart
+-- WoW returns at most this many results to a search.
+local MAX_RESULTS = 100
 -- Goes up when the languages change: an answer to a search sent before
 -- that is no fresh search for the new languages.
 local generation = 0
@@ -232,16 +237,20 @@ end
 local function readResult(id, areasOf, field)
     areasOf, field = areasOf or dungeonsOf, field or "dungeons"
     local info = call("GetSearchResultInfo", id)
-    if type(info) ~= "table" or isSecret(info.numMembers) or info.isDelisted or info.hasSelf then
-        return nil
+    if type(info) ~= "table" or isSecret(info.numMembers) then
+        return nil, "no info"
+    elseif info.isDelisted then
+        return nil, "delisted"
+    elseif info.hasSelf then
+        return nil, "your own"
     end
     local name = info.leaderName
     if type(name) ~= "string" or isSecret(name) or name == "" then
-        return nil
+        return nil, "no leader name"
     end
     local leader = call("GetSearchResultLeaderInfo", id) or call("GetSearchResultPlayerInfo", id, 1)
     if type(leader) ~= "table" then
-        return nil
+        return nil, "no leader info"
     end
     local areas, roles = areasOf(info), rolesOf(leader)
     -- WoW lets anyone tick any role; a Warlock listed as tank or healer
@@ -250,8 +259,10 @@ local function readResult(id, areasOf, field)
     if type(class) == "string" and not isSecret(class) then
         roles = ns.Classes.filter(roles, class) or ""
     end
-    if #areas == 0 or roles == "" then
-        return nil
+    if #areas == 0 then
+        return nil, "activity not known"
+    elseif roles == "" then
+        return nil, "no roles"
     end
     local remaining
     if (info.numMembers or 1) > 1 then
@@ -315,12 +326,13 @@ local READERS = {
         return readResult(id, zonesOf, "zones")
     end,
     battlegrounds = function(id)
-        local listing = readResult(id, battlegroundsOf, "battlegrounds")
-        if listing then
-            local battleground = ns.Battlegrounds.get(listing.battlegrounds[1])
-            listing.remaining = nil
-            listing.open = math.max(0, (battleground and battleground.size or 10) - listing.members)
+        local listing, why = readResult(id, battlegroundsOf, "battlegrounds")
+        if not listing then
+            return nil, why
         end
+        local battleground = ns.Battlegrounds.get(listing.battlegrounds[1])
+        listing.remaining = nil
+        listing.open = math.max(0, (battleground and battleground.size or 10) - listing.members)
         return listing
     end,
 }
@@ -347,13 +359,14 @@ local function setList(kind, list)
 end
 
 -- The usable listings among these results, one per leader (a leader has one
--- listing; should a name come twice, the newest counts), and how many could
--- not be read (secret during a boss fight).
+-- listing; should a name come twice, the newest counts), how many could not
+-- be read (secret during a boss fight), and why the others were left out:
+-- { [reason] = count }.
 local function readAll(kind, ids)
-    local result, byName, secret = {}, {}, 0
+    local result, byName, secret, skipped = {}, {}, 0, {}
     local now = GetTime()
     for _, id in ipairs(ids) do
-        local ok, listing = pcall(READERS[kind], id)
+        local ok, listing, why = pcall(READERS[kind], id)
         if ok and listing then
             listing.seenAt = now
             local index = byName[listing.name]
@@ -365,9 +378,22 @@ local function readAll(kind, ids)
             end
         elseif unreadable(id) then
             secret = secret + 1
+        else
+            why = ok and why or "error"
+            skipped[why] = (skipped[why] or 0) + 1
         end
     end
-    return result, secret
+    return result, secret, skipped
+end
+
+-- "; left out: 1 your own, 2 no roles", or "".
+local function skippedText(skipped)
+    local parts = {}
+    for why, count in pairs(skipped or {}) do
+        parts[#parts + 1] = count .. " " .. why
+    end
+    table.sort(parts)
+    return #parts > 0 and "; left out: " .. table.concat(parts, ", ") or ""
 end
 
 -- A leader lists for one kind at a time: placed in one list, the same name
@@ -396,7 +422,7 @@ local function dropElsewhere(kind, placed)
 end
 
 local function refreshZones(ids, record)
-    local result, secret = readAll("zones", ids)
+    local result, secret, skipped = readAll("zones", ids)
     if #result == 0 and secret > 0 then
         return
     end
@@ -405,12 +431,12 @@ local function refreshZones(ids, record)
     resultZones = record.zones or {}
     dropElsewhere("zones", result)
     version = version + 1
-    Log.debug("group finder zones: %d usable listings of %d results", #result, #ids)
+    Log.debug("group finder zones: %d usable listings of %d results%s", #result, #ids, skippedText(skipped))
     notify()
 end
 
 local function refreshBattlegrounds(ids)
-    local result, secret = readAll("battlegrounds", ids)
+    local result, secret, skipped = readAll("battlegrounds", ids)
     if #result == 0 and secret > 0 then
         return
     end
@@ -418,7 +444,8 @@ local function refreshBattlegrounds(ids)
     battlegroundsUpdatedAt = GetTime()
     dropElsewhere("battlegrounds", result)
     version = version + 1
-    Log.debug("group finder battlegrounds: %d usable listings of %d results", #result, #ids)
+    Log.debug("group finder battlegrounds: %d usable listings of %d results%s", #result, #ids,
+        skippedText(skipped))
     notify()
 end
 
@@ -642,7 +669,7 @@ function LfgList.refresh()
         refreshBattlegrounds(ids)
         return
     end
-    local result, secret = readAll("dungeons", ids)
+    local result, secret, skipped = readAll("dungeons", ids)
     if #result == 0 and secret > 0 then
         Log.debug("group finder: %d results unreadable right now; keeping the last ones", secret)
         return
@@ -668,12 +695,17 @@ function LfgList.refresh()
     end
     listings = result
     dropElsewhere("dungeons", result)
+    -- A search of every dungeon that was not cut short covers the main part
+    -- too: no main search has to follow it.
+    if record == lastDungeonSearch and lastPart == "all" and #ids < MAX_RESULTS then
+        lastPart = "rest"
+    end
     retryPart, failures = nil, 0
     version = version + 1
     totalResults = #ids
     updatedAt = GetTime()
-    Log.debug("group finder: %d results (%s found), %d listings kept, %.1f s after the search", #ids,
-        tostring(found), #listings, updatedAt - record.at)
+    Log.debug("group finder: %d results (%s found), %d listings kept, %.1f s after the search%s", #ids,
+        tostring(found), #listings, updatedAt - record.at, skippedText(skipped))
     notify()
 end
 
@@ -684,6 +716,8 @@ end
 -- burst of updates: an ask to its leader is over without waiting for the
 -- next search.
 local notifyPending = false
+-- Leaders added since the last notice because their name came late, per kind.
+local lateAdded = {}
 
 local function notifySoon()
     if notifyPending or not (C_Timer and C_Timer.After) then
@@ -692,6 +726,10 @@ local function notifySoon()
     notifyPending = true
     C_Timer.After(0.5, function()
         notifyPending = false
+        for kind, count in pairs(lateAdded) do
+            Log.debug("group finder: %d %s listings added whose leader's name came after the results", count, kind)
+        end
+        lateAdded = {}
         notify()
     end)
 end
@@ -736,23 +774,27 @@ local function onResultUpdated(id)
     end
     -- A result of the current set not placed yet: its leader's name came
     -- after the results did. It comes in like the rest of its set did.
-    if not resultSet.ids[id] or resultSet.kind ~= "dungeons" then
+    local kind = resultSet.kind
+    if not resultSet.ids[id] or not READERS[kind] then
         return
     end
-    local ok, fresh = pcall(READERS.dungeons, id)
+    local ok, fresh = pcall(READERS[kind], id)
     if not (ok and fresh) then
         return
     end
     fresh.seenAt = GetTime()
-    for i, listing in ipairs(listings) do
+    local list = listOf(kind)
+    for i, listing in ipairs(list) do
         if listing.name == fresh.name then
-            listings[i] = fresh
+            list[i] = fresh
             return
         end
     end
     if resultSet.newOk then
-        listings[#listings + 1] = fresh
-        dropElsewhere("dungeons", { fresh })
+        list[#list + 1] = fresh
+        dropElsewhere(kind, { fresh })
+        lateAdded[kind] = (lateAdded[kind] or 0) + 1
+        notifySoon()
     end
 end
 
@@ -889,8 +931,6 @@ function LfgList.searchIfMissing()
     end
     return false
 end
-
-local lastPart
 
 -- The server allows about two searches (of any kind, from any addon) per
 -- five seconds and refuses a third as "throttled"; refused tries don't count
@@ -1134,8 +1174,8 @@ end
 -- Only from a click or key press; returns false if WoW refused. Searches the
 -- main part (searchParts), or with part "rest" the rest. While nothing is
 -- known about the rest yet, a main search covers everything at once, so the
--- window has numbers for every dungeon right away (possibly cut at 100; the
--- main part on its own follows).
+-- window has numbers for every dungeon right away (when cut at 100 results,
+-- the main part on its own follows).
 function LfgList.search(part)
     if ns.Demo.isOn() then
         return false
@@ -1146,6 +1186,10 @@ function LfgList.search(part)
     end
     if not roomToSearch() then
         -- Goes out on the next input once the server has room again.
+        if not retryPart then
+            Log.debug("group finder: search held back, %d searches in the last %.1f s; it goes out on a later input",
+                BURST, BURST_WINDOW)
+        end
         retryPart = retryPart or (part == "rest" and "rest" or "main")
         return false, "wait"
     end

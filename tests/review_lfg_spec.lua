@@ -233,5 +233,32 @@ describe("Who is looking", function()
         local tip = table.concat(client.env.GameTooltip.lines, "\n")
         assert.is_truthy(tip:find("Wants: DPS: Mage", 1, true))
     end)
+
+    it("shows a queued party's classes, tank, healer, DPS; only the leader's when they were left out", function()
+        local world = World.new()
+        local client = world:addClient("Look Player", { level = 20, atlases = { ["classicon-mage"] = true,
+            ["classicon-priest"] = true, ["classicon-warrior"] = true } })
+        world:advance(30)
+        client.ns.db.queueFold = { groups = false }
+        local engine = client.ns.engine
+        client:slash("/dq queue")
+        engine.queue:upsert({ id = "Party Lead", joinedAt = 1, dungeons = { "5" }, reserved = "", spec = "PRIEST1",
+            members = {
+                { name = "Party Lead", roles = "H", level = 20, class = "PRIEST" },
+                { name = "Friend Dps", roles = "D", level = 20, class = "MAGE" },
+                { name = "Friend Tank", roles = "T", level = 20, class = "WARRIOR" },
+            } }, engine:now())
+        engine.queue:upsert({ id = "Other Lead", joinedAt = 1, dungeons = { "5" }, reserved = "", spec = "MAGE1",
+            members = {
+                { name = "Other Lead", roles = "D", level = 20 }, { name = "Other Tank", roles = "T", level = 20 },
+            } }, engine:now())
+        client.ns.QueueWindow.refresh()
+        local row = client:findText("^Party Lead %+2$").parent
+        assert.are.same({ "classicon-warrior", "classicon-priest", "classicon-mage" },
+            { row.classIcons[1].atlas, row.classIcons[2].atlas, row.classIcons[3].atlas })
+        local other = client:findText("^Other Lead %+1$").parent
+        assert.are.same({ true, false }, { other.classIcons[1].shown, other.classIcons[2].shown == true })
+        assert.are.equal("classicon-mage", other.classIcons[1].atlas)
+    end)
 end)
 

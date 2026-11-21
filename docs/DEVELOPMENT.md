@@ -762,7 +762,9 @@ is accepted at once while still looking, or for a "Request to join" click (`Grou
 the invite and the others leave it alone for 2 s (`Group.justAccepted`). An invite from a listed group brings up WoW's role window (`LFGInvitePopup`, with
 `PARTY_INVITE_REQUEST`'s tank/healer/damage flags) instead of the plain popup, and it stays up after joining
 (probe, 2026-11-12); it is closed with `StaticPopupSpecial_Hide` right away and again after 0.3 and 1 s, and the role
-is set through `RoleSync.expect` (`UnitSetRole("player")` once in the group). An ask offers one role
+is set through `RoleSync.expect` (`UnitSetRole("player")` once in the group). Every `PARTY_INVITE_REQUEST` is logged (debug) with
+the inviter and its tank/healer/damage flags; an invite while asks are open that is from none of the asked leaders
+is logged with their names and left to the player. An ask offers one role
 (`LfgPick.askRole`): of the player's roles the scarcest the group still needs (tank, then healer, then DPS); with the
 open places unknown (battleground asks, or a listing without them) healer, then DPS, then tank.
 The ask's whisper names only that role and its spec, and the player joins with it, unless the invite asks for other
@@ -792,8 +794,9 @@ low-level dungeons together already give 100, one alone 40-70 at a busy time; `/
 one part (`searchParts` in `wow/lfglist.lua`): the main part is the dungeons that matter (being filled, else queued
 for, else ticked); the rest of the player's level, only for the window's numbers, is searched on its own. While
 nothing is known about the rest yet, the first search covers everything at once (part "all"), so every dungeon has
-numbers right away; the next key press or click, at least 1.5 s later, searches the main part on its own, and after a
-main search the rest follows the same way while the main results are younger than the refresh interval
+numbers right away; only when that answer was cut at 100 results does the next key press or click, at least 1.5 s
+later, search the main part on its own (an answer below 100 covers both parts, `lastPart` becomes "rest", which keeps
+the two searches per five seconds free for a dungeon ticked next), and after a main search the rest follows the same way while the main results are younger than the refresh interval
 (`LfgList.searchRestIfDue`, called from `wow/keysearch.lua` and from `LfgList.searchIfStale`). What counts as the
 player's input for a search (`/fgp clicksearch`): key presses (a frame that lets keys through), a left click on the
 3D world (`WorldFrame` OnMouseDown), zooming the camera (`CameraZoomIn`/`CameraZoomOut`), using an action button
@@ -824,10 +827,14 @@ or role. Ours among several fitting go again on a later input (whether WoW answe
 not known). A leader is in one list only: placed in the dungeon, zone or battleground list, the same name leaves the
 other two, and within one answer the newest listing per leader counts. A result update changes a listing only while
 the id still has that leader's name; a late leader name is added like the rest of its answer
-(`resultSet.newOk`). A listing for dungeons of both parts (it comes back in each search under a new id) is kept once
+(`resultSet.newOk`), to the list of that answer's kind (dungeons, zones or battlegrounds), and the listeners hear
+of it (`notifySoon`, which logs how many came in that way per kind), so a questing group can invite that player at
+once. A listing for dungeons of both parts (it comes back in each search under a new id) is kept once
 per leader, the newest; listings of a part not searched again are dropped after 2 minutes. Results the addon can't
 place (no dungeon, zone or battleground among them) count only for its own search waiting alone; otherwise they are
-another category searched in WoW's window and left alone. Taking a language off (`MatchLanguages.set` →
+another category searched in WoW's window and left alone. Each result left out of an own search's answer is counted by
+its reason in the debug log line of that answer (`readResult`'s second return: your own listing, delisted, no leader
+name or info, an activity not known, no roles; "left out: 1 no roles, 1 your own"). Taking a language off (`MatchLanguages.set` →
 `LfgList.languagesChanged`) drops all three lists and their search state, as a listing does not say its language;
 adding one keeps them, but the search times go back so the next input searches with it, and `freshResults` in
 `wow/lfgapply.lua` waits for results from after the change before building a group instead of joining one. A dungeon search with no activity to search (The Stockade alone) is not sent. Alone and looking with one role, the main
@@ -891,7 +898,8 @@ font string of the Refresh button, so on its level). The top line is the filter 
 cut short at the caption's width. Both tables have the same columns: Roles (what the
 players can play; a party or group: the roles already in it), Name ("+N" for
 the other members; before it, `row.badge`, a crown for a party or group, a solo player's `classicon-<class>`),
-Classes (up to five class icons: a listed group's members, a Forever Groups party's leader; its header and cells
+Classes (up to five class icons, tank, healer, DPS: a listed group's members, a Forever Groups party's leader from
+its spec and its members from `member.class`, only the leader's when the message left those out, `queuedClasses`; its header and cells
 stay empty in the Players table, so the columns still line up), Needs (the places a party or group still has open,
 empty for a solo player; a party's from `Filler.missingFor`, a listed group's from its `remaining`; a Forever
 Groups party with class wishes shows per open place the classes wished for, else the role, four icons or three and

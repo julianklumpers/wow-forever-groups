@@ -462,6 +462,14 @@ end
 local function onInviteRequest(inviter, tank, healer, dps)
     inviter = ns.Whispers.find(asks, inviter)
     local a = inviter and asks[inviter]
+    if not a and next(asks) then
+        local names = {}
+        for leader in pairs(asks) do
+            names[#names + 1] = leader
+        end
+        table.sort(names)
+        Log.debug("the invite is from none of the leaders you asked (%s)", table.concat(names, ", "))
+    end
     if not a or ns.Group.justAccepted() then
         return
     end
