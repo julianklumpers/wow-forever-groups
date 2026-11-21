@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.32.0 (2026-11-21)
 
 - Who is looking shows every class in a Forever Groups party in the Classes column, tank, healer, DPS, like the
   groups from WoW's Group Finder; it showed only the leader's. Its members don't need the addon for this.
