@@ -482,6 +482,183 @@ describe("the questing queue and WoW's Group Finder", function()
         assert.is_true(client.ns.ProgressWindow.isShown())
     end)
 
+    it("queues an invited player's level once WoW knows it, not the 0 from when they joined", function()
+        local world = World.new()
+        world:list("Zone Tank", "T", ELWYNN, 20, 300)
+        world:list("Zone Dps", "D", ELWYNN, 20, 200)
+        local client = queued(world)
+        client.party, client.isLeader, client.partyLevels = { "Zone Tank" }, true, { ["Zone Tank"] = 0 }
+        client:fire("GROUP_ROSTER_UPDATE")
+        assert.are.equal(0, client.ns.questEngine.myEntry.members[2].level)
+        client.partyLevels["Zone Tank"] = 12
+        client:fire("GROUP_ROSTER_UPDATE")
+        local entry = client.ns.questEngine.myEntry
+        assert.are.equal(12, entry.members[2].level)
+        assert.are.equal("T", entry.members[2].roles)
+        assert.are.equal("D", entry.reserved)
+    end)
+
+    local function queuedAt(world, level, questLevel)
+        local client = world:addClient("Solo Quester", { level = level, questLog = {
+            { "Elwynn Forest", true }, { "Hogger", false, 176, GROUP, level = questLevel },
+        } })
+        world:advance(30)
+        client:slash("/dq")
+        client:click("Button", "Quests")
+        client:click("CheckButton", "DPS")
+        client:click("Button", "Find questing group")
+        world:advance(1)
+        return client
+    end
+
+    it("invites only players within 3 levels of the quest, and logs who it left out", function()
+        local world = World.new()
+        world:list("Low Hunter", "D", ELWYNN, 12, 500)
+        world:list("Peer Dps", "D", ELWYNN, 30, 400)
+        world:list("Zone Tank", "T", ELWYNN, 24, 300)
+        world:list("Zone Dps", "D", ELWYNN, 21, 200)
+        local client = queuedAt(world, 30, 24)
+        local invites = { unpack(client.invites) }
+        table.sort(invites)
+        assert.are.same({ "Zone Dps", "Zone Tank" }, invites)
+        assert.is_true(client:logged(
+            "quest finder: left out for Hogger, level outside 21%-27: Low Hunter 12, Peer Dps 30"))
+    end)
+
+    it("follows the player's own level limit over the quest's level", function()
+        local world = World.new()
+        world:list("Low Hunter", "D", ELWYNN, 12, 500)
+        world:list("Zone Tank", "T", ELWYNN, 24, 300)
+        local client = world:addClient("Solo Quester", { level = 24, questLog = {
+            { "Elwynn Forest", true }, { "Hogger", false, 176, GROUP, level = 24 },
+        } })
+        world:advance(30)
+        client.ns.charDb.wantsLeadQuests = true
+        client.ns.charDb.levelsOn = true
+        client.ns.charDb.levelLimit = { min = 10, max = 14 }
+        client:slash("/dq")
+        client:click("Button", "Quests")
+        client:click("CheckButton", "DPS")
+        client:click("Button", "Find questing players")
+        world:advance(1)
+        assert.are.same({ "Low Hunter" }, client.invites)
+    end)
+
+    it("takes the player's own level when the quest's is unknown", function()
+        local world = World.new()
+        world:list("Low Hunter", "D", ELWYNN, 12, 500)
+        world:list("Zone Tank", "T", ELWYNN, 30, 300)
+        world:list("Zone Dps", "D", ELWYNN, 27, 200)
+        local client = queuedAt(world, 30, nil)
+        local invites = { unpack(client.invites) }
+        table.sort(invites)
+        assert.are.same({ "Zone Dps", "Zone Tank" }, invites)
+    end)
+
+    it("joining, asks only a group whose leader is near the quest's level", function()
+        local world = World.new()
+        local low = world:listGroup("Low Group", ELWYNN, { T = 1, H = 1, D = 1 }, 300)
+        world.listings[low].level = 12
+        local near = world:listGroup("Near Group", ELWYNN, { T = 1, H = 1, D = 1 }, 200)
+        world.listings[near].level = 24
+        local client = world:addClient("Solo Player", { level = 24, questLog = {
+            { "Elwynn Forest", true }, { "Hogger", false, 176, GROUP, level = 24 },
+        } })
+        world:advance(12)
+        client:slash("/dq")
+        client:click("CheckButton", "DPS")
+        client:click("Button", "Quests")
+        client:click("Button", "Find questing group")
+        world:advance(3)
+        local asked = {}
+        for _, w in ipairs(client.whispers) do
+            asked[#asked + 1] = w.target
+        end
+        assert.are.same({ "Near Group" }, asked)
+        assert.is_true(client:logged("left out for Hogger, level outside 21%-27: Low Group 12"))
+    end)
+
+    it("shows who it waits for, and fills a declined place at once", function()
+        local world = World.new()
+        world:list("Zone Tank", "T", ELWYNN, 20, 300)
+        world:list("Zone Dps", "D", ELWYNN, 20, 200)
+        world:list("Spare Dps", "D", ELWYNN, 20, 100)
+        local client = queued(world)
+        world:advance(4)
+        assert.is_not_nil(client:findText(
+            "as DPS  %-  Hogger  ·  waiting for Zone Dps, Zone Tank to accept %(0:04 of 1:00%)$"))
+        assert.is_not_nil(client:findText("^Hogger  ·  waiting for Zone Dps, Zone Tank to accept %(0:04 of 1:00%)$"))
+        client:system("Zone Dps declines your group invitation.")
+        assert.is_true(client:logged("Zone Dps can't join; inviting someone else%."))
+        assert.are.same({ "Zone Tank", "Zone Dps", "Spare Dps" }, client.invites)
+        assert.are.equal("TD", client.ns.questEngine.myEntry.reserved)
+        client.party, client.isLeader = { "Zone Tank" }, true
+        client:fire("GROUP_ROSTER_UPDATE")
+        world:advance(1)
+        assert.is_not_nil(client:findText("waiting for Spare Dps to accept %(0:0%d of 1:00%)"))
+    end)
+
+    it("fills a place freed after 60 s without an answer on the next search, not the one who let it lapse", function()
+        local world = World.new()
+        world:list("Zone Tank", "T", ELWYNN, 20, 300)
+        world:list("Zone Dps", "D", ELWYNN, 20, 200)
+        local client = queued(world)
+        client.party, client.isLeader = { "Zone Tank" }, true
+        client:fire("GROUP_ROSTER_UPDATE")
+        world:list("Late Dps", "D", ELWYNN, 20, 10)
+        world:advance(61)
+        assert.are.equal("", client.ns.questEngine.myEntry.reserved)
+        assert.is_true(client:logged("Zone Dps can't join; inviting someone else%."))
+        for _ = 1, 2 do
+            client:press("W")
+            world:advance(3)
+        end
+        assert.are.same({ "Zone Tank", "Zone Dps", "Late Dps" }, client.invites)
+        assert.are.equal("D", client.ns.questEngine.myEntry.reserved)
+    end)
+
+    it("frees an unanswered place after 62 s also when WoW says nothing", function()
+        local world = World.new()
+        world:list("Zone Tank", "T", ELWYNN, 20, 300)
+        world:list("Zone Dps", "D", ELWYNN, 20, 200)
+        local client = world:addClient("Solo Quester", { level = 20, questLog = {
+            { "Elwynn Forest", true }, { "Hogger", false, 176, GROUP },
+        } })
+        client.inviteLifetime = 1000
+        world:advance(30)
+        client:slash("/dq")
+        client:click("Button", "Quests")
+        client:click("CheckButton", "DPS")
+        client:click("Button", "Find questing group")
+        world:advance(1)
+        client.party, client.isLeader = { "Zone Tank" }, true
+        client:fire("GROUP_ROSTER_UPDATE")
+        world:list("Late Dps", "D", ELWYNN, 20, 10)
+        world:advance(63)
+        assert.is_true(client:logged("Zone Dps did not answer the invite; inviting someone else%."))
+        assert.are.equal("", client.ns.questEngine.myEntry.reserved)
+        for _ = 1, 2 do
+            client:press("W")
+            world:advance(3)
+        end
+        assert.are.same({ "Zone Tank", "Zone Dps", "Late Dps" }, client.invites)
+    end)
+
+    it("fills a place still open while an invite is out", function()
+        local world = World.new()
+        world:list("Zone Tank", "T", ELWYNN, 20, 300)
+        local client = queued(world)
+        assert.are.same({ "Zone Tank" }, client.invites)
+        world:list("New Dps", "D", ELWYNN, 20, 10)
+        world:advance(21)
+        for _ = 1, 2 do
+            client:press("W")
+            world:advance(3)
+        end
+        assert.are.same({ "Zone Tank", "New Dps" }, client.invites)
+        assert.are.equal("TD", client.ns.questEngine.myEntry.reserved)
+    end)
+
     it("keeps an invited player's place until the invite expires", function()
         local world = World.new()
         world:list("Zone Tank", "T", ELWYNN, 20, 300)

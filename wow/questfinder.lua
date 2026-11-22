@@ -9,7 +9,9 @@ local Log = ns.Log
 -- left to ask, or when leading, a listed player there is invited with a
 -- whisper that says what for; and the group is listed in its zone while it
 -- needs players. Someone listed for a zone may be doing any quest there, so the
--- whisper names the quest and offers to share it.
+-- whisper names the quest and offers to share it. Only players (and groups)
+-- near the quest's level are taken: the player's own level limit when set,
+-- else LEVEL_SPREAD either side of the quest's level.
 local QuestFinder = {}
 
 local STALE = 20
@@ -24,6 +26,7 @@ local PROMISE_WAIT = 30
 -- How long a request the player clicked (Who is looking) is remembered, also
 -- while not queued, so the leader's answer is recognised.
 local REQUEST_KEPT = 300
+local LEVEL_SPREAD = 3
 
 local invited = {}
 
@@ -80,6 +83,33 @@ local function hasZone(listing, zone)
         end
     end
     return false
+end
+
+-- { min, max }: the levels a listed player or group leader may have for
+-- this quest. With the quest's level unknown, the player's own counts.
+local function levelRange(quest)
+    local limit = ns.PartyLevels.rules("quests")
+    if limit then
+        return limit
+    end
+    local middle = quest.level or ns.Party.playerLevel() or 1
+    return { min = math.max(1, middle - LEVEL_SPREAD), max = middle + LEVEL_SPREAD }
+end
+
+-- Listings left out for their level, each line logged once per queue entry.
+local loggedSkips = {}
+
+local function logLevelSkips(quest, range, skipped)
+    if #skipped == 0 then
+        return
+    end
+    table.sort(skipped)
+    local text = string.format("quest finder: left out for %s, level outside %d-%d: %s", quest.title,
+        range.min, range.max, table.concat(skipped, ", "))
+    if not loggedSkips[text] then
+        loggedSkips[text] = true
+        Log.debug("%s", text)
+    end
 end
 
 -- The role a listed player gets: tank or healer while the group has none,
@@ -222,12 +252,20 @@ function QuestFinder.onResults()
         for _, key in ipairs(keys) do
             local quest = questFor(key)
             local _, size = ns.QuestMatch.parse(key)
-            local groups = {}
+            local groups, skipped = {}, {}
+            local range = quest and levelRange(quest)
             for _, listing in ipairs(quest and listings or {}) do
                 if not listing.solo and hasZone(listing, quest.zone) and not asks:find(listing.leader)
                     and not ns.Apply.recentlyAsked(listing.leader) and (listing.members or 1) < size then
-                    groups[#groups + 1] = listing
+                    if ns.Levels.fits(range, listing.level) then
+                        groups[#groups + 1] = listing
+                    else
+                        skipped[#skipped + 1] = string.format("%s %s", listing.leader, tostring(listing.level))
+                    end
                 end
+            end
+            if quest then
+                logLevelSkips(quest, range, skipped)
             end
             -- Recent listings first, then the fullest, then the newest.
             table.sort(groups, function(a, b)
@@ -258,17 +296,23 @@ function QuestFinder.onResults()
         end
         if open > 0 then
             local taken = takenRoles(current)
-            local picked = 0
+            local picked, skipped = 0, {}
+            local range = levelRange(quest)
             for _, listing in ipairs(ns.Features.fill() and listings or {}) do
-                local role = listing.solo and hasZone(listing, quest.zone) and not tried[listing.name]
+                local candidate = listing.solo and hasZone(listing, quest.zone) and not tried[listing.name]
                     and listing.name ~= ns.selfName and not inParty(listing.name)
-                    and ns.Levels.fits(ns.PartyLevels.rules("quests"), listing.level) and roleFor(listing.roles, taken)
+                local fits = candidate and ns.Levels.fits(range, listing.level)
+                if candidate and not fits then
+                    skipped[#skipped + 1] = string.format("%s %s", listing.name, tostring(listing.level))
+                end
+                local role = fits and roleFor(listing.roles, taken)
                 if role and picked < open then
                     taken[role] = taken[role] + 1
                     picked = picked + 1
                     invite(listing, key, role, quest)
                 end
             end
+            logLevelSkips(quest, range, skipped)
             if picked > 0 then
                 updateEntry(key)
                 return
@@ -433,7 +477,7 @@ function QuestFinder.onWhisper(text, sender)
 end
 
 function QuestFinder.reset()
-    invited, tried, focus, chosen, focusJoined = {}, {}, nil, nil, nil
+    invited, tried, focus, chosen, focusJoined, loggedSkips = {}, {}, nil, nil, nil, {}
     asks:keepRequests(REQUEST_KEPT)
 end
 
@@ -444,6 +488,24 @@ function QuestFinder.summary()
         count = count + 1
     end
     return { invited = count, asked = askCount() }
+end
+
+-- An invite ended without the player joining: their place goes to someone
+-- else at once, from the results there are; with every invite over and
+-- nobody joined, the quests queued for before come back.
+local function placeFreed()
+    local current = entry()
+    if not current or not focus then
+        return
+    end
+    if next(invited) == nil and not focusJoined and chosen then
+        focus = nil
+        ns.QuestQueue.sync(current.members, chosen)
+        chosen = nil
+    else
+        updateEntry(focus)
+    end
+    QuestFinder.onResults()
 end
 
 function QuestFinder.tick()
@@ -460,19 +522,42 @@ function QuestFinder.tick()
         if GetTime() - pending.at > INVITE_TIMEOUT and not inParty(name) then
             invited[name] = nil
             expired = true
+            Log.detail("%s did not answer the invite; inviting someone else.", name)
         end
     end
-    if not expired or not focus then
+    if expired then
+        placeFreed()
+    end
+end
+
+-- "X declines your group invitation." (also what WoW says when an invite
+-- runs out unanswered) or a like refusal for a player we invited.
+local function onSystem(text)
+    local declined = ns.Filler.declinedName(text)
+    local name = declined and ns.Whispers.find(invited, declined)
+    if not name then
         return
     end
-    local current = entry()
-    if next(invited) == nil and not focusJoined and chosen and current then
-        focus = nil
-        ns.QuestQueue.sync(current.members, chosen)
-        chosen = nil
-    else
-        updateEntry(focus)
+    invited[name] = nil
+    Log.detail("%s can't join; inviting someone else.", name)
+    placeFreed()
+end
+
+-- The invited players who have not joined yet, sorted, and the seconds since
+-- the first of those invites went out (at most WoW's 60); nil if none.
+function QuestFinder.waiting()
+    local names, first = {}, nil
+    for name, pending in pairs(invited) do
+        if not inParty(name) then
+            names[#names + 1] = name
+            first = math.min(first or pending.at, pending.at)
+        end
     end
+    if not first then
+        return nil
+    end
+    table.sort(names)
+    return names, math.min(ns.Invites.LIFETIME, math.max(0, GetTime() - first))
 end
 
 -- An invite from a leader we asked while still looking alone is joined at
@@ -520,6 +605,7 @@ function QuestFinder.init()
     ns.LfgList.onUpdate(QuestFinder.onResults)
     ns.on("CHAT_MSG_WHISPER", QuestFinder.onWhisper)
     ns.on("PARTY_INVITE_REQUEST", QuestFinder.onInvite)
+    ns.on("CHAT_MSG_SYSTEM", onSystem)
 end
 
 ns.QuestFinder = QuestFinder

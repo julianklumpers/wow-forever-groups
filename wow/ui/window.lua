@@ -104,7 +104,7 @@ local function refreshDungeonsTab(y, state)
         y = y - 10
     end
     local composing = listed and ns.PartyCompose.isBuilder()
-    y = W.layoutStatus(y, "dungeons", state, { places = not (composing and ns.PartyCompose.isOn()),
+    y = W.layoutStatus(y, "dungeons", state, { places = not composing,
         roleInfo = state == "leader" and not searching, chooseReplacements = open ~= "",
         rightRoom = state == "leader" and not busy and W.playstyleRoom() or nil })
     if composing then
@@ -261,6 +261,7 @@ function Window.onJoinClicked()
         return
     end
     ns.PartyLevels.noteStart("dungeons")
+    ns.Run.startOver()
     local ok, joinErr = ns.join(members, ids)
     W.setHint(ok and "" or string.format(L["Could not join: %s"], L[tostring(joinErr)]))
     if ok then
@@ -311,6 +312,7 @@ function Window.startFill()
     end
     if not entry then
         ns.PartyLevels.noteStart("dungeons")
+        ns.Run.startOver()
     end
     local names = {}
     for _, member in ipairs(members) do

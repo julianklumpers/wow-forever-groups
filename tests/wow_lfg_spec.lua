@@ -239,6 +239,8 @@ describe("asking groups in WoW's Group Finder to invite you", function()
         assert.are.equal("Group Lead", solo.acceptedFrom)
         world:advance(2)
         assert.is_nil(solo.ns.engine.myEntry)
+        assert.is_true(solo:said("You joined a group, so you left the queue%."))
+        assert.is_false(solo:said("no longer the party leader"))
         assert.is_false(solo.ns.Filler.isActive())
     end)
 
@@ -325,7 +327,6 @@ describe("asking groups in WoW's Group Finder to invite you", function()
         world.listings[#world.listings].class = "PALADIN"
         solo.ns.charDb.wantsLead = nil
         solo.ns.charDb.compose = { masks = { 256, 304, 0, 64, 0 } }
-        solo.ns.charDb.composeOn = true
         solo.ns.charDb.levelsOn = true
         solo.ns.charDb.levelLimit = { dungeons = { min = 30, max = 31 } }
         solo:slash("/dq join dps dm")
@@ -344,7 +345,6 @@ describe("asking groups in WoW's Group Finder to invite you", function()
 
     local function hiddenWishes(client)
         client.ns.charDb.compose = { masks = { 0, 16, 0, 0, 0 } }
-        client.ns.charDb.composeOn = true
         client.ns.charDb.wantsLead = nil
         client.ns.charDb.wishesHidden = { dungeons = true }
     end

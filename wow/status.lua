@@ -132,10 +132,11 @@ function Status.current(scope)
     end
     if questEntry then
         local roles = questEntry.members[1].roles
-        local finder = ns.QuestFinder.summary()
         local parts = { ns.QuestQueue.describe(questEntry.dungeons) }
-        if details and finder.invited > 0 then
-            parts[#parts + 1] = string.format(L["invited %d from the Group Finder"], finder.invited)
+        local invitees, since = ns.QuestFinder.waiting()
+        if invitees then
+            parts[#parts + 1] = string.format(L["waiting for %s to accept (%s of 1:00)"], table.concat(invitees, ", "),
+                Widgets.formatTime(since))
         end
         if details and ns.Listing.isOurs() then
             parts[#parts + 1] = L["listed in the Group Finder"]

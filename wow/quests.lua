@@ -25,13 +25,13 @@ local function entries()
             local info = C_QuestLog.GetInfo(i)
             if type(info) == "table" and not info.isHidden then
                 list[#list + 1] = { title = info.title, isHeader = info.isHeader, questID = info.questID,
-                    suggestedGroup = info.suggestedGroup }
+                    suggestedGroup = info.suggestedGroup, level = info.level }
             end
         end
     elseif GetNumQuestLogEntries and GetQuestLogTitle then
         for i = 1, GetNumQuestLogEntries() or 0 do
-            local title, _, _, isHeader, _, _, _, questID = GetQuestLogTitle(i)
-            list[#list + 1] = { title = title, isHeader = isHeader, questID = questID }
+            local title, level, _, isHeader, _, _, _, questID = GetQuestLogTitle(i)
+            list[#list + 1] = { title = title, isHeader = isHeader, questID = questID, level = level }
         end
     end
     return list
@@ -69,6 +69,7 @@ local function asGroupQuest(entry, zone)
     size = size >= 2 and math.min(size, 5) or DEFAULT_GROUP_SIZE
     return {
         questID = entry.questID, title = entry.title, zone = zone, size = size,
+        level = tonumber(entry.level) and entry.level > 0 and entry.level or nil,
         label = (tag and type(tag.tagName) == "string" and tag.tagName ~= "") and tag.tagName or "Group",
         key = ns.QuestMatch.key(entry.questID, size),
     }
@@ -125,7 +126,7 @@ function Quests.entriesFor(id)
     return entriesByDungeon[id] or {}
 end
 
--- { { questID, title, zone, size, label, key } }: the group and elite quests
+-- { { questID, title, zone, size, label, key, level } }: the group and elite quests
 -- in the quest log, outside dungeons.
 function Quests.groupQuests()
     if dirty then

@@ -10,15 +10,14 @@ local PAD = W.PAD
 local ui = W.ui
 
 -- Choosing the classes in the party, on the Dungeons tab under "Lead a
--- group": a switch, and while it is on the group's five places side by side
--- as place cards (wow/ui/window/placecard.lua): the classes wished for as
--- their round icons; the player's and the party's places show who is there;
--- a place open to any class has a dashed edge, a "+" and "Any class". Each
--- card is a dropdown like the playstyle's: WoW's own menu with "Any class"
--- and a check per class that can play the place's role, in its class colour
--- (our own list, wow/ui/classmenu.lua, on a client without it). Switched off
--- the wishes stay, unused. Only while the player builds the group
--- (wow/partycompose.lua).
+-- group": a title and the group's five places side by side as place cards
+-- (wow/ui/window/placecard.lua): the classes wished for as their round icons;
+-- the player's and the party's places show who is there; a place open to any
+-- class has a dashed edge, a "+" and "Any class". Each card is a dropdown
+-- like the playstyle's: WoW's own menu with "Any class" and a check per class
+-- that can play the place's role, in its class colour (our own list,
+-- wow/ui/classmenu.lua, on a client without it). Only while the player builds
+-- the group (wow/partycompose.lua).
 local CARD_GAP = W.SPACE.s
 local cards = {}
 W.composeCards = cards
@@ -169,12 +168,14 @@ local function changed(slot, classes)
 end
 
 function W.buildCompose()
-    ui.composeToggle = Widgets.check(W.frame, "Choose the classes in my party", function(self)
-        PartyCompose.setOn(self:GetChecked())
-        ns.ClassMenu.hide()
-        ns.Window.refresh()
-    end)
-    Widgets.tooltip(ui.composeToggle, "Choose the classes in my party", "Choose the classes you want for each "
+    ui.composeTitle = CreateFrame("Frame", nil, W.frame)
+    ui.composeTitle:EnableMouse(true)
+    local title = Widgets.text(ui.composeTitle, "GameFontNormalSmall")
+    title:SetPoint("LEFT")
+    title:SetText(L["Choose the classes in my party"])
+    ui.composeTitle.label = title
+    ui.composeTitle:SetSize(title:GetStringWidth() + 4, 18)
+    Widgets.tooltip(ui.composeTitle, "Choose the classes in my party", "Choose the classes you want for each "
         .. "open place. Forever Groups then only puts players of those classes in your group, from its queue and "
         .. "from WoW's Group Finder.")
     ui.composeReset = Widgets.link(W.frame, "Reset", function()
@@ -187,16 +188,22 @@ function W.buildCompose()
             return slot
         end, changed)
         card.slot, card.role, card.classes = slot, role, {}
+        card:HookScript("OnEnter", W.showRoleInfo)
+        card:HookScript("OnLeave", function()
+            if GameTooltip then
+                GameTooltip:Hide()
+            end
+        end)
         cards[slot] = card
     end
     W.hideCompose()
 end
 
 function W.hideCompose()
-    if not ui.composeToggle then
+    if not ui.composeTitle then
         return
     end
-    ui.composeToggle:Hide()
+    ui.composeTitle:Hide()
     ui.composeReset:Hide()
     for _, card in ipairs(cards) do
         card:Hide()
@@ -209,6 +216,8 @@ end
 -- "Any class". Only an open place opens the dropdown.
 local function paintCard(card, person, classes, width)
     card.person, card.classes = person, classes
+    card.roleName = person and person.name
+    card.roleInfo = person and not person.self and W.memberRoleInfo(person.name) or nil
     local data = { role = card.role, classes = classes }
     if person then
         data.name, data.self, data.classToken = person.name, person.self, person.class
@@ -227,21 +236,12 @@ function W.layoutCompose(y)
         return y
     end
     local masks, fixed = PartyCompose.chosenMasks(), PartyCompose.fixed()
-    local on = PartyCompose.isOn()
-    ui.composeToggle:Show()
-    ui.composeToggle:SetChecked(on)
-    W.place(ui.composeToggle, PAD - W.CHECK_INSET, y)
-    ui.composeReset:SetShown(on and hasWishes(masks) > 0)
+    ui.composeTitle:Show()
+    W.place(ui.composeTitle, PAD, y - 2)
+    ui.composeReset:SetShown(hasWishes(masks) > 0)
     ui.composeReset:ClearAllPoints()
     ui.composeReset:SetPoint("TOPRIGHT", W.frame, "TOPRIGHT", W.RIGHT_OFFSET, y - 3)
     y = y - 26
-    if not on then
-        for _, card in ipairs(cards) do
-            card:Hide()
-        end
-        ns.ClassMenu.hide()
-        return y - 4
-    end
     for slot, column in ipairs(W.columns(#cards, CARD_GAP)) do
         local card = cards[slot]
         paintCard(card, fixed[slot], Compose.classesOf(masks[slot] or 0), column.width)

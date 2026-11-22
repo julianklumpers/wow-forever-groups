@@ -14,7 +14,7 @@ local CALLS = {
     ["Widgets.button"] = { 2 }, ["Widgets.check"] = { 2 }, ["Widgets.header"] = { 2 },
     ["Widgets.link"] = { 2 }, ["Widgets.tab"] = { 2 }, ["Widgets.expander"] = { 2 }, ["Widgets.window"] = { 2 },
     ["iconButton"] = { 2 }, ["action"] = { 2 }, ["buildBlock"] = { 1 }, ["buildSection"] = { 1 },
-    ["caption"] = { 1 },
+    ["caption"] = { 1 }, ["leaveQueue"] = { 1 },
 }
 
 -- Shown translated but defined where no translation is at hand: the talent

@@ -334,8 +334,13 @@ local function onRosterUpdate()
     end
     local members, changed = { entry.members[1] }, #party ~= #entry.members - 1
     for _, member in ipairs(party) do
-        if known[member.name] then
-            members[#members + 1] = known[member.name]
+        local was = known[member.name]
+        if was then
+            if member.level and member.level > 0 and member.level ~= was.level then
+                was = { name = was.name, roles = was.roles, level = member.level }
+                changed = true
+            end
+            members[#members + 1] = was
         elseif joined[member.name] then
             members[#members + 1] = { name = member.name, roles = joined[member.name], level = member.level }
             changed = true

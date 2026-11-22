@@ -159,7 +159,6 @@ describe("finding a replacement", function()
         assert.is_nil(leader:findText("^Dungeons for level"))
         assert.is_false(W.ui.dungeonHeader.shown)
         assert.is_nil(leader:find("Button", "Find group"))
-        leader.ns.charDb.composeOn = true
         leader.ns.Window.refresh()
         assert.is_true(slot.shown)
         assert.is_false(W.composeCards[1].shown)
@@ -517,9 +516,8 @@ describe("finding a replacement", function()
             end
         end
         local PartyCompose = leader.ns.PartyCompose
-        assert.is_true(PartyCompose.isOn())
         assert.are.same({ "MAGE" }, leader.ns.Compose.classesOf(PartyCompose.settings().masks[open.wishSlot]))
-        assert.are.equal(0, PartyCompose.settings().masks[2])
+        assert.are.equal(16, PartyCompose.settings().masks[2])
         leader:click("Button", "Find replacement")
         world:advance(1)
         assert.is_not_nil(leader.ns.engine.myEntry.compose)
@@ -573,6 +571,52 @@ describe("finding a replacement", function()
         assert.is_false(leader:logged("is complete%."))
         assert.is_false(leader:said("Group complete"))
         assert.is_false(leader.ns.GroupView.isTracking())
+    end)
+
+    local function outAfterRun()
+        local world, leader = inDungeon()
+        world:list("Heal Two", "H", 799, 20, 300)
+        leader:fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
+        world:advance(60)
+        leader.inInstance, leader.instanceName = false, nil
+        leader:fire("PLAYER_ENTERING_WORLD")
+        world:advance(1)
+        for _, name in ipairs({ "Heal", "Dps B", "Dps C" }) do
+            leader:leaves(name)
+            world:advance(1)
+        end
+        world:advance(600)
+        leader:slash("/dq")
+        leader:click("CheckButton", "Tank")
+        leader:click("Button", "None")
+        leader:click("CheckButton", "The Deadmines")
+        return world, leader
+    end
+
+    it("takes a new search after a run of the same dungeon for a new group, not a replacement", function()
+        local world, leader = outAfterRun()
+        local sent = #leader.whispers
+        leader:click("Button", "Find group")
+        world:advance(3)
+        for i = sent + 1, #leader.whispers do
+            assert.is_nil(leader.whispers[i].text:find("bosses down", 1, true))
+        end
+        assert.is_true(leader:logged("run ended: a new search for a group"))
+        leader:joins("Heal Two")
+        world:advance(2)
+        leader:click("Button", "Stop")
+        world:advance(2)
+        assert.is_false(leader.ns.GroupView.isTracking())
+        assert.is_nil(leader:find("Button", "Find replacement"))
+        assert.is_false(leader:said("Looking for a replacement"))
+    end)
+
+    it("takes /dq fill after a run of the same dungeon for a new group too", function()
+        local world, leader = outAfterRun()
+        leader:slash("/dq fill")
+        world:advance(3)
+        assert.is_true(leader:logged("run ended: a new search for a group"))
+        assert.is_true(leader:logged("no longer following the earlier group"))
     end)
 
     it("tells after Stop how many invites WoW still holds open, until they are answered or expire", function()

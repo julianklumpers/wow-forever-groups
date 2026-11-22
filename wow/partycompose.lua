@@ -70,24 +70,7 @@ local function seated(partyMembers)
     return people
 end
 
-local NONE = { 0, 0, 0, 0, 0 }
-
--- Choosing classes is switched on (charDb.composeOn); off, the choices stay
--- for the next time but count for nothing.
-function PartyCompose.isOn()
-    return ns.charDb.composeOn == true
-end
-
-function PartyCompose.setOn(on)
-    ns.charDb.composeOn = on and true or nil
-    PartyCompose.apply()
-end
-
--- The wishes in use: none while switched off.
 function PartyCompose.masks()
-    if not PartyCompose.isOn() then
-        return NONE
-    end
     return PartyCompose.settings().masks
 end
 
@@ -256,6 +239,7 @@ end
 
 function PartyCompose.init()
     -- The roster's changes reach the queue entry through main.lua's syncEntry.
+    ns.charDb.composeOn = nil
 end
 
 ns.PartyCompose = PartyCompose

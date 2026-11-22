@@ -86,10 +86,11 @@ function W.questStatus(state)
     end
     local entry = ns.QuestQueue.entry()
     if entry then
-        local finder = ns.QuestFinder.summary()
         local parts = { ns.QuestQueue.describe(entry.dungeons) }
-        if ns.db.debug and finder.invited > 0 then
-            parts[#parts + 1] = string.format(L["invited %d from the Group Finder"], finder.invited)
+        local invitees, since = ns.QuestFinder.waiting()
+        if invitees then
+            parts[#parts + 1] = string.format(L["waiting for %s to accept (%s of 1:00)"], table.concat(invitees, ", "),
+                Widgets.formatTime(since))
         end
         if ns.Listing.isOurs() then
             parts[#parts + 1] = L["listed in the Group Finder"]
@@ -173,6 +174,31 @@ local function composition()
     return nil
 end
 
+-- The roles a party member is queued for and where they come from, for
+-- their tooltip; nil for anyone else.
+function W.memberRoleInfo(name, members)
+    for _, member in ipairs(members or Party.members()) do
+        if member.name == name then
+            return Widgets.describeRoles(ns.PartyRoles.rolesOf(member)) .. "  ("
+                .. L[ns.PartyRoles.sourceOf(member)] .. ")"
+        end
+    end
+    return nil
+end
+
+-- OnEnter of a place showing a party member: self.roleInfo, under
+-- self.roleName.
+function W.showRoleInfo(self)
+    if not self.roleInfo or not GameTooltip then
+        return
+    end
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+    GameTooltip:SetText(self.roleName or "", 1, 0.82, 0)
+    GameTooltip:AddLine(self.roleInfo, 1, 1, 1)
+    GameTooltip:AddLine(L["Roles follow each member's role in WoW."], 0.75, 0.75, 0.75, true)
+    GameTooltip:Show()
+end
+
 -- The data W.paintPlace draws the places with, the extra lines they share,
 -- and how many members are at the entrance and inside.
 -- roleInfo: the roles each party member is queued for go in their tooltip.
@@ -200,12 +226,7 @@ local function placeRows(places, roleInfo, choosing)
     local invites = ns.Filler.invites()
     for i, data in ipairs(places.slots) do
         local row = { role = data.role, name = data.name, classToken = data.classToken }
-        for _, member in ipairs(partyMembers) do
-            if member.name == data.name then
-                row.roleInfo = Widgets.describeRoles(ns.PartyRoles.rolesOf(member)) .. "  ("
-                    .. L[ns.PartyRoles.sourceOf(member)] .. ")"
-            end
-        end
+        row.roleInfo = W.memberRoleInfo(data.name, partyMembers)
         if not data.name then
             for n, invite in ipairs(invites) do
                 if invite.role == data.role then
@@ -248,7 +269,7 @@ local function placeRows(places, roleInfo, choosing)
     local free = not choosing and ns.PartyCompose.freePlaces()
     if choosing then
         local fixed = ns.PartyCompose.fixed()
-        local masks = ns.PartyCompose.isOn() and ns.PartyCompose.settings().masks or {}
+        local masks = ns.PartyCompose.settings().masks
         local openByRole = {}
         for slot, role in ipairs(ns.Compose.SLOT_ROLES) do
             if not fixed[slot] then
@@ -619,24 +640,14 @@ function W.buildStatus()
         local slot = W.newClassCard(frame, function(self)
             return self.wishSlot
         end, function(place, classes)
-            if not ns.PartyCompose.isOn() then
-                ns.PartyCompose.reset()
-                ns.PartyCompose.setOn(true)
-            end
             ns.PartyCompose.setClasses(place, classes)
             ns.PartyLevels.noteStart("dungeons")
             ns.Window.refresh()
         end)
         slot.arrow:Hide()
         slot:HookScript("OnEnter", function(self)
-            if not self.roleInfo or not GameTooltip then
-                return
-            end
-            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            GameTooltip:SetText(self.name:GetText() or "", 1, 0.82, 0)
-            GameTooltip:AddLine(self.roleInfo, 1, 1, 1)
-            GameTooltip:AddLine(L["Roles follow each member's role in WoW."], 0.75, 0.75, 0.75, true)
-            GameTooltip:Show()
+            self.roleName = self.name:GetText()
+            W.showRoleInfo(self)
         end)
         slot:HookScript("OnLeave", hideTooltip)
         slot:Hide()

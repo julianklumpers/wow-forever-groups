@@ -19,7 +19,8 @@ in the group, with roles set for you.
 
 - **Dungeons** — queue for one or more dungeons that fit your level, solo or with your party.
 - **Group quests** — a Quests tab with the group and elite quests in your quest log; hover one for its
-  objectives, right-click it to open it in your quest log.
+  objectives, right-click it to open it in your quest log. Players from WoW's Group Finder are only invited
+  when they are within 3 levels of the quest.
 - **Battlegrounds** (beta) — a Battlegrounds tab for Warsong Gulch, Arathi Basin and Darkspear Islands
   in your level bracket: who is looking, and Find group to team up with other Forever Groups
   players, join a group listed in WoW's Group Finder, or build a party of five or a premade of
@@ -67,8 +68,9 @@ in the group, with roles set for you.
 - **Status bar** — boss progress (e.g. 4/7 bosses) and everyone's quest progress, folded out
   under the bar.
 - **Limit levels** — leading, set the lowest and highest level of the players who join you.
-- **Choose the classes in your party** — leading a dungeon group, switch it on and pick the
-  classes you want per place (a Mage for water, a Warrior to tank); only those classes join you.
+- **Choose the classes in your party** — leading a dungeon group, pick the classes you want per
+  place (a Mage for water, a Warrior to tank); only those classes join you. Every place is open to any
+  class until you choose, and Reset opens them all again.
   Of the players as close to the dungeon, another of your classes goes before a second of one in the
   same role, but it never waits for one.
 - **Who is looking** — a drawer on the side of the window with the players and groups looking

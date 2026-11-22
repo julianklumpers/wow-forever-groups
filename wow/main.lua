@@ -218,7 +218,11 @@ local function syncEntry()
     end
     local state = Party.state()
     if state == "member" or state == "raid" then
-        leaveQueue("You are no longer the party leader, so you left the queue.")
+        if #entry.members == 1 then
+            leaveQueue("You joined a group, so you left the queue.")
+        else
+            leaveQueue("You are no longer the party leader, so you left the queue.")
+        end
         return
     end
     local members, why = queuedParty(entry)

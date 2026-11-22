@@ -395,7 +395,6 @@ describe("whisper invites while building a group", function()
         world:advance(30)
         lead.ns.charDb.wantsLead = true
         lead.ns.charDb.compose = { masks = { 256, 0, 0, 0, 0 } }
-        lead.ns.charDb.composeOn = true
         lead:slash("/dq join heal dm")
         world:advance(2)
         assert.is_true(lead.ns.Filler.isActive())

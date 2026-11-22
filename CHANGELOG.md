@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- "Choose the classes in my party" no longer has a check box: leading a dungeon group, the five places are always
+  shown under it, each open place "Any class" until you pick classes for it, and Reset opens every place to any
+  class again. Classes you chose before are still there and count right away. Hovering a party member's place
+  shows the roles they are queued for, as their row did.
+- When you join a group while queued on your own, the chat now says "You joined a group, so you left the queue"; it
+  said you were no longer the party leader. The messages about leaving the queue are now translated too.
+- Fixed: a player invited from WoW's Group Finder for a group quest stayed at level 0 in the questing queue, as WoW
+  often doesn't know their level yet when they join, so a leader with a level limit would never take your group.
+  Their real level now replaces it as soon as WoW has it, as on the Dungeons tab.
+- Fixed: a party that stayed together after a dungeon run and searched for that dungeon again was treated as
+  looking for a replacement: invites said how many bosses were down from the old run, and after Stop the button
+  became "Find replacement", which said "Looking for a replacement" in party chat. A new search now starts a new
+  group.
+- Group quests: players from WoW's Group Finder are only invited, and groups only asked, when they are within 3
+  levels of the quest's level (a level 12 was invited for a level 24 quest). Your own "Limit levels" still goes
+  first. Who is left out for their level shows in the debug log.
+- Group quests: the status now says whom you are waiting for, e.g. "waiting for Fluma Bluma to accept (0:38 of
+  1:00)"; before it looked as if nothing happened. A player who declines is replaced at once, and one who doesn't
+  answer is replaced after WoW's 60 seconds; a place nobody was invited for yet is still filled meanwhile.
+
 ## 0.32.0 (2026-11-21)
 
 - Who is looking shows every class in a Forever Groups party in the Classes column, tank, healer, DPS, like the

@@ -409,6 +409,19 @@ function Run.endFollowing()
     Log.info("You ended the run; Forever Groups no longer follows this group.")
 end
 
+-- A new search from the dungeon list: the run the party did before, and the
+-- group Forever Groups followed then, are over; else a search for the same
+-- dungeon would pass for a replacement in that run.
+function Run.startOver()
+    if ns.GroupView.isTracking() then
+        Log.debug("no longer following the earlier group: a new search for a group")
+        ns.GroupView.forget()
+    end
+    endRun(run and "a new search for a group" or nil)
+    lastLeaver = nil
+    pcall(StaticPopup_Hide, POPUP)
+end
+
 -- Fills the open places of a group the player just took the lead of.
 function Run.fillGroup()
     local dungeon, open = queueGroup(false)

@@ -134,7 +134,7 @@ local STEPS = ns.Locale.mark({
                 .. "Only those classes join you.",
             target = function()
                 local W, ui = parts()
-                local list = { ui.composeToggle }
+                local list = { ui.composeTitle }
                 for _, card in ipairs(W.composeCards) do
                     list[#list + 1] = card
                 end
@@ -478,7 +478,7 @@ end
 SCENES[2] = function(now)
     local Compose = ns.Compose
     local w = baseWorld(now, "leader", "dungeons", {
-        lastRoles = "T", composeOn = true, levelsOn = true, levelLimit = { min = 18, max = 24 },
+        lastRoles = "T", levelsOn = true, levelLimit = { min = 18, max = 24 },
         compose = { masks = { 0, 0, Compose.maskOf({ "MAGE" }), Compose.maskOf({ "ROGUE", "WARRIOR" }), 0 } },
     })
     w.members = { member("Brynna Coldbrook", "PRIEST", "H", 21, "PRIEST2") }

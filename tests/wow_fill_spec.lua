@@ -1457,7 +1457,7 @@ describe("Filling with classes the group lacks first", function()
         assert.is_false(invited(client, "Low Three"))
     end)
 
-    it("never holds back a replacement, nor with class choices or the setting off", function()
+    it("never holds back a replacement, nor with class choices", function()
         local world = World.new()
         local client = world:addClient("Tanky Mctank", { level = 20, class = "WARRIOR", classVariety = true })
         world:advance(CONNECT)
@@ -1467,14 +1467,12 @@ describe("Filling with classes the group lacks first", function()
         client.ns.db.noClassVariety = true
         assert.is_nil(Filler.avoidClasses())
         client.ns.db.noClassVariety = nil
-        client.ns.PartyCompose.setOn(true)
         for place = 3, 5 do
             client.ns.PartyCompose.setClasses(place, { "MAGE" })
         end
         client.ns.charDb.wantsLead = true
         client.ns.PartyLevels.noteStart("dungeons")
         assert.is_nil(Filler.avoidClasses())
-        client.ns.PartyCompose.setOn(false)
         Filler.stop(true)
         Filler.start({ dungeon = "5", missing = "D", members = {}, replacement = true })
         assert.is_nil(Filler.avoidClasses())

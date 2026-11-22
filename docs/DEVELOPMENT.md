@@ -82,9 +82,12 @@ How the addon works inside, for anyone reading or changing the code. The player-
   D; per place a mask of the nine classes, 0 for any; `untilAt` server time after which anyone may join, always 0
   from the window: the wishes hold for as long as the queue entry, without a time after which anyone may join). They go
   with the dungeon queue entry as its 11th field (`v2|Q|...|<lead>|<until>:<m>.<m>.<m>.<m>.<m>`; older clients
-  ignore it) while the player builds the group (party leader, or alone with "Lead a group") and has switched it on
-  ("Choose the classes in my party", `charDb.composeOn`; switched off, the choices stay in `charDb.compose`;
-  `wow/partycompose.lua`, set on join and on every change). Only when the player saw them when the search began:
+  ignore it) while the player builds the group (party leader, or alone with "Lead a group"; "Choose the classes in
+  my party" is a title with the five place cards under it, no switch: a place without choices is "Any class",
+  Reset clears them all; the choices stay in `charDb.compose`, and the old switch `charDb.composeOn` is dropped
+  at load, so choices kept while it was off count again; `wow/partycompose.lua`, set on join and on every
+  change). While the cards show, they take the place of the party's place rows; a party member's card has the
+  same tooltip with the roles they are queued for (`W.memberRoleInfo`, `W.showRoleInfo`). Only when the player saw them when the search began:
   each search the player starts (Find group in the window or `/fg join`, Find questing group, Fill from Group
   Finder; not a replacement search or a restored queue) notes per tab whether the player built the group then (`PartyLevels.noteStart`, `charDb.wishesHidden`); a player who pressed Find group with "Join a group"
   and is made leader of the group Forever Groups builds for them keeps neither class choices nor level limit
@@ -511,9 +514,15 @@ Zones" category (one activity per zone, matched by name to the quest log's zone 
 quests, on the click that queues and then on key presses like the dungeon side. A player who joins (not "Lead a
 group") and is still alone first asks the leader of a listed group in the zone that still has room, one at a time
 (the next after 20 s without an invite); only when there is no group left to ask, or when leading, are players
-listed alone in a quest's zone invited, with a whisper that names the quest and offers to share it ("Inviting you
+listed alone in a quest's zone invited. Players and asked groups' leaders must be near the quest's level: the
+player's own level limit when set, else `LEVEL_SPREAD` (3) either side of the quest's level from the quest log
+(`level` of `C_QuestLog.GetInfo`, kept as `quest.level` by `wow/quests.lua`; unknown: the player's level); who is
+left out for it is logged once per queue entry ("quest finder: left out for Hogger, level outside 21-27: …"). Invites
+go out with a whisper that names the quest and offers to share it ("Inviting you
 for Hogger (Elwynn Forest, group of 3). I can share the quest."); the entry then narrows to that quest with the
-invited roles reserved, invitees who join become members, and the group is complete at the quest's size. A queue
+invited roles reserved, invitees who join become members (their level follows the party: WoW often gives 0 at the
+moment they join, and the real level comes with a later roster update), and the group is complete at the quest's
+size. A queue
 entry holds at most `Config.MAX_PREMADE` players and places, so once members and invites out are more (a quest for
 five filled from the Group Finder) the party leaves the queue for the moment (`parked` in `wow/questqueue.lua`;
 `QuestQueue.entry()` still returns it, marked `parked`, so the finder and the window carry on): joins are followed
@@ -644,7 +653,11 @@ What WoW shows (`/fgp invitewatch`, 2026-11-18): "You have invited X to join you
 60 s after an invite nobody answered (inviting while alone makes a party of one at once, gone again with the
 decline). So an unanswered invite frees its place by that message; a decline 59 s or more after the invite went out
 counts as no answer (outcome noanswer), an earlier one as declined. `INVITE_TIMEOUT` (62 s from sending) only
-catches that message missed, as after a /reload; the questing and battleground finders keep the place 62 s too. What became of each invite is
+catches that message missed, as after a /reload; the questing and battleground finders keep the place 62 s too, but
+free it on the decline message as well. The quest finder then fills the freed place at once from results up to 20 s
+old (`placeFreed`), else on the next search; a place still open while an invite is out is filled on any new results.
+The status bar and the window name whom the questing queue waits for ("waiting for X to accept (0:38 of 1:00)",
+`QuestFinder.waiting`). What became of each invite is
 kept (`state.outcomes`: declined, grouped for WoW's "is already in a group", missing for "Cannot find player",
 noanswer, away; from WoW's own system text) and the player is passed over until they look again (`reopen`, before
 each pick): one who was in a group or not found once they list again (a listing newer than the outcome:
@@ -1027,7 +1040,11 @@ not on the Quests tab.
   run's `pending`. While loading WoW can also report no group and no
   instance for a moment: a `GROUP_ROSTER_UPDATE` before the first `PLAYER_ENTERING_WORLD` ends nothing
   (`ns.inWorld`, set in `wow/events.lua`; the same holds for the quest sharing memory, the agreed roles and the
-  followed group). Why a run ends or starts over is logged ("run ended: …", "run kept until the party is known"). A dungeon's boss count comes from WoW's
+  followed group). A new search from the dungeon list (Find group / Find players in the window, `/dq fill` without an
+  entry) first calls `Run.startOver`: the earlier run ends ("run ended: a new search for a group") and the group
+  followed then is let go (`GroupView.forget`), so a party that stayed together after a run and searches the same
+  dungeon again builds a new group: no bosses in the invite whisper, and Stop lets go of it as of any group never
+  complete instead of offering "Find replacement". Why a run ends or starts over is logged ("run ended: …", "run kept until the party is known"). A dungeon's boss count comes from WoW's
   Adventure Guide when it lists the dungeon, else from finished runs (the most ever killed in one run). When someone leaves the full group before every known boss is down, the leader gets a popup to
   queue the group for a replacement (Forever Groups and the Group Finder, the leaver excluded); with
   `db.autoReplace` that happens without the popup. Only the popup's click searches the Group Finder; without it the
@@ -1041,7 +1058,7 @@ searches after the filler started, so the one search covers the run's dungeon.
   and every party member are inside, `GroupPlaces.of`; one whose place is not known counts as outside).
   Its open places are cards like the class choices' (`placeRows(..., choosing)` maps each to a free
   `Compose.SLOT_ROLES` place, `row.wishSlot`), built by the same `W.newClassCard` (WoW's dropdown menu, our own list without it): a pick
-  switches the class choices on (cleared first when they were off) and sets that place's classes (`PartyCompose.setClasses`), which the replacement search then uses; while it searches
+  sets that place's classes (`PartyCompose.setClasses`), which the replacement search then uses; while it searches
   they are locked.
   Next to that button, while the followed run goes on and nothing searches, "End run" (`Run.endFollowing`):
   `GroupView.forget()`, the replacement popup closed, and `run.ended` so a later leaver of that run is not asked

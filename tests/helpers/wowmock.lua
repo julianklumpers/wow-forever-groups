@@ -752,7 +752,7 @@ local function buildEnv(world, client)
         GetInfo = function(i)
             local entry = client.questLog[i]
             return entry and { title = entry[1], isHeader = entry[2] == true, questID = entry[3],
-                suggestedGroup = entry[5] or 0 }
+                suggestedGroup = entry[5] or 0, level = entry.level or 0 }
         end,
         GetQuestObjectives = function(id)
             for _, entry in ipairs(client.questLog) do

@@ -13,12 +13,22 @@ local function leader(world, class, classVariety)
 end
 
 describe("composing the party", function()
-    it("is offered only to a player who builds the group", function()
+    it("is shown to a player who builds the group, every open place any class until chosen", function()
         local world = World.new()
         local client = leader(world)
-        assert.is_nil(client:find("CheckButton", "Choose the classes in my party"))
+        local W = client.ns.WindowParts
+        assert.is_false(W.ui.composeTitle.shown)
         client:click("Button", LEAD)
-        assert.is_not_nil(client:find("CheckButton", "Choose the classes in my party"))
+        assert.is_true(W.ui.composeTitle.shown)
+        assert.are.equal("Choose the classes in my party", W.ui.composeTitle.label.text)
+        assert.is_nil(client:find("CheckButton", "Choose the classes in my party"))
+        for place = 2, 5 do
+            assert.is_true(W.composeCards[place].shown)
+            assert.are.equal("Any class", W.composeCards[place].text.text)
+        end
+        assert.is_false(W.ui.composeReset.shown)
+        client:click("Button", "Find players")
+        assert.is_nil(client.ns.engine.myEntry.compose)
     end)
 
     -- Ticks these class names in a place card's dropdown menu.
@@ -36,7 +46,6 @@ describe("composing the party", function()
         local world = World.new()
         local client = leader(world)
         client:click("Button", LEAD)
-        client:click("CheckButton", "Choose the classes in my party")
         local cards = client.ns.WindowParts.composeCards
         assert.are.equal("You", cards[1].lines[1].text)
         assert.is_truthy(cards[1].lines[2].text:find("^Warrior"))
@@ -60,7 +69,6 @@ describe("composing the party", function()
         local world = World.new()
         local client = leader(world)
         client:click("Button", LEAD)
-        client:click("CheckButton", "Choose the classes in my party")
         local card = client.ns.WindowParts.composeCards[3]
         pick(client, card, { "Leather" })
         local chosen = {}
@@ -87,7 +95,6 @@ describe("composing the party", function()
         client:slash("/dq")
         client:click("CheckButton", "Tank")
         client:click("Button", LEAD)
-        client:click("CheckButton", "Choose the classes in my party")
         local card = client.ns.WindowParts.composeCards[2]
         client.inClick = true
         card.scripts.OnClick(card)
@@ -101,7 +108,6 @@ describe("composing the party", function()
         local world = World.new()
         local client = leader(world)
         client:click("Button", LEAD)
-        client:click("CheckButton", "Choose the classes in my party")
         local cards = client.ns.WindowParts.composeCards
         assert.is_true(cards[3].plus.shown)
         assert.is_true(cards[3].dashed)
@@ -130,7 +136,6 @@ describe("composing the party", function()
         client:slash("/dq")
         client:click("CheckButton", "Tank")
         client:click("Button", LEAD)
-        client:click("CheckButton", "Choose the classes in my party")
         local cards = client.ns.WindowParts.composeCards
         assert.are.equal("classicon-warrior", cards[1].art.atlas)
         assert.are.equal("You", cards[1].lines[1].text)
@@ -155,7 +160,6 @@ describe("composing the party", function()
         client:slash("/dq")
         client:click("CheckButton", "Tank")
         client:click("Button", LEAD)
-        client:click("CheckButton", "Choose the classes in my party")
         local cards = client.ns.WindowParts.composeCards
         assert.are.equal("classicon-warrior", cards[1].art.atlas)
         assert.is_true(cards[1].art.shown)
@@ -174,22 +178,37 @@ describe("composing the party", function()
         assert.are.equal("classicon-warrior", cards[1].nameIcon.atlas)
     end)
 
-    it("keeps the chosen classes while switched off, and uses none then", function()
+    it("keeps the chosen classes for the next time, and Reset opens every place to any class", function()
         local world = World.new()
         local client = leader(world)
         client:click("Button", LEAD)
-        client:click("CheckButton", "Choose the classes in my party")
         local cards = client.ns.WindowParts.composeCards
         pick(client, cards[3], { "Mage" })
-        client:click("CheckButton", "Choose the classes in my party")
-        assert.is_false(cards[3].shown)
-        assert.are.same({ 0, 0, 64, 0, 0 }, client.ns.charDb.compose.masks)
         client:click("Button", "Find players")
-        assert.is_nil(client.ns.engine.myEntry.compose)
+        assert.are.equal("0:0.0.64.0.0", client.ns.engine.myEntry.compose)
         client:slash("/dq leave")
-        client:click("CheckButton", "Choose the classes in my party")
         assert.is_true(cards[3].shown)
         assert.are.equal("Mage", cards[3].lines[1].text)
+        client:click("Button", "Reset")
+        assert.are.same({ 0, 0, 0, 0, 0 }, client.ns.charDb.compose.masks)
+        assert.are.equal("Any class", cards[3].text.text)
+        client:click("Button", "Find players")
+        assert.is_nil(client.ns.engine.myEntry.compose)
+    end)
+
+    it("uses the classes chosen while the old switch was off", function()
+        local world = World.new()
+        local client = world:addClient("Lead Player", { level = 20, class = "WARRIOR",
+            saved = { db = { noClassVariety = true },
+                charDb = { composeOn = false, compose = { masks = { 0, 0, 64, 0, 0 } } } } })
+        world:advance(CONNECT)
+        assert.is_nil(client.ns.charDb.composeOn)
+        client:slash("/dq")
+        client:click("CheckButton", "Tank")
+        client:click("Button", LEAD)
+        assert.are.equal("Mage", client.ns.WindowParts.composeCards[3].lines[1].text)
+        client:click("Button", "Find players")
+        assert.are.equal("0:0.0.64.0.0", client.ns.engine.myEntry.compose)
     end)
 
     it("shows the wished classes in the open places of the queue card", function()
@@ -203,7 +222,6 @@ describe("composing the party", function()
         client:click("CheckButton", "Tank")
         client.ns.charDb.wantsLead = true
         client.ns.charDb.compose = { masks = { 0, 48, 64, 0, 0 } }
-        client.ns.charDb.composeOn = true
         client:slash("/dq join tank dm")
         client.ns.Window.refresh()
         local slots = client.ns.WindowParts.slots
@@ -274,7 +292,6 @@ describe("composing the party", function()
         local client = leader(world)
         client.ns.charDb.wantsLead = true
         client.ns.charDb.compose = { masks = { 0, 0, 64, 64, 0 } }
-        client.ns.charDb.composeOn = true
         client:slash("/dq join tank dm")
         client:slash("/dq fill")
         world:advance(3)
@@ -293,7 +310,6 @@ describe("composing the party", function()
         local client = leader(world, nil, true)
         client.ns.charDb.wantsLead = true
         client.ns.charDb.compose = { masks = { 0, 0, 192, 192, 0 } }
-        client.ns.charDb.composeOn = true
         client:slash("/dq join tank dm")
         client:slash("/dq fill")
         world:advance(3)
@@ -311,7 +327,6 @@ describe("composing the party", function()
         local client = leader(world, nil, true)
         client.ns.charDb.wantsLead = true
         client.ns.charDb.compose = { masks = { 0, 0, 64, 64, 64 } }
-        client.ns.charDb.composeOn = true
         client:slash("/dq join tank dm")
         client:slash("/dq fill")
         world:advance(3)
@@ -326,7 +341,6 @@ describe("composing the party", function()
         local client = leader(world)
         client.ns.charDb.wantsLead = true
         client.ns.charDb.compose = { masks = { 0, 0, 64, 64, 64 } }
-        client.ns.charDb.composeOn = true
         client:slash("/dq join tank dm")
         client:slash("/dq fill")
         world:advance(3)
@@ -347,7 +361,6 @@ describe("composing the party", function()
         local client = leader(world)
         client.ns.charDb.wantsLead = true
         client.ns.charDb.compose = { masks = { 0, 0, 64, 0, 0 } }
-        client.ns.charDb.composeOn = true
         local Protocol = client.ns.Protocol
         local encode = Protocol.encode
         Protocol.encode = function(msg, space)
@@ -376,7 +389,6 @@ describe("composing the party", function()
         client.party, client.isLeader = { "Mage Friend" }, true
         client.partyClasses["Mage Friend"] = "MAGE"
         client.ns.charDb.compose = { masks = { 0, 0, 0, 64, 8 } }
-        client.ns.charDb.composeOn = true
         client:fire("GROUP_ROSTER_UPDATE")
         client:click("Button", "None")
         client:click("CheckButton", "The Deadmines")
@@ -393,7 +405,6 @@ describe("composing the party", function()
         local client = leader(world)
         client.ns.charDb.wantsLead = true
         client.ns.charDb.compose = { masks = { 0, 16, 0, 0, 0 } }
-        client.ns.charDb.composeOn = true
         client:slash("/dq join tank dm")
         assert.are.equal("0:0.16.0.0.0", client.ns.engine.myEntry.compose)
         client.ns.RoleSync.expect("Druid Heal", "H")
@@ -409,7 +420,6 @@ describe("composing the party", function()
         local client = leader(world)
         client.ns.charDb.wantsLead = true
         client.ns.charDb.compose = { masks = { 0, 0, 0, 64, 0 } }
-        client.ns.charDb.composeOn = true
         client:slash("/dq join tank dm")
         local Protocol = client.ns.Protocol
         local encode = Protocol.encode
@@ -439,7 +449,6 @@ describe("composing the party", function()
         local client = leader(world)
         client.ns.charDb.wantsLead = true
         client.ns.charDb.compose = { masks = { 0, 0, 64, 0, 0 } }
-        client.ns.charDb.composeOn = true
         client:slash("/dq join tank dm")
         client:slash("/dq fill")
         world:advance(3)
@@ -460,7 +469,6 @@ describe("composing the party", function()
         local client = leader(world)
         client.ns.charDb.wantsLead = true
         client.ns.charDb.compose = { masks = { 0, 0, 64, 0, 0 } }
-        client.ns.charDb.composeOn = true
         local Protocol = client.ns.Protocol
         local encode = Protocol.encode
         Protocol.encode = function(msg, space)
@@ -495,7 +503,6 @@ describe("composing the party", function()
         lead.ns.charDb.wantsLead = true
         lead.ns.engine:setLead(true)
         lead.ns.charDb.compose = { masks = { 0, 0, 64, 0, 0 } }
-        lead.ns.charDb.composeOn = true
         lead:slash("/dq join tank dm")
         for _, other in ipairs(others) do
             other.client:slash("/dq join " .. other.role .. " dm")
@@ -521,7 +528,6 @@ describe("composing the party", function()
         local client = leader(world)
         client:click("Button", LEAD)
         client.ns.charDb.compose = { masks = { 0, 0, 64, 64, 64 } }
-        client.ns.charDb.composeOn = true
         client:press("W")
         world:advance(1)
         assert.is_true(client.ns.QueueWindow.isShown())
@@ -537,13 +543,12 @@ describe("composing the party", function()
         world:listGroup("Group Lead", 799, { T = 1, H = 0, D = 1 })
         local client = leader(world)
         client:click("Button", LEAD)
-        client:click("CheckButton", "Choose the classes in my party")
         client.ns.charDb.compose = { masks = { 0, 0, 64, 0, 0 } }
         client:click("CheckButton", "Limit levels")
         assert.is_not_nil(client:find("Button", "Find players"))
         client:click("Button", "Join a group")
         assert.is_nil(client.ns.charDb.wantsLead)
-        assert.is_nil(client:find("CheckButton", "Choose the classes in my party"))
+        assert.is_false(client.ns.WindowParts.ui.composeTitle.shown)
         assert.is_nil(client:find("CheckButton", "Limit levels"))
         client:click("Button", "Find group")
         local entry = client.ns.engine.myEntry
@@ -556,7 +561,7 @@ describe("composing the party", function()
             asked = asked or w.target == "Group Lead"
         end
         assert.is_true(asked)
-        assert.is_true(client.ns.charDb.composeOn)
+        assert.are.same({ 0, 0, 64, 0, 0 }, client.ns.charDb.compose.masks)
         assert.is_true(client.ns.charDb.levelsOn)
     end)
 
@@ -571,7 +576,6 @@ describe("composing the party", function()
             assert.are.equal(W.RIGHT, columns[count].x + columns[count].width)
         end
         client:click("Button", LEAD)
-        client:click("CheckButton", "Choose the classes in my party")
         assert.are.equal(W.columns(5, W.SPACE.s)[5].x, W.composeCards[5].point[4])
         local tank = client:find("CheckButton", "Tank")
         assert.are.equal(W.PAD, tank.point[4])
@@ -691,6 +695,7 @@ describe("the place cards", function()
         client.partyClasses["Maximiliana Longname"] = "MAGE"
         client:fire("GROUP_ROSTER_UPDATE")
         local W = client.ns.WindowParts
+        client:click("Button", "Find group")
         assert.are.equal(1, heights(W.slots))
         assert.are.equal(W.PLACE_HEIGHT, W.slots[1].height)
         local card = placeOf(W.slots, "Maximiliana Longname")
@@ -705,7 +710,7 @@ describe("the place cards", function()
         local mine = placeOf(W.slots, "Lead Player")
         assert.are.equal("GameFontHighlightSmall", mine.name.font)
 
-        client:click("CheckButton", "Choose the classes in my party")
+        client:click("Button", "Stop")
         assert.are.equal(1, heights(W.composeCards))
         assert.are.equal(W.PLACE_HEIGHT, W.composeCards[1].height)
         local friend = placeOf(W.composeCards, "Maximiliana Longname")
