@@ -1,4 +1,5 @@
 local World = require("tests.helpers.wowmock")
+local Config = require("core.config")
 
 local CONNECT = 30
 
@@ -270,7 +271,7 @@ describe("/fg demo", function()
         client:slash("/fg demo")
         assert.is_nil(engine.queue:get("Other Tank"))
         assert.is_not_nil(client.sent[#client.sent]:find("^v%d+|S|"))
-        world:advance(6)
+        world:advance(Config.SYNC_JITTER + 2)
         assert.is_not_nil(engine.queue:get("Other Tank"))
     end)
 
