@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.33.0 (2026-11-23)
 
 - **Update needed:** Forever Groups moved to a new, password-protected channel, so older versions no longer see
   players with this one (and the other way round). The old channel could be locked by whoever happened to own it,
