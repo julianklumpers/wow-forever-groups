@@ -29,7 +29,7 @@ describe("WoW layer", function()
         world:advance(CONNECT)
         assert.are.equal("Roos Bieff", client.ns.selfName)
         assert.is_not_nil(client.ns.engine)
-        assert.are.equal(6, client.channels.ForeverGroupsNet)
+        assert.are.equal(6, client.channels[client.ns.Comm.CHANNEL])
     end)
 
     it("keeps the version pings out of the saved log, also with debug on", function()
@@ -44,14 +44,16 @@ describe("WoW layer", function()
         end
     end)
 
-    it("leaves the channel of the old DungeonQueue name", function()
+    it("leaves the channels of older versions", function()
         local world = World.new()
         local client = world:addClient("Roos Bieff", { beforeLogin = function(c)
             c.channels.DungeonQueueNet = 5
+            c.channels.ForeverGroupsNet = 4
         end })
         world:advance(CONNECT)
         assert.is_nil(client.channels.DungeonQueueNet)
-        assert.is_not_nil(client.channels.ForeverGroupsNet)
+        assert.is_nil(client.channels.ForeverGroupsNet)
+        assert.is_not_nil(client.channels[client.ns.Comm.CHANNEL])
     end)
 
     it("forms a group of five end to end: popups, accept, invites by the tank", function()

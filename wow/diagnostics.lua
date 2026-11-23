@@ -42,8 +42,12 @@ function Diagnostics.selftest()
     end
 
     local channel = ns.Comm.channelId()
+    local owner = ns.ChannelGuard.owner()
+    local ownerText = owner == nil and "owner unknown" or owner == false and "no owner"
+        or ns.ChannelGuard.isOwner() and "you own it" or ("owner " .. owner)
     check("Forever Groups channel", channel ~= nil and ns.Comm.selfName ~= nil,
-        channel and ("/" .. channel .. " as " .. tostring(ns.Comm.selfName)) or "not joined")
+        channel and ("/" .. channel .. " as " .. tostring(ns.Comm.selfName) .. ", " .. ownerText)
+            or (ns.Comm.diagnostics().failure or "not joined"))
     if not ns.Features.groupFinder() then
         add("Group Finder search", "not tried", "turned off in the settings")
     elseif not all("C_LFGList.Search", "C_LFGList.GetSearchResultInfo") then
@@ -157,6 +161,13 @@ function Diagnostics.report()
     add("Self-test:")
     for _, result in ipairs(Diagnostics.selftest()) do
         add("  %-9s %s%s", result.state, result.name, result.detail and (" (" .. tostring(result.detail) .. ")") or "")
+    end
+    add("")
+    local channel = ns.Comm.diagnostics()
+    add("Channel %s: %d join attempts%s", ns.Comm.CHANNEL, channel.attempts,
+        channel.failure and (", " .. channel.failure) or "")
+    for _, line in ipairs(channel.events) do
+        add("  %s", line)
     end
     add("")
     local list = errors()

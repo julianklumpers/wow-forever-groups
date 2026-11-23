@@ -86,6 +86,8 @@ local wow_read_globals = {
     "GetBattlefieldEstimatedWaitTime",
     "JoinChannelByName",
     "JoinTemporaryChannel",
+    "SetChannelPassword", "ChannelUnban", "ChannelUnmoderator", "GetNumDisplayChannels", "GetChannelDisplayInfo",
+    "SetSelectedDisplayChannel", "GetNumChannelMembers",
     "Minimap",
     "RaidNotice_AddMessage",
     "RAID_CLASS_COLORS",
@@ -139,7 +141,11 @@ files["wow/"] = {
     },
 }
 
-local probe_read_globals = { "GetLFGRoles", "LFGInvitePopupAccept_OnClick", "LFGInvitePopup_Show", "SetLFGRoles" }
+local probe_read_globals = { "GetLFGRoles", "LFGInvitePopupAccept_OnClick", "LFGInvitePopup_Show", "SetLFGRoles",
+    "ChannelBan", "ChannelUnban", "DisplayChannelOwner", "GetChannelDisplayInfo", "GetChannelRosterInfo",
+    "GetNumChannelMembers", "GetNumDisplayChannels", "SetChannelOwner", "SetChannelPassword",
+    "SetSelectedDisplayChannel", "C_Club", "DEFAULT_CHAT_FRAME", "ChannelModerator",
+    "ChannelUnmoderator" }
 for _, name in ipairs(wow_read_globals) do
     probe_read_globals[#probe_read_globals + 1] = name
 end
@@ -158,6 +164,10 @@ files["probe/"] = {
 files["tests/helpers/wowmock.lua"] = {
     read_globals = { "setfenv", "unpack" },
 }
+
+-- Test helpers that pin math.random to an extreme.
+files["tools/random_high.lua"] = { globals = { "math" } }
+files["tools/random_low.lua"] = { globals = { "math" } }
 
 files["locales/"] = {
     max_line_length = false,

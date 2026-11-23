@@ -141,6 +141,10 @@ function Version.onReady()
     Version.announce()
 end
 
+function Version.announcementText()
+    return announcement()
+end
+
 -- Tells the channel this client's version; also how others see it is online.
 function Version.announce()
     if Version.mine() and ns.Comm.selfName then

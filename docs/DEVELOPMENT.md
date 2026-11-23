@@ -3,6 +3,25 @@
 How the addon works inside, for anyone reading or changing the code. The player-facing overview is the
 [README](../README.md).
 
+## Parts
+
+The addon by part, with its main files. `/bugscan` scans a part by it, so it names every file in `core/` and `wow/`
+(`tests/parts_spec.lua` fails otherwise): a new file goes in with its part.
+
+| Part | What it does | Main files |
+|---|---|---|
+| Matchmaking | The Forever Groups queue: who is grouped with whom, proposals, roles | `core/engine`, `matchmaker`, `queue`, `election`, `proposal`, `protocol`, `roles`, `dungeons`, `zones`, `config`; `wow/main`, `queues` |
+| Channel and network | The hidden channel, sending, who is online, version check | `wow/comm`, `channelguard`, `presence`, `version`, `events`; `core/outbox`, `ratelimit` |
+| Group Finder search | Searching WoW's Group Finder, the own listing | `wow/lfglist`, `keysearch`, `input`, `lfglisting`, `features` |
+| Filling a group | Inviting Group Finder players, with whispers | `wow/filler`, `autofill`, `invites`, `whisperinvite`, `whispers`, `messages`; `core/fill`, `lfgpick` |
+| Join a group | Asking leaders to invite the player, reading their answers | `wow/lfgapply`; `core/asks`, `replies` |
+| Leading and wishes | Class choices and the level limit | `wow/partycompose`, `partylevels`; `core/compose`, `levels`, `classes` |
+| In the group | Places, roles, specs, entrance, bosses, replacements, taking the lead | `wow/group`, `groupview`, `groupplaces`, `run`, `takelead`, `partystatus`, `partyroles`, `rolesync`, `spec`, `inspectspec`, `entrances`, `zonemap`; `core/specs` |
+| Quests | The questing queue, finding and sharing quests | `wow/quests`, `questqueue`, `questfinder`, `questgroup`, `questshare`; `core/questmatch` |
+| Battlegrounds | The battleground tab and its search | `wow/bgqueue`, `bgfinder`; `core/battlegrounds`, `bgmatch` |
+| Window and UI | The window, status, notices, the demo | `wow/ui/`, `wow/status`, `notify`, `demo` |
+| Other | Commands, bug report, log, languages, translations | `wow/slash`, `diagnostics`, `log`, `matchlanguages`, `playstyle`, `party`; `core/locale`, `languages`, `playstyles`, `locales/` |
+
 ## Layout
 
 - `core/` – pure Lua 5.1, no WoW API: protocol, queue, matchmaking, election, proposals, engine
@@ -182,7 +201,44 @@ How the addon works inside, for anyone reading or changing the code. The player-
 
 ## How the network behaves
 
-All clients join the hidden channel `ForeverGroupsNet` (realm-wide). Queued players re-send their entry every 45 s.
+All clients join one hidden channel with a password (`wow/comm.lua`). Its name and password are put together at
+load time from scrambled bytes (`unscramble`), so neither is plain text in the files (a test checks): that keeps
+out a curious `/join`, not someone reading the code. Every version keeps both; changing them splits the network
+(as 0.33.0 did, leaving the old `ForeverGroupsNet` and `DungeonQueueNet` at every join). Joining: 5 s after
+login, then polled 15 s; WoW's refusal notices (`WRONG_PASSWORD`, `BANNED`, `WRONG_FACTION`, `INVALID_NAME`,
+`THROTTLED`; on Forever a refused join may also get no answer at all) become the reason in the warning and in the
+connection detail, and the next try waits 30 s, 1, 2, then 5 min (`RETRY_WAITS`); the warning comes once per
+reason, "Connected to the Forever Groups channel again." when it works; a join that raises an error is retried
+the same way. The Group Finder sentence is left out while the Group Finder is turned off. `YOU_LEFT` rejoins after
+5 s. Every join
+attempt and every notice of the channel is logged (`channel: …`) and the last ten are in `/fg bugreport`
+(`Comm.diagnostics`); the notices stay out of the chat frames (`hideNotice`, both notice events, also for the old
+`ForeverGroupsNet`). Once per session, after the handshake, a released copy steps into `ForeverGroupsNet`, says its
+version there (`Version.announcementText`, the `DQV|` ping older versions already read) and leaves after 5 s (also
+when WoW lets it in only after the 10 s it waits: it leaves again then, and once more 30 s later), so
+older versions show their own update warning (they need two players saying it). The developer copy never does:
+`dev.copy` sits in the `--@do-not-package@` block the packager strips (`Comm.isDevCopy`), so testing a version
+through the symlink before its release warns nobody.
+
+Only the channel's owner (and moderators) can set a password, ban or appoint moderators. The creator owns it; when
+the owner leaves WoW usually hands ownership to a member (seen live: `SET_MODERATOR` then `OWNER_CHANGED` with the
+full name), but a channel can also end up with no owner at all. `wow/channelguard.lua`: the owner is read from the
+roster after joining and after the handshake (`C_ChatInfo.GetChannelRosterInfo`, after `SetSelectedDisplayChannel`,
+read again up to 5 times 2 s apart while WoW has not filled it yet;
+`CHANNEL_OWNER` and `SET_MODERATOR` notices give the first name only) and from `OWNER_CHANGED`. While this client
+owns it: on becoming owner and on every `PASSWORD_CHANGED` not its own (its own = by itself within 5 s of its
+reset; a password typed by hand counts as foreign) it sets the password again, at most once per 10 s so two
+clients can never take turns; `PLAYER_BANNED` is answered with `ChannelUnban`, `SET_MODERATOR` of another player
+with `ChannelUnmoderator` for every moderator in the roster. All three work from a timer (probe 2026-11-23; unban
+and unmoderator only seen not blocked). With another owner or none it only logs.
+
+A party member heard from in the party (they run Forever Groups) but silent on our channel for 7 min, with us on
+the channel that long too, gets one chat line per session (`Presence.checkSplit`, every 60 s; skipped while a
+member's name is still loading, so nobody is forgotten; a member who is offline but still in the party is skipped
+and forgotten until they speak in the party again): an older version,
+or Forever's split of custom channels between internal servers (reported on Blizzard's forum in November 2026).
+
+Queued players re-send their entry every 45 s.
 The matchmaker is the queued player whose client has been online longest (ties by name), so the role stays with a
 stable client. The three likeliest matchmakers also send a keep-alive (`v2|K`) every 10 s; one that is silent for 25 s
 is skipped and the next takes over. Any message of a player counts as alive in both queues (dungeons and questing),
@@ -247,8 +303,15 @@ REALISTIC_SEEDS=60 REALISTIC_STEPS=300 .lua51/bin/busted tests/realistic_spec.lu
 LOAD=1 .lua51/bin/busted tests/load_spec.lua   # channel load measurement (left out of the normal run)
 LOAD_CLIENTS=150 LOAD_SECONDS=300 .lua51/bin/busted tests/load_spec.lua   # a bigger one
 .lua51/bin/lua tools/simulate.lua busy 60 1 5 grace   # matchmaking variants (scenario, minutes, seed, runs, set)
+.lua51/bin/busted --helper=tools/random_high.lua   # math.random() pinned to 0.999 (also tools/random_low.lua: 0)
+python3 tools/mutate.py wow/x.lua 'fixed' 'buggy' tests/x_spec.lua   # KILLED when a test catches the bug; the file
+                                  # is always put back (after a hard kill, by the next run from <file>.mutate-backup)
 python3 scripts/package.py        # dist/ForeverGroups-<version>.zip with only what the .toc loads
 ```
+
+In Claude Code, `/bugscan [scope]` (a local command in `.claude/commands/bugscan.md`) runs a bug
+scan of the uncommitted changes or of one part from the Parts table (without a scope it asks which): two reviewer agents (logic and state; the real client, translations and the
+mock), every finding checked, each real bug fixed with a regression test and a mutation check.
 
 `tests/soak_spec.lua` runs ten simulated players doing random things in both queues (joining, leaving, answering
 proposals, logging out) and checks after every step that nobody is stuck: no queue held without a proposal in the
@@ -1155,7 +1218,8 @@ is always "Aldric Dawnmere", a level 20 Protection Paladin; the others have made
 - **Only when idle:** connected, not in any queue, no proposal, not filling, asking or finding a battleground, solo,
   not in an instance and not in combat (`isIdle`); otherwise a chat line says so.
 - **Nothing runs while it shows:** `wow/events.lua` hands no event to the handlers (`Demo.passes`) except
-  `CHAT_MSG_CHANNEL_NOTICE`; combat (`PLAYER_REGEN_DISABLED`), a loading screen (`PLAYER_ENTERING_WORLD`),
+  `CHAT_MSG_CHANNEL_NOTICE` and `CHAT_MSG_CHANNEL_NOTICE_USER` (the channel's owner, password and bans are kept
+  track of meanwhile); combat (`PLAYER_REGEN_DISABLED`), a loading screen (`PLAYER_ENTERING_WORLD`),
   logging out or reloading (`PLAYER_LOGOUT`) and joining a group end the demo first and then go through. The
   one-second tick (`wow/main.lua`) only refreshes the window and the status bar. As a safety net `Comm.send`,
   `Comm.sendNow`, `Comm.sendParty`, `Whispers.send`, `Whispers.sayParty`, `Invites.send`, `Input.run`,

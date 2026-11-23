@@ -71,8 +71,9 @@ describe("chat-messaging lockdown", function()
         local client = world:addClient("Solo Player", { level = 20 })
         world:advance(12)
         client:fire("CHAT_MSG_ADDON", "ForeverGroups", World.SECRET, "CHANNEL", "Some One", "", 0, 6,
-            "ForeverGroupsNet")
-        client:fire("CHAT_MSG_ADDON", "ForeverGroups", "v2|L", "CHANNEL", World.SECRET, "", 0, 6, "ForeverGroupsNet")
+            client.ns.Comm.CHANNEL)
+        client:fire("CHAT_MSG_ADDON", "ForeverGroups", "v2|L", "CHANNEL", World.SECRET, "", 0, 6,
+            client.ns.Comm.CHANNEL)
         client:fire("CHAT_MSG_ADDON", "ForeverGroups", World.SECRET, "PARTY", "Some One")
     end)
 

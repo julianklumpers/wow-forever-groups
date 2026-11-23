@@ -97,7 +97,9 @@ in the group, with roles set for you.
 </p>
 
 Forever Groups players share one queue through a hidden addon channel. There are no
-servers or websites involved; everything happens in game.
+servers or websites involved; everything happens in game. The channel is password-protected and has a name of
+random letters (you may see it in `/chatlist`), so only Forever Groups joins it. If it can't be joined, Forever
+Groups says why and keeps working through WoW's Group Finder.
 
 ## Getting started
 

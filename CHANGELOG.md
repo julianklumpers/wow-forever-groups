@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Update needed:** Forever Groups moved to a new, password-protected channel, so older versions no longer see
+  players with this one (and the other way round). The old channel could be locked by whoever happened to own it,
+  and new players were sometimes refused without a word. In `/chatlist` the channel now has a name that looks like
+  random letters; that is on purpose. Players who still have an older version are told in the old channel that a
+  newer one is out: each player who updated says it there once per login, and an older version shows its update
+  warning once two of them have.
+- The channel guards itself: while your Forever Groups owns it, a password changed by anyone is put back, a ban is
+  lifted and other moderators lose that role.
+- When the channel can't be joined, the message now says why (wrong password, banned, the other faction, WoW not
+  answering) instead of guessing "too many chat channels", and Forever Groups tries again after 30 seconds, then
+  1, 2 and 5 minutes. Meanwhile it works through WoW's Group Finder only, and the window says so. When it gets in
+  after all, the chat says so.
+- In a party with someone who runs Forever Groups but is not on your channel (an older version, or WoW splitting
+  the channel), the chat says once that you can group but won't see each other in the queue.
+- `/fg bugreport` lists the channel's join attempts and WoW's answers, and the self-test says who owns the
+  channel.
 - "Choose the classes in my party" no longer has a check box: leading a dungeon group, the five places are always
   shown under it, each open place "Any class" until you pick classes for it, and Reset opens every place to any
   class again. Classes you chose before are still there and count right away. Hovering a party member's place

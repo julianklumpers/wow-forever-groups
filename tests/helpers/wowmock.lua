@@ -80,7 +80,46 @@ World.ACTIVITY_LEVELS = {
 }
 
 function World.new()
-    return setmetatable({ time = 0, timers = {}, clients = {}, inbox = {}, channelIds = {}, listings = {} }, World)
+    return setmetatable({ time = 0, timers = {}, clients = {}, inbox = {}, channelIds = {}, channelStates = {},
+        listings = {} }, World)
+end
+
+-- A custom channel as the server keeps it: members in join order, the owner,
+-- the password, bans and moderators. Gone with its last member. shard: a
+-- client's shard (client.shard); WoW gives each its own channel of a name.
+function World:channel(name, shard)
+    local key = string.lower(name) .. "@" .. tostring(shard or "")
+    self.channelStates[key] = self.channelStates[key] or { members = {}, bans = {}, moderators = {} }
+    return self.channelStates[key]
+end
+
+-- A CHAT_MSG_CHANNEL_NOTICE(_USER) as WoW sends it, to these clients.
+function World:channelNotice(clients, event, name, code, player, player2)
+    local id = self.channelIds[name] or 0
+    for _, client in ipairs(clients) do
+        self.inbox[#self.inbox + 1] = { to = client, event = event, args = { code, player or "", "",
+            id .. ". " .. name, player2 or "", "", 0, id, name, 0, 0, nil, n = 12 } }
+    end
+end
+
+-- Someone outside the test's clients (not in the channel's member list)
+-- changes its password, bans, or makes a moderator; every member hears it.
+function World:foreignPassword(name, password, by)
+    local state = self:channel(name)
+    state.password = password
+    self:channelNotice(state.members, "CHAT_MSG_CHANNEL_NOTICE_USER", name, "PASSWORD_CHANGED", by)
+end
+
+function World:foreignBan(name, target, by)
+    self:channel(name).bans[target] = true
+    self:channelNotice(self:channel(name).members, "CHAT_MSG_CHANNEL_NOTICE_USER", name, "PLAYER_BANNED", target, by)
+end
+
+-- WoW names the new moderator by the first name only.
+function World:foreignModerator(name, target)
+    self:channel(name).moderators[target] = true
+    self:channelNotice(self:channel(name).members, "CHAT_MSG_CHANNEL_NOTICE_USER", name, "SET_MODERATOR",
+        (string.match(target, "^(%S+)")))
 end
 
 -- Enum.LFGEntryGeneralPlaystyle values, deliberately unlike Forever Groups's
@@ -187,7 +226,7 @@ function World:route(from, prefix, text, chatType, target)
     end
     assert(channelName, "sent to a channel the client is not in")
     for _, client in ipairs(self.clients) do
-        if client.online and client.channels[channelName] then
+        if client.online and client.channels[channelName] and client.shard == from.shard then
             self.inbox[#self.inbox + 1] = {
                 to = client, event = "CHAT_MSG_ADDON",
                 args = { prefix, text, "CHANNEL", from.name, "", 0, client.channels[channelName], channelName, 0,
@@ -1290,6 +1329,15 @@ local function buildEnv(world, client)
         end,
     }
     env.C_ChatInfo = {
+        GetChannelRosterInfo = function(i, j)
+            local entry = client.displayChannels()[i]
+            local state = entry and world:channel(entry.name, client.shard)
+            local member = state and state.members[j]
+            if member then
+                return member.name, state.owner == member.name, state.moderators[member.name] == true,
+                    "Player-1-" .. j
+            end
+        end,
         RegisterAddonMessagePrefix = function()
             return 0
         end,
@@ -1604,16 +1652,113 @@ local function buildEnv(world, client)
     env.GameFontNormalSmall = env.GameFontNormalSmall or { name = "GameFontNormalSmall" }
     env.ERR_ALREADY_IN_GROUP_S = "%s is already in a group."
     env.ERR_BAD_PLAYER_NAME_S = "Cannot find player '%s'."
-    env.JoinTemporaryChannel = function(name)
-        world.channelIds[name] = world.channelIds[name] or 6
+    -- client.joinRefused: a code ("BANNED", ...) the server answers every
+    -- join with, or true for no answer at all.
+    env.JoinTemporaryChannel = function(name, password)
+        client.joinAttempts = (client.joinAttempts or 0) + 1
+        local state = world:channel(name, client.shard)
+        if client.channels[name] then
+            return 0
+        end
+        local refused = client.joinRefused or (state.bans[client.name] and "BANNED")
+            or (#state.members > 0 and state.password ~= nil and state.password ~= password and "WRONG_PASSWORD")
+        if refused then
+            if refused ~= true then
+                world:channelNotice({ client }, "CHAT_MSG_CHANNEL_NOTICE", name, refused)
+            end
+            return 0
+        end
+        if not world.channelIds[name] then
+            world.lastChannelId = (world.lastChannelId or 5) + 1
+            world.channelIds[name] = world.lastChannelId
+        end
         client.channels[name] = world.channelIds[name]
+        if #state.members == 0 then
+            state.owner = client.name
+            state.password = password ~= "" and password or nil
+        end
+        state.members[#state.members + 1] = client
+        world:channelNotice({ client }, "CHAT_MSG_CHANNEL_NOTICE", name, "YOU_CHANGED")
         return 0
     end
+    -- As WoW: id, name, instance id, communities channel; 0 and nil when not in it.
     env.GetChannelName = function(name)
-        return client.channels[name] or 0
+        if client.channels[name] then
+            return client.channels[name], name, 0, false
+        end
+        return 0, nil, 0, false
     end
     env.LeaveChannelByName = function(name)
         client.channels[name] = nil
+        local state = world:channel(name, client.shard)
+        for i, member in ipairs(state.members) do
+            if member == client then
+                table.remove(state.members, i)
+            end
+        end
+        if #state.members == 0 then
+            world.channelStates[string.lower(name) .. "@" .. tostring(client.shard or "")] = nil
+        elseif state.owner == client.name then
+            state.owner = not world.ownerStays and state.members[1].name or nil
+            if state.owner then
+                world:channelNotice(state.members, "CHAT_MSG_CHANNEL_NOTICE_USER", name, "OWNER_CHANGED", state.owner)
+            end
+        end
+    end
+    env.SetChannelPassword = function(name, password)
+        local state = world:channel(name, client.shard)
+        client.passwordSets = (client.passwordSets or 0) + 1
+        if state.owner ~= client.name then
+            world:channelNotice({ client }, "CHAT_MSG_CHANNEL_NOTICE_USER", name, "NOT_OWNER")
+            return
+        end
+        state.password = password ~= "" and password or nil
+        world:channelNotice(state.members, "CHAT_MSG_CHANNEL_NOTICE_USER", name, "PASSWORD_CHANGED", client.name)
+    end
+    env.ChannelUnban = function(name, target)
+        client.channelCalls = client.channelCalls or {}
+        client.channelCalls[#client.channelCalls + 1] = "unban " .. tostring(target)
+        if world:channel(name, client.shard).owner == client.name then
+            world:channel(name, client.shard).bans[target] = nil
+        end
+    end
+    env.ChannelUnmoderator = function(name, target)
+        client.channelCalls = client.channelCalls or {}
+        client.channelCalls[#client.channelCalls + 1] = "unmoderator " .. tostring(target)
+        if world:channel(name, client.shard).owner == client.name then
+            world:channel(name, client.shard).moderators[target] = nil
+        end
+    end
+    -- The channels the client is in, by id, as WoW's channel list shows them.
+    function client.displayChannels()
+        local list = {}
+        for name, id in pairs(client.channels) do
+            list[#list + 1] = { name = name, id = id }
+        end
+        table.sort(list, function(a, b)
+            return a.id < b.id
+        end)
+        return list
+    end
+    env.GetNumDisplayChannels = function()
+        return #client.displayChannels()
+    end
+    env.GetChannelDisplayInfo = function(i)
+        local entry = client.displayChannels()[i]
+        if entry then
+            return entry.name, false, false, entry.id, #world:channel(entry.name, client.shard).members, true,
+                "CHANNEL_CATEGORY_CUSTOM", 1
+        end
+    end
+    env.SetSelectedDisplayChannel = function() end
+    -- client.rosterEmpty: how many more reads find the roster not loaded yet.
+    env.GetNumChannelMembers = function(i)
+        if (client.rosterEmpty or 0) > 0 then
+            client.rosterEmpty = client.rosterEmpty - 1
+            return 0
+        end
+        local entry = client.displayChannels()[i]
+        return entry and #world:channel(entry.name, client.shard).members or 0
     end
     env.NUM_CHAT_WINDOWS = 1
     env.ChatFrame1 = {}

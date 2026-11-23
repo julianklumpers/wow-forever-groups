@@ -3609,6 +3609,475 @@ function Extra.inviteWatch(rest)
         .. "ignore it; invite into a full party too. Then /reload so the log is written.", minutes, roster())
 end
 
+-- /fgp chanlock: how a custom channel can be locked (password, ban) and who
+-- owns it, with two players on the same test channel. Every channel notice,
+-- password request and system line is logged while the test runs.
+Extra.LOCK_CHANNEL = "FGProbeLock"
+Extra.LOCK_WATCH = 300
+
+function Extra.lockWatch()
+    Extra.lockWatchUntil = GetTime() + Extra.LOCK_WATCH
+    if Extra.lockFrame then
+        return
+    end
+    Extra.lockFrame = CreateFrame("Frame")
+    for _, event in ipairs({ "CHAT_MSG_CHANNEL_NOTICE", "CHAT_MSG_CHANNEL_NOTICE_USER", "CHANNEL_PASSWORD_REQUEST",
+        "CHANNEL_INVITE_REQUEST", "CHANNEL_FLAGS_UPDATED", "CHANNEL_UI_UPDATE", "CHAT_MSG_SYSTEM",
+        "UI_ERROR_MESSAGE", "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
+        if not pcall(Extra.lockFrame.RegisterEvent, Extra.lockFrame, event) then
+            log("WARN", "chanlock: event %s does not exist", event)
+        end
+    end
+    Extra.lockFrame:SetScript("OnEvent", function(_, event, ...)
+        if GetTime() <= (Extra.lockWatchUntil or 0) then
+            log("EVENT", "chanlock %s: %s", event, showAll(...))
+        end
+    end)
+end
+
+function Extra.lockDisplayIndex()
+    for i = 1, (GetNumDisplayChannels and GetNumDisplayChannels() or 0) do
+        local name = GetChannelDisplayInfo(i)
+        if type(name) == "string" and not isSecret(name) and name:lower() == Extra.lockName:lower() then
+            return i
+        end
+    end
+end
+
+-- Id, members with their owner and moderator flags, and WoW's own owner line.
+function Extra.lockStatus()
+    local id = GetChannelName(Extra.lockName)
+    log("INFO", "chanlock status: GetChannelName('%s') -> %s", Extra.lockName, showAll(GetChannelName(Extra.lockName)))
+    if type(id) ~= "number" or id == 0 then
+        log("INFO", "chanlock status: not in the channel")
+        return
+    end
+    local index = Extra.lockDisplayIndex()
+    if not index then
+        log("WARN", "chanlock status: in the channel, but it is not in the display list")
+        return
+    end
+    pcall(SetSelectedDisplayChannel, index)
+    pcall(DisplayChannelOwner, Extra.lockName)
+    C_Timer.After(2, function()
+        local roster = C_ChatInfo and C_ChatInfo.GetChannelRosterInfo or GetChannelRosterInfo
+        local count = GetNumChannelMembers and GetNumChannelMembers(index) or 0
+        log("INFO", "chanlock status: display %d, %s members, display info: %s", index, show(count),
+            showAll(GetChannelDisplayInfo(index)))
+        for i = 1, math.min(count or 0, 40) do
+            log("INFO", "chanlock member %d: %s", i, roster and showAll(roster(index, i)) or "no roster function")
+        end
+    end)
+end
+
+function Extra.lockCall(label, fn, ...)
+    if type(fn) ~= "function" then
+        log("FAIL", "chanlock: %s does not exist", label)
+        return
+    end
+    local results = { pcall(fn, ...) }
+    if results[1] then
+        log("INFO", "chanlock: %s(%s) returned %s", label, showAll(...), showAll(unpack(results, 2)))
+    else
+        log("FAIL", "chanlock: %s(%s) raised %s", label, showAll(...), show(results[2]))
+    end
+end
+
+function Extra.lockApi()
+    local names = { "JoinTemporaryChannel", "JoinChannelByName", "JoinPermanentChannel", "LeaveChannelByName",
+        "SetChannelPassword", "SetChannelOwner", "DisplayChannelOwner", "ChannelBan", "ChannelUnban", "ChannelKick",
+        "ChannelModerator", "ChannelUnmoderator", "ChannelSetAllSilent", "ChannelToggleAnnouncements",
+        "GetChannelRosterInfo", "C_ChatInfo.GetChannelRosterInfo", "C_ChatInfo.GetChannelInfoFromIdentifier",
+        "C_ChatInfo.GetChannelRuleset", "C_ChatInfo.GetChannelShortcut", "C_ChatInfo.IsChannelRegional" }
+    for _, path in ipairs(names) do
+        log(type(resolve(path)) == "function" and "PASS" or "FAIL", "chanlock api: %s", path)
+    end
+    local strings = {}
+    for key, value in pairs(_G) do
+        if type(key) == "string" and type(value) == "string" and key:find("^CHAT_") and key:find("NOTICE") then
+            strings[#strings + 1] = key .. " = " .. value
+        end
+    end
+    table.sort(strings)
+    for _, line in ipairs(strings) do
+        log("INFO", "chanlock string: %s", show(line))
+    end
+end
+
+Extra.LOCK_STEPS = {
+    api = { "which channel functions and notice texts exist", function() Extra.lockApi() end },
+    create = { "[password] make the test channel (with a password), you become its owner", function(rest)
+        Extra.lockCall("JoinTemporaryChannel", JoinTemporaryChannel, Extra.lockName, rest ~= "" and rest or nil)
+        C_Timer.After(3, Extra.lockStatus)
+    end },
+    join = { "[password] join it (no, wrong or right password)", function(rest)
+        Extra.lockCall("JoinTemporaryChannel", JoinTemporaryChannel, Extra.lockName, rest ~= "" and rest or nil)
+        C_Timer.After(3, Extra.lockStatus)
+    end },
+    joinlater = { "[password] the same from a timer, as the addon would", function(rest)
+        C_Timer.After(2, function()
+            Extra.lockCall("JoinTemporaryChannel (timer)", JoinTemporaryChannel, Extra.lockName,
+                rest ~= "" and rest or nil)
+            C_Timer.After(3, Extra.lockStatus)
+        end)
+    end },
+    status = { "id, members with owner and moderator flags, owner line", function() Extra.lockStatus() end },
+    setpw = { "[password] as owner: set the password (empty: take it off)", function(rest)
+        Extra.lockCall("SetChannelPassword", SetChannelPassword, Extra.lockName, rest)
+    end },
+    setpwlater = { "[password] the same from a timer, as the addon would", function(rest)
+        C_Timer.After(2, function()
+            Extra.lockCall("SetChannelPassword (timer)", SetChannelPassword, Extra.lockName, rest)
+        end)
+    end },
+    owner = { "<Name> as owner: hand the channel to Name", function(rest)
+        Extra.lockCall("SetChannelOwner", SetChannelOwner, Extra.lockName, rest)
+    end },
+    ban = { "<Name> as owner: ban Name", function(rest)
+        Extra.lockCall("ChannelBan", ChannelBan, Extra.lockName, rest)
+    end },
+    unban = { "<Name> as owner: unban Name", function(rest)
+        Extra.lockCall("ChannelUnban", ChannelUnban, Extra.lockName, rest)
+    end },
+    unbanlater = { "<Name> the same from a timer, as the addon would", function(rest)
+        C_Timer.After(2, function()
+            Extra.lockCall("ChannelUnban (timer)", ChannelUnban, Extra.lockName, rest)
+        end)
+    end },
+    unmodlater = { "<Name> as owner, from a timer: take moderator away from Name", function(rest)
+        C_Timer.After(2, function()
+            Extra.lockCall("ChannelUnmoderator (timer)", ChannelUnmoderator, Extra.lockName, rest)
+        end)
+    end },
+    modlater = { "<Name> as owner, from a timer: make Name moderator", function(rest)
+        C_Timer.After(2, function()
+            Extra.lockCall("ChannelModerator (timer)", ChannelModerator, Extra.lockName, rest)
+        end)
+    end },
+    leave = { "leave it", function()
+        Extra.lockCall("LeaveChannelByName", LeaveChannelByName, Extra.lockName)
+    end },
+}
+
+Extra.LOCK_ORDER = { "api", "create", "join", "joinlater", "status", "setpw", "setpwlater", "owner", "ban", "unban",
+    "unbanlater", "modlater", "unmodlater", "leave" }
+
+function Extra.chanLock(rest)
+    local step, arg = (rest or ""):match("^(%S*)%s*(.-)%s*$")
+    step = (step or ""):lower()
+    local channel = arg and arg:match("^#(%S+)%s*")
+    if channel then
+        Extra.lockName = channel
+        arg = arg:gsub("^#%S+%s*", "")
+    end
+    Extra.lockName = Extra.lockName or Extra.LOCK_CHANNEL
+    local entry = Extra.LOCK_STEPS[step]
+    if not entry then
+        print("|cffa0c8ffForever Groups Probe|r /fgp chanlock <step> [#channel] [argument]  (channel: "
+            .. Extra.lockName .. ")")
+        for _, key in ipairs(Extra.LOCK_ORDER) do
+            print(string.format("  %s - %s", key, Extra.LOCK_STEPS[key][1]))
+        end
+        return
+    end
+    Extra.lockWatch()
+    log("INFO", "chanlock %s on '%s' (%s)", step, Extra.lockName, arg ~= "" and arg or "no argument")
+    entry[2](arg or "")
+end
+
+-- /fgp club: whether a community can carry the addon's messages. Make a
+-- community in WoW's own window (J) first; then list, add its stream as a
+-- chat channel, send an addon message there (now and from a timer), and post
+-- a plain community message from a timer. Everything that comes back is logged.
+function Extra.clubWatch()
+    Extra.clubWatchUntil = GetTime() + 300
+    if Extra.clubFrame then
+        return
+    end
+    Extra.clubFrame = CreateFrame("Frame")
+    for _, event in ipairs({ "CHAT_MSG_ADDON", "CHAT_MSG_ADDON_LOGGED", "CHAT_MSG_COMMUNITIES_CHANNEL",
+        "CLUB_MESSAGE_ADDED", "CLUB_ERROR", "CLUB_STREAM_SUBSCRIBED", "CHAT_MSG_CHANNEL_NOTICE",
+        "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN", "UI_ERROR_MESSAGE" }) do
+        if not pcall(Extra.clubFrame.RegisterEvent, Extra.clubFrame, event) then
+            log("WARN", "club: event %s does not exist", event)
+        end
+    end
+    Extra.clubFrame:SetScript("OnEvent", function(_, event, ...)
+        if GetTime() > (Extra.clubWatchUntil or 0) then
+            return
+        end
+        if (event == "CHAT_MSG_ADDON" or event == "CHAT_MSG_ADDON_LOGGED") and (...) ~= PREFIX then
+            return
+        end
+        log("EVENT", "club %s: %s", event, showAll(...))
+    end)
+end
+
+function Extra.clubIds(rest)
+    local club, stream = (rest or ""):match("^(%S*)%s*(%S*)")
+    club = club ~= "" and club or Extra.clubId
+    stream = stream ~= "" and stream or Extra.streamId
+    return club, stream
+end
+
+function Extra.clubChannelName(club, stream)
+    local fn = resolve("Chat_GetCommunitiesChannelName") or resolve("ChatFrameUtil.GetCommunitiesChannelName")
+    if type(fn) == "function" then
+        local ok, name = pcall(fn, tonumber(club) or club, tonumber(stream) or stream)
+        if ok and name then
+            return name
+        end
+    end
+    return "Community:" .. tostring(club) .. ":" .. tostring(stream)
+end
+
+function Extra.clubSendAddon(club, stream, label)
+    local name = Extra.clubChannelName(club, stream)
+    local index = GetChannelName(name)
+    log("INFO", "club: channel '%s' -> GetChannelName %s", show(name), showAll(GetChannelName(name)))
+    if type(index) ~= "number" or index == 0 then
+        log("FAIL", "club: the stream is not a chat channel here; run /fgp club addchat first")
+        return
+    end
+    local ok, code = pcall(C_ChatInfo.SendAddonMessage, PREFIX, "club test " .. label, "CHANNEL", tostring(index))
+    log(ok and "INFO" or "FAIL", "club: SendAddonMessage CHANNEL %d (%s) -> %s", index, label,
+        ok and select(1, resultName(code)) or show(code))
+end
+
+Extra.CLUB_STEPS = {
+    list = { "your communities: id, name, type, members, and their streams", function()
+        local ok, clubs = pcall(C_Club.GetSubscribedClubs)
+        if not ok or type(clubs) ~= "table" then
+            log("FAIL", "club: GetSubscribedClubs -> %s", show(clubs))
+            return
+        end
+        log("INFO", "club: %d communities", #clubs)
+        for _, info in ipairs(clubs) do
+            log("INFO", "club %s: %s, type %s, members %s, crossFaction %s", show(info.clubId), show(info.name),
+                show(info.clubType), show(info.memberCount), show(info.crossFaction))
+            local okStreams, streams = pcall(C_Club.GetStreams, info.clubId)
+            for _, s in ipairs(okStreams and streams or {}) do
+                log("INFO", "  stream %s: %s, type %s, leadersOnly %s", show(s.streamId), show(s.name),
+                    show(s.streamType), show(s.leadersAndModeratorsOnly))
+            end
+            if info.clubType ~= 2 and not Extra.clubId then
+                Extra.clubId = info.clubId
+                Extra.streamId = okStreams and streams and streams[1] and streams[1].streamId or nil
+            end
+        end
+        for _, kind in ipairs({ 0, 1 }) do
+            local okLimits, limits = pcall(C_Club.GetClubLimits, kind)
+            log("INFO", "club: limits for type %d -> %s", kind,
+                okLimits and type(limits) == "table" and dumpTable(limits) or show(limits))
+        end
+        log("INFO", "club: using community %s, stream %s (pass other ids as: <club> <stream>)",
+            show(Extra.clubId), show(Extra.streamId))
+    end },
+    addchat = { "[club stream] put the community's stream in chat as a channel", function(rest)
+        local club, stream = Extra.clubIds(rest)
+        local add = resolve("ChatFrame_AddCommunitiesChannel") or resolve("ChatFrameUtil.AddCommunitiesChannel")
+        local direct = resolve("C_Club.AddClubStreamChatChannel")
+        if type(direct) == "function" then
+            log("INFO", "club: C_Club.AddClubStreamChatChannel -> %s",
+                showAll(pcall(direct, tonumber(club) or club, tonumber(stream) or stream)))
+        end
+        if type(add) == "function" and DEFAULT_CHAT_FRAME then
+            log("INFO", "club: AddCommunitiesChannel -> %s",
+                showAll(pcall(add, DEFAULT_CHAT_FRAME, tonumber(club) or club, tonumber(stream) or stream)))
+        end
+        C_Timer.After(2, function()
+            local name = Extra.clubChannelName(club, stream)
+            log("INFO", "club: '%s' -> GetChannelName %s", show(name), showAll(GetChannelName(name)))
+        end)
+    end },
+    addon = { "[club stream] addon message to the stream's channel", function(rest)
+        local club, stream = Extra.clubIds(rest)
+        Extra.clubSendAddon(club, stream, "click")
+    end },
+    addonlater = { "[club stream] the same from a timer, as the addon would", function(rest)
+        local club, stream = Extra.clubIds(rest)
+        C_Timer.After(2, function()
+            Extra.clubSendAddon(club, stream, "timer")
+        end)
+    end },
+    msglater = { "[club stream] plain community message from a timer", function(rest)
+        local club, stream = Extra.clubIds(rest)
+        C_Timer.After(2, function()
+            log("INFO", "club: C_Club.SendMessage (timer) -> %s", showAll(pcall(C_Club.SendMessage,
+                tonumber(club) or club, tonumber(stream) or stream, "FG probe test from a timer")))
+        end)
+    end },
+}
+
+Extra.CLUB_ORDER = { "list", "addchat", "addon", "addonlater", "msglater" }
+
+function Extra.club(rest)
+    local step, arg = (rest or ""):match("^(%S*)%s*(.-)%s*$")
+    step = (step or ""):lower()
+    local entry = Extra.CLUB_STEPS[step]
+    if type(C_Club) ~= "table" then
+        log("FAIL", "club: C_Club does not exist")
+        return
+    end
+    if not entry then
+        print("|cffa0c8ffForever Groups Probe|r /fgp club <step> [club stream]  (make a community with J first)")
+        for _, key in ipairs(Extra.CLUB_ORDER) do
+            print(string.format("  %s - %s", key, Extra.CLUB_STEPS[key][1]))
+        end
+        return
+    end
+    Extra.clubWatch()
+    log("INFO", "club %s (%s)", step, arg ~= "" and arg or "no argument")
+    entry[2](arg or "")
+end
+
+-- /fgp chanwatch: follows one channel the player is in (default
+-- ForeverGroupsNet) for some hours, also over /reload and relog: every owner,
+-- password, ban and moderator notice, and every 5 minutes its owner and size.
+Extra.WATCH_POLL = 300
+
+function Extra.watchOwner()
+    local watch = db and db.chanWatch
+    if not watch or time() > watch.untilAt then
+        return
+    end
+    local index
+    for i = 1, (GetNumDisplayChannels and GetNumDisplayChannels() or 0) do
+        local name = GetChannelDisplayInfo(i)
+        if type(name) == "string" and not isSecret(name) and name:lower() == watch.name:lower() then
+            index = i
+        end
+    end
+    if not index then
+        log("INFO", "chanwatch: not in '%s' (GetChannelName %s)", watch.name, showAll(GetChannelName(watch.name)))
+        return
+    end
+    pcall(SetSelectedDisplayChannel, index)
+    C_Timer.After(2, function()
+        local count = GetNumChannelMembers and GetNumChannelMembers(index) or 0
+        local owners, moderators = {}, {}
+        for i = 1, count or 0 do
+            local ok, name, owner, moderator = pcall(C_ChatInfo.GetChannelRosterInfo, index, i)
+            if ok and owner then
+                owners[#owners + 1] = show(name)
+            elseif ok and moderator then
+                moderators[#moderators + 1] = show(name)
+            end
+        end
+        local text = string.format("%s members, owner %s, moderators %s", show(count),
+            #owners > 0 and table.concat(owners, ", ") or "none seen",
+            #moderators > 0 and table.concat(moderators, ", ") or "none")
+        if text ~= Extra.lastWatch then
+            Extra.lastWatch = text
+            log("INFO", "chanwatch '%s': %s", watch.name, text)
+        end
+    end)
+end
+
+function Extra.watchStart()
+    local watch = db and db.chanWatch
+    if not watch or time() > watch.untilAt then
+        return
+    end
+    if not Extra.watchFrame then
+        Extra.watchFrame = CreateFrame("Frame")
+        Extra.watchFrame:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE_USER")
+        Extra.watchFrame:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
+        Extra.watchFrame:SetScript("OnEvent", function(_, event, text, ...)
+            local current = db and db.chanWatch
+            local baseName = select(8, ...)
+            if not current or time() > current.untilAt or isSecret(baseName) or type(baseName) ~= "string"
+                or baseName:lower() ~= current.name:lower() then
+                return
+            end
+            log("EVENT", "chanwatch %s: %s, %s", event, show(text), showAll(...))
+            C_Timer.After(1, Extra.watchOwner)
+        end)
+        C_Timer.NewTicker(Extra.WATCH_POLL, Extra.watchOwner)
+    end
+    C_Timer.After(10, Extra.watchOwner)
+end
+
+function Extra.chanWatch(rest)
+    local word, arg = (rest or ""):match("^(%S*)%s*(.-)%s*$")
+    if word == "off" then
+        db.chanWatch = nil
+        log("INFO", "chanwatch: off")
+        return
+    end
+    local hours = tonumber(word) or 72
+    local name = (tonumber(word) and arg ~= "" and arg) or (not tonumber(word) and word ~= "" and word)
+        or "ForeverGroupsNet"
+    db.chanWatch = { name = name, untilAt = time() + hours * 3600 }
+    log("INFO", "chanwatch: following '%s' for %d hours, also after /reload and relog (/fgp chanwatch off stops)",
+        name, hours)
+    Extra.watchStart()
+end
+
+-- /fgp realm: every global and C_ function with Realm, Region, Server or
+-- Shard in its name; the getters (Get/Is, no arguments) are called. Plus the
+-- player's and party's GUIDs. To find what still tells the internal realm
+-- now that GetNormalizedRealmName is empty.
+function Extra.realm()
+    local hits = {}
+    local function wanted(key)
+        return not key:find("Discord") and not key:find("AgeVerification") and not key:find("IsGameAccountOnSameRealm")
+            and (key:find("Realm") or key:find("Region") or key:find("Server")
+            or key:find("Shard") or key:find("^C_SocialRestrictions$"))
+    end
+    for key, value in pairs(_G) do
+        if type(key) == "string" and type(value) == "function" and wanted(key) then
+            hits[#hits + 1] = { label = key, fn = value }
+        elseif type(key) == "string" and key:find("^C_") and type(value) == "table" then
+            for inner, fn in pairs(value) do
+                if type(inner) == "string" and type(fn) == "function" and (wanted(inner) or wanted(key))
+                    and not inner:find("AgeVerification") and not inner:find("IsGameAccountOnSameRealm") then
+                    hits[#hits + 1] = { label = key .. "." .. inner, fn = fn }
+                end
+            end
+        end
+    end
+    table.sort(hits, function(a, b)
+        return a.label < b.label
+    end)
+    for _, hit in ipairs(hits) do
+        local short = hit.label:match("([^%.]+)$")
+        if short:find("^Get") or short:find("^Is") then
+            log("INFO", "realm %s() -> %s", hit.label, showAll(pcall(hit.fn)))
+        else
+            log("INFO", "realm %s (not called)", hit.label)
+        end
+    end
+    log("INFO", "realm UnitGUID(player) -> %s", show(UnitGUID("player")))
+    for i = 1, 4 do
+        local unit = "party" .. i
+        local guid = UnitGUID(unit)
+        if guid then
+            log("INFO", "realm %s %s -> %s, UnitFullName %s", unit, show(UnitName(unit)), show(guid),
+                showAll(UnitFullName(unit)))
+            for _, path in ipairs({ "UnitIsSameServer", "UnitRealmRelationship", "UnitInPartyShard" }) do
+                local fn = resolve(path)
+                log("INFO", "realm %s(%s) -> %s", path, unit, type(fn) == "function" and showAll(pcall(fn, unit))
+                    or "missing")
+            end
+        end
+    end
+    local regional = resolve("C_ChatInfo.IsChannelRegional")
+    local info = resolve("C_ChatInfo.GetChannelInfoFromIdentifier")
+    for i = 1, (GetNumDisplayChannels and GetNumDisplayChannels() or 0) do
+        local name, header, _, number = GetChannelDisplayInfo(i)
+        if not header and type(name) == "string" then
+            local details = ""
+            if type(info) == "function" then
+                local ok, t = pcall(info, name)
+                details = ok and type(t) == "table" and dumpTable(t) or show(t)
+            end
+            log("INFO", "realm channel %s (/%s): IsChannelRegional %s, info %s", show(name), show(number),
+                type(regional) == "function" and number and showAll(pcall(regional, number)) or "?", details)
+        end
+    end
+end
+
 -- Every global and C_ namespace function whose name hints at bosses or
 -- progress, to find what this client has.
 function Extra.bossGlobals()
@@ -3901,6 +4370,13 @@ local COMMANDS = {
     { "listnote", "[try | remove] how a note gets on our Group Finder listing (watch WoW's window, or try)",
         cmdListNote },
     { "channels", "[name] member count of every joined channel (with a name: join it for the check)", cmdChannels },
+    { "chanlock", "<step> lock a test channel with a password or ban, with two players (no step: the steps)",
+        Extra.chanLock },
+    { "club", "<step> can a community carry addon messages (make one with J first; no step: the steps)",
+        Extra.club },
+    { "chanwatch", "[hours] [channel] follow a channel's owner, password and bans (ForeverGroupsNet, 72 h; off)",
+        Extra.chanWatch },
+    { "realm", "every realm, region, server and shard function and what the getters return", Extra.realm },
     { "log", "[n] print the last n stored log lines", cmdLog },
     { "clear", "clear the stored log", cmdClear },
 }
@@ -3985,6 +4461,7 @@ end
 
 local function onLogin()
     log("INFO", "loaded. Type /fgp help, or /fgp all for the standard checks")
+    Extra.watchStart()
 end
 
 local function onChannelNotice(event, text, _, _, channelString, _, _, _, _, baseName)

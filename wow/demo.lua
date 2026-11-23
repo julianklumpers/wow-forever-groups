@@ -1242,7 +1242,7 @@ function Demo.welcome()
 end
 
 local STOPS = { PLAYER_REGEN_DISABLED = true, PLAYER_ENTERING_WORLD = true, PLAYER_LOGOUT = true }
-local PASSES = { CHAT_MSG_CHANNEL_NOTICE = true }
+local PASSES = { CHAT_MSG_CHANNEL_NOTICE = true, CHAT_MSG_CHANNEL_NOTICE_USER = true }
 
 -- While it runs: whether an event still reaches the handlers. Fighting,
 -- loading, logging out or joining a group ends the demo first.

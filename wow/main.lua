@@ -461,7 +461,7 @@ end
 -- Any message of a player shows it is alive, in both queues: a player in
 -- both sends one stream of keep-alives, not two.
 local function onMessage(sender, text)
-    ns.Presence.seen(sender)
+    ns.Presence.seen(sender, true)
     if string.find(text, "^v%d+|S|") then
         ns.Presence.newcomer()
     end
